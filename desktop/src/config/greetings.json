@@ -1,0 +1,31 @@
+{
+  "morning": [
+    "Good morning, Aadi Sir.",
+    "Morning, Aadi Sir. Ready for the day?",
+    "Welcome back, Aadi Sir. Have a great morning."
+  ],
+  "afternoon": [
+    "Good afternoon, Aadi Sir.",
+    "Afternoon, Aadi Sir. How can I assist you?",
+    "Welcome back, Aadi Sir."
+  ],
+  "evening": [
+    "Good evening, Aadi Sir.",
+    "Evening, Aadi Sir. Ready to unwind?",
+    "Welcome back, Aadi Sir."
+  ],
+  "night": [
+    "Good night, Aadi Sir.",
+    "Night, Aadi Sir. All systems secure.",
+    "System secure."
+  ],
+  "security": [
+    "System secure.",
+    "All security protocols are active."
+  ],
+  "init": [
+    "Senti initialized successfully.",
+    "Senti is now online."
+  ]
+}
+
