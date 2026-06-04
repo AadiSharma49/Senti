@@ -25,6 +25,7 @@ function createWindow() {
     thickFrame: false,
     show: false,
     webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -144,6 +145,22 @@ ipcMain.handle('senti:quit', () => {
 })
 
 ipcMain.handle('senti:backend-health', () => {
+  console.log('[Electron] Backend health requested')
+  return false
+})
+
+ipcMain.handle('voice:start', () => {
+  console.log('[Electron] voice:start handler invoked')
+  return false
+})
+
+ipcMain.handle('voice:stop', () => {
+  console.log('[Electron] voice:stop handler invoked')
+  return false
+})
+
+ipcMain.handle('voice:transcribe', (_event, payload) => {
+  console.log('[Electron] voice:transcribe handler invoked', payload)
   return false
 })
 

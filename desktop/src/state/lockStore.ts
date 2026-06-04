@@ -2,12 +2,15 @@ import { create } from 'zustand'
 import { useSettingsStore } from './settingsStore'
 import { audioManager } from '../services/audioManager'
 
+let lockoutResetTimer: number | null = null
+
 export type SessionState =
   | 'booting'
   | 'greeting'
   | 'locked'
   | 'typing_pin'
   | 'failed_attempt'
+  | 'lockout'
   | 'unlocking'
   | 'unlocked'
   | 'idle'
@@ -16,7 +19,7 @@ export interface LockStore {
   state: SessionState
   failedAttempts: number
   isSpeaking: boolean
-  cooldownUntil: number | null
+  lockoutUntil: number | null
 
   // session lifecycle
   startBoot: () => void
@@ -26,6 +29,8 @@ export interface LockStore {
 
   // auth actions
   unlock: (enteredPin: string) => 'success' | 'failed'
+  unlockWithClap: () => void
+  unlockWithVoice: () => void
   lock: () => void
 
   // misc
@@ -37,7 +42,7 @@ export const useLockStore = create<LockStore>((set, get) => ({
   state: 'booting',
   failedAttempts: 0,
   isSpeaking: false,
-  cooldownUntil: null,
+  lockoutUntil: null,
 
   startBoot: () => {
     set({ state: 'booting' })
@@ -58,29 +63,44 @@ export const useLockStore = create<LockStore>((set, get) => ({
   unlock: (enteredPin: string) => {
     const settings = useSettingsStore.getState()
     const storedPin = settings?.security?.pin || (localStorage.getItem('senti:pin') as string) || '1234'
+    const maxAttempts = settings?.security?.maxAttempts || 3
+    const lockoutDuration = settings?.security?.lockoutDuration || 30
+
+    if (get().state === 'lockout') {
+      return 'failed'
+    }
+
     if (enteredPin === storedPin) {
+      console.log('[AUDIO] unlock (correct PIN)')
+      if (lockoutResetTimer) {
+        clearTimeout(lockoutResetTimer)
+        lockoutResetTimer = null
+      }
       try { audioManager.play('unlock') } catch {}
-      set({ state: 'unlocking', failedAttempts: 0 })
-      setTimeout(() => set({ state: 'unlocked' }), 900)
+      set({ state: 'unlocking', failedAttempts: 0, lockoutUntil: null })
+      setTimeout(() => set({ state: 'unlocked' }), 1100)
       return 'success'
     }
 
-    // incorrect
     const nextAttempts = get().failedAttempts + 1
-    // always play denied for each failed attempt
+    console.log('[AUDIO] denied (wrong PIN)')
     try { audioManager.play('denied') } catch {}
 
-    if (nextAttempts >= 3) {
-      // play crash shortly after denied
-      setTimeout(() => { try { audioManager.play('crash') } catch {} }, 400)
-      const cooldownSeconds = settings?.security?.cooldownSeconds || 30
-      const cooldown = Date.now() + cooldownSeconds * 1000
-      set({ state: 'failed_attempt', failedAttempts: nextAttempts, cooldownUntil: cooldown })
-
-      // schedule reset after cooldown
+    if (nextAttempts >= maxAttempts) {
       setTimeout(() => {
-        set({ failedAttempts: 0, cooldownUntil: null, state: 'locked' })
-      }, cooldownSeconds * 1000)
+        console.log('[AUDIO] crash (lockout)')
+        try { audioManager.play('crash') } catch {}
+      }, 450)
+      const lockout = Date.now() + lockoutDuration * 1000
+      set({ state: 'lockout', failedAttempts: nextAttempts, lockoutUntil: lockout })
+
+      if (lockoutResetTimer) {
+        clearTimeout(lockoutResetTimer)
+      }
+      lockoutResetTimer = window.setTimeout(() => {
+        set({ failedAttempts: 0, lockoutUntil: null, state: 'locked' })
+        lockoutResetTimer = null
+      }, lockoutDuration * 1000)
     } else {
       set({ state: 'failed_attempt', failedAttempts: nextAttempts })
     }
@@ -88,12 +108,36 @@ export const useLockStore = create<LockStore>((set, get) => ({
     return 'failed'
   },
 
+  unlockWithClap: () => {
+    if (get().state === 'lockout') return
+    if (lockoutResetTimer) {
+      clearTimeout(lockoutResetTimer)
+      lockoutResetTimer = null
+    }
+    console.log('[AUDIO] unlock (clap)')
+    try { audioManager.play('unlock') } catch {}
+    set({ state: 'unlocking', failedAttempts: 0, lockoutUntil: null })
+    setTimeout(() => set({ state: 'unlocked' }), 1100)
+  },
+
+  unlockWithVoice: () => {
+    if (get().state === 'lockout') return
+    if (lockoutResetTimer) {
+      clearTimeout(lockoutResetTimer)
+      lockoutResetTimer = null
+    }
+    console.log('[AUDIO] unlock (voice)')
+    try { audioManager.play('unlock') } catch {}
+    set({ state: 'unlocking', failedAttempts: 0, lockoutUntil: null })
+    setTimeout(() => set({ state: 'unlocked' }), 1100)
+  },
+
   lock: () => {
     set({ state: 'locked', failedAttempts: 0 })
   },
 
   resetFailedAttempts: () => {
-    set({ failedAttempts: 0, cooldownUntil: null })
+    set({ failedAttempts: 0, lockoutUntil: null })
   },
 
   setSpeaking: (speaking: boolean) => {

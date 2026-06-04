@@ -45,3 +45,5 @@ logs
 temp/
 project_full.zip
 project_full.tar.gz
+project_full.zip
+*.zip

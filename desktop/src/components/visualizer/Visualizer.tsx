@@ -10,45 +10,50 @@ export default function Visualizer() {
   const { isSpeaking, state } = useLockStore()
   const speakingOrUnlocking = isSpeaking || state === 'unlocking'
   const isFailed = state === 'failed_attempt'
+  const isLockout = state === 'lockout'
 
   return (
     <div className="relative w-72 h-72 flex items-center justify-center">
       {/* Outermost orbit ring */}
       <motion.div
-        className="absolute w-full h-full rounded-full border border-accent-muted"
+        className={`absolute w-full h-full rounded-full border ${isLockout ? 'border-red-400/60' : 'border-accent-muted'}`}
         animate={{ rotate: 360 }}
-        // Slower outer orbit for a more relaxed feel
-        transition={{ duration: 30, repeat: Infinity, ease: 'linear' }}
+        transition={{ duration: isLockout ? 40 : 30, repeat: Infinity, ease: 'linear' }}
       />
 
       {/* Middle orbit ring (counter-rotating) */}
       <motion.div
-        className="absolute w-3/4 h-3/4 rounded-full border border-accent-muted opacity-60"
+        className={`absolute w-3/4 h-3/4 rounded-full border opacity-60 ${isLockout ? 'border-red-500/40' : 'border-accent-muted'}`}
         animate={{ rotate: -360 }}
-        // Slightly slower counter‑rotation to avoid visual clash
-        transition={{ duration: 22, repeat: Infinity, ease: 'linear' }}
+        transition={{ duration: isLockout ? 30 : 22, repeat: Infinity, ease: 'linear' }}
       />
 
       {/* Inner pulsing ring */}
       <motion.div
-        className="absolute w-1/2 h-1/2 rounded-full border border-accent opacity-40 glow-ring"
+        className={`absolute w-1/2 h-1/2 rounded-full border opacity-40 glow-ring ${isLockout ? 'border-red-400 bg-red-500/10' : 'border-accent'}`}
         animate={{
-          scale: speakingOrUnlocking ? [1, 1.2, 1] : [1, 1.12, 1],
-          opacity: speakingOrUnlocking ? [0.5, 0.95, 0.5] : [0.4, 0.7, 0.4],
+          scale: isLockout ? [1, 1.05, 1] : speakingOrUnlocking ? [1, 1.2, 1] : [1, 1.12, 1],
+          opacity: isLockout ? [0.45, 0.82, 0.45] : speakingOrUnlocking ? [0.5, 0.95, 0.5] : [0.4, 0.7, 0.4],
         }}
-        transition={{ duration: speakingOrUnlocking ? 2 : 4, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: isLockout ? 2.8 : speakingOrUnlocking ? 2 : 4, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* Central glowing orb */}
       <motion.div
-        className="absolute w-20 h-20 rounded-full bg-accent-glow glow-ring-strong"
+        className={`absolute w-20 h-20 rounded-full ${isLockout ? 'bg-red-500/80' : 'bg-accent-glow'} glow-ring-strong`}
         animate={{
-          scale: speakingOrUnlocking ? [1, 1.15, 1] : [1, 1.08, 1],
+          scale: isLockout ? [1, 1.18, 1] : speakingOrUnlocking ? [1, 1.15, 1] : [1, 1.08, 1],
           boxShadow: isFailed
             ? [
                 '0 0 30px rgba(255,96,96,0.35), 0 0 60px rgba(255,96,96,0.25)',
                 '0 0 50px rgba(255,96,96,0.6), 0 0 100px rgba(255,96,96,0.35)',
                 '0 0 30px rgba(255,96,96,0.35), 0 0 60px rgba(255,96,96,0.25)',
+              ]
+            : isLockout
+            ? [
+                '0 0 40px rgba(255,80,80,0.45), 0 0 90px rgba(255,50,50,0.3)',
+                '0 0 70px rgba(255,90,90,0.75), 0 0 140px rgba(255,60,60,0.45)',
+                '0 0 40px rgba(255,80,80,0.45), 0 0 90px rgba(255,50,50,0.3)',
               ]
             : speakingOrUnlocking
             ? [
@@ -62,7 +67,7 @@ export default function Visualizer() {
                 '0 0 30px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.15)',
               ],
         }}
-        transition={{ duration: speakingOrUnlocking ? 1.8 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: isLockout ? 1.6 : speakingOrUnlocking ? 1.8 : 3, repeat: Infinity, ease: 'easeInOut' }}
       >
         {/* Inner bright core */}
         <div className="absolute inset-2 rounded-full bg-white opacity-30 blur-sm" />

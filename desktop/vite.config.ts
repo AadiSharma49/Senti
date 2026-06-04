@@ -14,7 +14,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: Object.keys('dependencies' in {} ? {} : {}),
+              external: ['electron'],
             },
           },
         },
