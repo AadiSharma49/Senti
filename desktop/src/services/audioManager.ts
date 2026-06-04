@@ -10,13 +10,13 @@ type SoundKey =
 const SOUND_PATH = '/assets/sounds'
 
 const SOUND_FILES: Record<SoundKey, string> = {
-  'startup': 'startup.ogg',
+  'startup': 'startup.mp3',
   'unlock': 'unlock.mp3',
   'denied': 'denied.mp3',
   'crash': 'crash.mp3',
-  'save': 'save.ogg',
-  'panel-open': 'panel-open.ogg',
-  'panel-close': 'panel-close.ogg',
+  'save': 'save.mp3',
+  'panel-open': 'panel-open.mp3',
+  'panel-close': 'panel-close.mp3',
 }
 
 class AudioManager {
@@ -30,7 +30,7 @@ class AudioManager {
 
   preload() {
     if (this.initialized) return
-    (Object.keys(SOUND_FILES) as SoundKey[]).forEach((k) => {
+    ;(Object.keys(SOUND_FILES) as SoundKey[]).forEach((k) => {
       const filename = SOUND_FILES[k]
       const path = `${SOUND_PATH}/${filename}`
       const a = new Audio(path)
@@ -52,14 +52,16 @@ class AudioManager {
       if (!this.initialized) this.preload()
       const a = this.map.get(key)
       if (!a) return
-      // prevent overlapping: pause and reset before play
       try {
         a.pause()
         a.currentTime = 0
       } catch {}
+      console.log('[AUDIO] playing ' + key)
       const p = a.play()
       if (p && typeof (p as any).catch === 'function') {
-        (p as any).catch(() => {})
+        (p as any).catch((err: any) => {
+          console.log('[AUDIO] ' + key + ' play rejected: ' + (err?.message || 'unknown'))
+        })
       }
       return a
     } catch {

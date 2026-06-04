@@ -19,16 +19,18 @@ export interface SettingsState {
   animationsEnabled: boolean
 
   security: {
-    cooldownSeconds: number
+    maxAttempts: number
+    lockoutDuration: number
     pin: string
   }
 
   unlockMethods: {
     pin: { enabled: boolean }
-    voice: { enabled: boolean; configured: boolean }
+    voice: { enabled: boolean; configured: boolean; threshold: number; selectedDeviceId: string }
     clap: { enabled: boolean; configured: boolean }
   }
 
+  setupCompleted: boolean
   // setters
   setIdentity: (id: Partial<Identity>) => void
   setDisplayTitle: (t: string) => void
@@ -36,6 +38,8 @@ export interface SettingsState {
   setAnimationsEnabled: (v: boolean) => void
   setSecurity: (s: Partial<SettingsState['security']>) => void
   setUnlockMethod: (method: string, value: any) => void
+  setSetupCompleted: (completed: boolean) => void
+  resetConfiguration: () => void
 }
 
 const safe = <T,>(key: string, fallback: T): T => {
@@ -66,18 +70,21 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   animationsEnabled: safe('senti:settings:animations', true),
 
   security: safe('senti:security', {
-    cooldownSeconds: 30,
+    maxAttempts: 3,
+    lockoutDuration: 30,
     pin: VITE_DEFAULT_PIN,
   }),
 
   unlockMethods: safe('senti:settings:unlockMethods', {
     pin: { enabled: true },
-    voice: { enabled: false, configured: false },
+    voice: { enabled: false, configured: false, threshold: 90, selectedDeviceId: '' },
     clap: { enabled: false, configured: false },
   }),
 
+  setupCompleted: safe('senti:setupCompleted', false),
+
   setIdentity: (id) => {
-    const next = { ...safe('senti:identity', {}), ...id }
+    const next = { ...safe<Partial<Identity>>('senti:identity', {}), ...id } as Identity
     persist('senti:identity', next)
     set({ identity: next })
   },
@@ -98,7 +105,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   setSecurity: (s) => {
-    const curr = safe('senti:security', { cooldownSeconds: 30, pin: VITE_DEFAULT_PIN })
+    const curr = safe('senti:security', { maxAttempts: 3, lockoutDuration: 30, pin: VITE_DEFAULT_PIN })
     const next = { ...curr, ...s }
     persist('senti:security', next)
     set({ security: next })
@@ -115,4 +122,40 @@ export const useSettingsStore = create<SettingsState>((set) => ({
       // ignore
     }
   },
-}))
+  setSetupCompleted: (completed) => {
+    persist('senti:setupCompleted', completed)
+    set({ setupCompleted: completed })
+  },
+  resetConfiguration: () => {
+    const defaultIdentity = {
+      username: VITE_DEFAULT_USERNAME,
+      preferredName: VITE_DEFAULT_USERNAME,
+      preferredTitle: VITE_DEFAULT_TITLE,
+    }
+    const defaultSecurity = {
+      maxAttempts: 3,
+      lockoutDuration: 30,
+      pin: VITE_DEFAULT_PIN,
+    }
+
+    try {
+      localStorage.removeItem('senti:identity')
+      localStorage.removeItem('senti:security')
+      localStorage.removeItem('senti:settings:unlockMethods')
+      localStorage.removeItem('senti:setupCompleted')
+    } catch {
+      // ignore storage errors
+    }
+
+    set({
+      identity: defaultIdentity,
+      security: defaultSecurity,
+      unlockMethods: {
+        pin: { enabled: true },
+        voice: { enabled: false, configured: false, threshold: 90, selectedDeviceId: '' },
+        clap: { enabled: false, configured: false },
+      },
+      setupCompleted: false,
+    })
+  },
+}));
