@@ -1,0 +1,1 @@
+"use strict";const e=require("electron");e.contextBridge.exposeInMainWorld("senti",{platform:()=>e.ipcRenderer.invoke("senti:get-platform"),lock:()=>e.ipcRenderer.invoke("senti:lock"),quit:()=>e.ipcRenderer.invoke("senti:quit")});

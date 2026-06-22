@@ -1,13 +1,13 @@
 import { create } from 'zustand'
 
-export interface UiStore {
+export interface UiState {
   settingsOpen: boolean
   openSettings: () => void
   closeSettings: () => void
   toggleSettings: () => void
 }
 
-export const useUiStore = create<UiStore>((set) => ({
+export const useUiStore = create<UiState>((set) => ({
   settingsOpen: false,
   openSettings: () => set({ settingsOpen: true }),
   closeSettings: () => set({ settingsOpen: false }),

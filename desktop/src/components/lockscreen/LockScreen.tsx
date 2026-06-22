@@ -1,30 +1,27 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Background from '../common/Background'
 import ParticleField from '../common/ParticleField'
 import Visualizer from '../visualizer/Visualizer'
 import UnlockPanel from './UnlockPanel'
-// Wallpaper functionality paused temporarily (hidden)
-// import WallpaperPicker from './WallpaperPicker'
-import GreetingPlayer from '../common/GreetingPlayer'
 import SettingsButton from '../common/SettingsButton'
 import SettingsPanel from '../common/SettingsPanel'
 import { useLockStore } from '../../state/lockStore'
-import { useEffect } from 'react'
+import { audioManager } from '../../services/audioManager'
 
 export default function LockScreen() {
-  const { state } = useLockStore()
-
-  const { startBoot, startGreeting } = useLockStore()
+  const { state, lock } = useLockStore()
 
   useEffect(() => {
-    // Boot sequence: brief boot -> greeting (greeting handles session once-per-session)
-    startBoot()
+    // Boot sequence: brief boot -> play sound -> lock
+    useLockStore.getState().startBoot()
     const t = setTimeout(() => {
-      startGreeting()
+      audioManager.preload()
+      audioManager.play('startup')
+      lock()
     }, 600)
     return () => clearTimeout(t)
-  }, [startBoot, startGreeting])
+  }, [lock])
 
   useEffect(() => {
     if (state === 'unlocked') {
@@ -103,7 +100,6 @@ export default function LockScreen() {
           )}
         </AnimatePresence>
 
-        <GreetingPlayer />
         <SettingsButton />
         <SettingsPanel />
       </div>
