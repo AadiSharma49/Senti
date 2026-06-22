@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
     "preview": "vite preview",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && electron .\"",
+    "electron:dev": "npm run dev",
     "electron:build": "vite build && electron-builder"
   },
   "dependencies": {

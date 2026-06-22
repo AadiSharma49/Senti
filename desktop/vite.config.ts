@@ -1,7 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
-import electronRenderer from 'vite-plugin-electron-renderer'
 import path from 'path'
 
 export default defineConfig({
@@ -24,11 +23,20 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
+            // Disable plugin's default lib mode (avoids formats: ['es','cjs'] merge concatenation)
+            lib: false,
+            rollupOptions: {
+              input: 'electron/preload.ts',
+              external: ['electron'],
+              output: {
+                format: 'cjs',
+                entryFileNames: 'preload.cjs',
+              },
+            },
           },
         },
       },
     ]),
-    electronRenderer(),
   ],
   resolve: {
     alias: {

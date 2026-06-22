@@ -13,14 +13,9 @@ interface Particle {
 
 /**
  * Renders a field of slowly drifting particles for an immersive ambient effect.
- * Particles are created once and animated via CSS transitions (or Framer Motion).
  */
-import { useLockStore } from '../../state/lockStore'
-
 export default function ParticleField() {
   const [particles, setParticles] = useState<Particle[]>([])
-  const { state, isSpeaking } = useLockStore()
-  const active = isSpeaking || state === 'unlocking'
 
   useEffect(() => {
     const count = 60
@@ -54,7 +49,7 @@ export default function ParticleField() {
             y: [p.y, p.y + p.speedY * 100, p.y],
           }}
           transition={{
-            duration: (active ? 8 : 15) + Math.random() * (active ? 10 : 20),
+            duration: 15 + Math.random() * 20,
             repeat: Infinity,
             ease: 'easeInOut',
           }}

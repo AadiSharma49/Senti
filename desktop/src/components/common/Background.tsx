@@ -1,6 +1,5 @@
 import React from 'react'
 import { motion } from 'framer-motion'
-import { useLockStore } from '../../state/lockStore'
 
 /**
  * Ambient background with multiple visual layers:
@@ -10,17 +9,10 @@ import { useLockStore } from '../../state/lockStore'
  * - Noise grain overlay
  */
 export default function Background() {
-  const { isSpeaking } = useLockStore()
-
   return (
     <>
-      {/* Base deep gradient or user wallpaper */}
-      <div
-        className="absolute inset-0 bg-deep-gradient"
-        style={{
-          backgroundImage: 'var(--wallpaper)',
-        }}
-      />
+      {/* Base deep gradient */}
+      <div className="absolute inset-0 bg-deep-gradient" />
 
       {/* Animated gradient overlay */}
       <motion.div
@@ -30,9 +22,9 @@ export default function Background() {
             'radial-gradient(ellipse at 30% 40%, rgba(0,212,255,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 60%, rgba(0,212,255,0.04) 0%, transparent 50%)',
         }}
         animate={{
-          scale: isSpeaking ? [1, 1.04, 1] : [1, 1.05, 1],
+          scale: [1, 1.05, 1],
           rotate: [0, 2, 0],
-          opacity: isSpeaking ? 0.42 : 0.30,
+          opacity: 0.30,
         }}
         transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
       />

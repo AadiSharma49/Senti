@@ -7,8 +7,8 @@ import { useLockStore } from '../../state/lockStore'
  * that pulse, rotate, and breathe to create a futuristic "AI core" feel.
  */
 export default function Visualizer() {
-  const { isSpeaking, state } = useLockStore()
-  const speakingOrUnlocking = isSpeaking || state === 'unlocking'
+  const { state } = useLockStore()
+  const isUnlocking = state === 'unlocking'
   const isFailed = state === 'failed_attempt'
   const isLockout = state === 'lockout'
 
@@ -32,17 +32,17 @@ export default function Visualizer() {
       <motion.div
         className={`absolute w-1/2 h-1/2 rounded-full border opacity-40 glow-ring ${isLockout ? 'border-red-400 bg-red-500/10' : 'border-accent'}`}
         animate={{
-          scale: isLockout ? [1, 1.05, 1] : speakingOrUnlocking ? [1, 1.2, 1] : [1, 1.12, 1],
-          opacity: isLockout ? [0.45, 0.82, 0.45] : speakingOrUnlocking ? [0.5, 0.95, 0.5] : [0.4, 0.7, 0.4],
+          scale: isLockout ? [1, 1.05, 1] : isUnlocking ? [1, 1.2, 1] : [1, 1.12, 1],
+          opacity: isLockout ? [0.45, 0.82, 0.45] : isUnlocking ? [0.5, 0.95, 0.5] : [0.4, 0.7, 0.4],
         }}
-        transition={{ duration: isLockout ? 2.8 : speakingOrUnlocking ? 2 : 4, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: isLockout ? 2.8 : isUnlocking ? 2 : 4, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* Central glowing orb */}
       <motion.div
         className={`absolute w-20 h-20 rounded-full ${isLockout ? 'bg-red-500/80' : 'bg-accent-glow'} glow-ring-strong`}
         animate={{
-          scale: isLockout ? [1, 1.18, 1] : speakingOrUnlocking ? [1, 1.15, 1] : [1, 1.08, 1],
+          scale: isLockout ? [1, 1.18, 1] : isUnlocking ? [1, 1.15, 1] : [1, 1.08, 1],
           boxShadow: isFailed
             ? [
                 '0 0 30px rgba(255,96,96,0.35), 0 0 60px rgba(255,96,96,0.25)',
@@ -55,7 +55,7 @@ export default function Visualizer() {
                 '0 0 70px rgba(255,90,90,0.75), 0 0 140px rgba(255,60,60,0.45)',
                 '0 0 40px rgba(255,80,80,0.45), 0 0 90px rgba(255,50,50,0.3)',
               ]
-            : speakingOrUnlocking
+            : isUnlocking
             ? [
                 '0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.25)',
                 '0 0 70px rgba(0,212,255,0.8), 0 0 140px rgba(0,212,255,0.5)',
@@ -67,7 +67,7 @@ export default function Visualizer() {
                 '0 0 30px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.15)',
               ],
         }}
-        transition={{ duration: isLockout ? 1.6 : speakingOrUnlocking ? 1.8 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: isLockout ? 1.6 : isUnlocking ? 1.8 : 3, repeat: Infinity, ease: 'easeInOut' }}
       >
         {/* Inner bright core */}
         <div className="absolute inset-2 rounded-full bg-white opacity-30 blur-sm" />
@@ -84,16 +84,13 @@ export default function Visualizer() {
           }}
           animate={{
             rotate: 360,
-            // use translateX to create orbit; x/y more reliable than transform-origin
           }}
         transition={{
-          // Extend orbit duration for smoother motion and stagger starts
           duration: 12 + i * 3,
           repeat: Infinity,
           ease: 'linear',
           delay: i * 1.2,
         }}
-          // Manual orbit via CSS animation applied in style
         />
       ))}
     </div>

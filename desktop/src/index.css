@@ -5,7 +5,6 @@
 :root {
   --bg-primary: #0a0a0f;
   --bg-secondary: #12121a;
-  --bg-tertiary: #1a1a28;
   --accent: #00d4ff;
   --accent-glow: rgba(0, 212, 255, 0.25);
   --accent-muted: rgba(0, 212, 255, 0.12);
@@ -15,7 +14,6 @@
   --text-muted: #505068;
   --glass-bg: rgba(18, 18, 26, 0.55);
   --glass-border: rgba(255, 255, 255, 0.06);
-  --glass-highlight: rgba(255, 255, 255, 0.03);
 
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
