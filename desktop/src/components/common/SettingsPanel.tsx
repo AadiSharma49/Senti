@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
-import { audioManager } from '../../services/audioManager'
 
 export default function SettingsPanel() {
   const open = useUiStore((s) => s.settingsOpen)
@@ -16,12 +15,6 @@ export default function SettingsPanel() {
   const [newPin, setNewPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [pinMessage, setPinMessage] = useState<{ type: 'error' | 'success' | null; text: string | null }>({ type: null, text: null })
-
-  // play open sound when panel mounts
-  useEffect(() => {
-    if (!open) return
-    audioManager.play('panel-open')
-  }, [open])
 
   const changePin = () => {
     setPinMessage({ type: null, text: null })
@@ -44,7 +37,6 @@ export default function SettingsPanel() {
     setNewPin('')
     setConfirmPin('')
     setPinMessage({ type: 'success', text: 'PIN updated' })
-    audioManager.play('save')
   }
 
   const sectionVariant = {

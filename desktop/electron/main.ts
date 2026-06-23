@@ -92,6 +92,19 @@ function createWindow(): void {
     console.error('[Electron] Renderer load failed:', { errorCode, errorDescription, validatedURL, isMainFrame })
   })
 
+  mainWindow.webContents.on('console-message', (_event: any, level: number, message: string) => {
+    const prefix = ['INFO', 'WARN', 'ERROR', 'DEBUG'][level] || 'LOG'
+    console.log(`[Renderer:${prefix}] ${message}`)
+  })
+
+  mainWindow.webContents.on('render-process-gone', (_event: any, details: any) => {
+    console.error('[Electron] Renderer process gone:', details)
+  })
+
+  mainWindow.webContents.on('unresponsive', () => {
+    console.error('[Electron] Renderer unresponsive')
+  })
+
   mainWindow.on('blur', () => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.focus()
