@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useLockStore } from '../../state/lockStore'
 import { useSettingsStore } from '../../state/settingsStore'
+import { audioManager } from '../../services/audioManager'
 
 export default function UnlockPanel() {
   const [showBackupPin, setShowBackupPin] = useState(false)
@@ -39,9 +40,20 @@ export default function UnlockPanel() {
   const handleSubmit = () => {
     if (pin.length !== 4 || isVerifying) return
     if (lockedActive) return
+<<<<<<< HEAD
     const success = verifyPin(pin)
     if (!success) { setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500) }
     else { setPinInput('') }
+=======
+    const result = await unlock(pin)
+    if (result === 'failed') {
+      audioManager.play('denied')
+      setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500)
+    } else if (result === 'success') {
+      audioManager.play('unlock')
+      setPinInput('')
+    }
+>>>>>>> 987bb372cd635a7c30832c8d2b288c38a77305b3
   }
 
   const backupStatus = lockedActive

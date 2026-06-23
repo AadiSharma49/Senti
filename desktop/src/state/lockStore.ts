@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { useSettingsStore } from './settingsStore'
+<<<<<<< HEAD
 import type { LockStore, SessionState, AuthMethod } from '../types/auth'
+=======
+import { audioManager } from '../services/audioManager'
+>>>>>>> 987bb372cd635a7c30832c8d2b288c38a77305b3
 
 let lockoutResetTimer: number | null = null
 
@@ -52,6 +56,7 @@ export const useLockStore = create<LockStore>((set, get) => ({
     if (nextAttempts >= maxAttempts) {
       const lockout = Date.now() + lockoutDuration * 1000
       set({ state: 'lockout', failedAttempts: nextAttempts, lockoutUntil: lockout })
+      audioManager.play('crash')
       if (lockoutResetTimer) clearTimeout(lockoutResetTimer)
       lockoutResetTimer = window.setTimeout(() => {
         set({ failedAttempts: 0, lockoutUntil: null, state: 'locked' })

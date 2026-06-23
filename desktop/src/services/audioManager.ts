@@ -3,16 +3,12 @@
  * Manages preloaded Audio instances for instant playback.
  */
 
-type SoundId = 'crash' | 'denied' | 'unlock' | 'panel-open' | 'panel-close' | 'save' | 'startup'
+type SoundId = 'crash' | 'denied' | 'unlock'
 
 const SOUND_MAP: Record<string, string> = {
   'crash': '/assets/sounds/crash.mp3',
   'denied': '/assets/sounds/denied.mp3',
   'unlock': '/assets/sounds/unlock.mp3',
-  'panel-open': '/assets/sounds/unlock.mp3',
-  'panel-close': '/assets/sounds/denied.mp3',
-  'save': '/assets/sounds/unlock.mp3',
-  'startup': '/assets/sounds/unlock.mp3',
 }
 
 class AudioManager {
