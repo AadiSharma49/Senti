@@ -7,13 +7,13 @@ export default function UnlockPanel() {
   const [showBackupPin, setShowBackupPin] = useState(false)
   const [pin, setPinInput] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const { state, failedAttempts, unlock, enterTyping, lockoutUntil } = useLockStore()
+  const { state, failedAttempts, verifyPin, enterPinEntry, lockoutUntil } = useLockStore()
   const settings = useSettingsStore((s) => s)
   const [shake, setShake] = useState(false)
   const [now, setNow] = useState(Date.now())
 
-  const isUnlocking = state === 'unlocking'
-  const isFailed = state === 'failed_attempt'
+  const isFailed = state === 'failed'
+  const isVerifying = state === 'verifying'
   const lockedActive = !!lockoutUntil && Date.now() < lockoutUntil
 
   useEffect(() => {
@@ -27,21 +27,21 @@ export default function UnlockPanel() {
     return () => clearTimeout(timer)
   }, [showBackupPin])
 
-  const handleShowBackup = () => { setShowBackupPin(true); enterTyping() }
+  const handleShowBackup = () => { setShowBackupPin(true); enterPinEntry() }
   const handlePinChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 4)
-    if (value.length > 0) enterTyping()
+    if (value.length > 0) enterPinEntry()
     setPinInput(value)
   }
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && pin.length === 4) handleSubmit()
   }
-  const handleSubmit = async () => {
-    if (pin.length !== 4 || isUnlocking) return
+  const handleSubmit = () => {
+    if (pin.length !== 4 || isVerifying) return
     if (lockedActive) return
-    const result = await unlock(pin)
-    if (result === 'failed') { setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500) }
-    else if (result === 'success') { setPinInput('') }
+    const success = verifyPin(pin)
+    if (!success) { setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500) }
+    else { setPinInput('') }
   }
 
   const backupStatus = lockedActive
@@ -103,7 +103,7 @@ export default function UnlockPanel() {
               </div>
               <motion.div
                 className="relative w-full max-w-md"
-                animate={shake ? { x: [-8, 8, -8, 8, 0] } : isUnlocking ? { scale: [1, 0.995, 1] } : {}}
+                animate={shake ? { x: [-8, 8, -8, 8, 0] } : isVerifying ? { scale: [1, 0.995, 1] } : {}}
                 transition={{ duration: 0.4 }}
               >
                 <input
@@ -116,7 +116,7 @@ export default function UnlockPanel() {
                   className={'w-full rounded-3xl border px-6 py-5 text-center text-4xl text-white font-mono tracking-[1.4em] bg-black/40 outline-none transition-all duration-300 ' + (isFailed ? 'border-red-400/60 focus:border-red-400 focus:ring-2 focus:ring-red-400/20' : 'border-accent-muted focus:border-accent focus:ring-2 focus:ring-accent/20')}
                   placeholder="...."
                   aria-label="Enter PIN"
-                  disabled={isUnlocking || lockedActive}
+                  disabled={isVerifying || lockedActive}
                 />
                 <div className="pointer-events-none absolute inset-x-0 top-1/2 flex justify-between px-10 -translate-y-1/2">
                   {Array.from({ length: 4 }).map((_, i) => (
@@ -142,12 +142,12 @@ export default function UnlockPanel() {
               </motion.div>
               <motion.button
                 onClick={handleSubmit}
-                disabled={pin.length !== 4 || isUnlocking || lockedActive}
-                className={'w-full max-w-md rounded-3xl px-6 py-4 text-sm font-semibold uppercase tracking-[0.2em] transition ' + (pin.length === 4 && !isUnlocking && !lockedActive ? 'bg-accent text-black hover:bg-accent-glow shadow-lg shadow-accent/20' : 'bg-white/10 text-white/40 cursor-not-allowed')}
+                disabled={pin.length !== 4 || isVerifying || lockedActive}
+                className={'w-full max-w-md rounded-3xl px-6 py-4 text-sm font-semibold uppercase tracking-[0.2em] transition ' + (pin.length === 4 && !isVerifying && !lockedActive ? 'bg-accent text-black hover:bg-accent-glow shadow-lg shadow-accent/20' : 'bg-white/10 text-white/40 cursor-not-allowed')}
                 whileHover={pin.length === 4 && !lockedActive ? { scale: 1.02 } : {}}
                 whileTap={pin.length === 4 && !lockedActive ? { scale: 0.98 } : {}}
               >
-                {isUnlocking ? 'Unlocking...' : 'Unlock'}
+                {isVerifying ? 'Unlocking...' : 'Unlock'}
               </motion.button>
               <div className="text-xs uppercase tracking-[0.3em] text-secondary">
                 {isFailed ? failedAttempts + ' failed attempt' + (failedAttempts === 1 ? '' : 's') : 'Your PIN is stored locally.'}

@@ -1,55 +1,54 @@
 import { create } from 'zustand'
 import { useSettingsStore } from './settingsStore'
+import type { LockStore, SessionState, AuthMethod } from '../types/auth'
 
 let lockoutResetTimer: number | null = null
 
-export type SessionState =
-  | 'booting'
-  | 'locked'
-  | 'typing_pin'
-  | 'failed_attempt'
-  | 'lockout'
-  | 'unlocking'
-  | 'unlocked'
-
-export interface LockStore {
-  state: SessionState
-  failedAttempts: number
-  lockoutUntil: number | null
-
-  startBoot: () => void
-  enterTyping: () => void
-  lock: () => void
-
-  unlock: (enteredPin: string) => 'success' | 'failed'
-  resetFailedAttempts: () => void
-}
-
 export const useLockStore = create<LockStore>((set, get) => ({
   state: 'booting',
+  currentAuthMethod: null,
   failedAttempts: 0,
   lockoutUntil: null,
 
   startBoot: () => set({ state: 'booting' }),
 
-  enterTyping: () => set({ state: 'typing_pin' }),
+  lock: () => set({ state: 'locked', currentAuthMethod: null, failedAttempts: 0, lockoutUntil: null }),
 
-  unlock: (enteredPin: string) => {
+  startVoiceAttempt: () => {
     const settings = useSettingsStore.getState()
-    const storedPin = settings?.security?.pin || '1234'
-    const maxAttempts = settings?.security?.maxAttempts || 3
-    const lockoutDuration = settings?.security?.lockoutDuration || 30
-
-    if (get().state === 'lockout') return 'failed'
-
-    if (enteredPin === storedPin) {
-      if (lockoutResetTimer) { clearTimeout(lockoutResetTimer); lockoutResetTimer = null }
-      set({ state: 'unlocking', failedAttempts: 0, lockoutUntil: null })
-      setTimeout(() => set({ state: 'unlocked' }), 1100)
-      return 'success'
+    if (settings.security.enabledMethods.includes('voice')) {
+      set({ state: 'listening_voice', currentAuthMethod: 'voice' })
     }
+  },
 
+  startClapAttempt: () => {
+    const settings = useSettingsStore.getState()
+    if (settings.security.enabledMethods.includes('clap')) {
+      set({ state: 'listening_clap', currentAuthMethod: 'clap' })
+    }
+  },
+
+  enterPinEntry: () => {
+    set({ state: 'pin_entry', currentAuthMethod: 'pin' })
+  },
+
+  verifyPin: (pin: string) => {
+    const settings = useSettingsStore.getState()
+    const storedPin = settings.security.pin || '1234'
+    return pin === storedPin
+  },
+
+  authSuccess: () => {
+    if (lockoutResetTimer) { clearTimeout(lockoutResetTimer); lockoutResetTimer = null }
+    set({ state: 'unlocked', failedAttempts: 0, lockoutUntil: null, currentAuthMethod: null })
+  },
+
+  authFail: () => {
+    const settings = useSettingsStore.getState()
+    const maxAttempts = settings.security.maxAttempts || 3
+    const lockoutDuration = settings.security.lockoutDuration || 30
     const nextAttempts = get().failedAttempts + 1
+
     if (nextAttempts >= maxAttempts) {
       const lockout = Date.now() + lockoutDuration * 1000
       set({ state: 'lockout', failedAttempts: nextAttempts, lockoutUntil: lockout })
@@ -59,11 +58,9 @@ export const useLockStore = create<LockStore>((set, get) => ({
         lockoutResetTimer = null
       }, lockoutDuration * 1000)
     } else {
-      set({ state: 'failed_attempt', failedAttempts: nextAttempts })
+      set({ state: 'failed', failedAttempts: nextAttempts })
     }
-    return 'failed'
   },
 
-  lock: () => set({ state: 'locked', failedAttempts: 0 }),
   resetFailedAttempts: () => set({ failedAttempts: 0, lockoutUntil: null }),
 }))

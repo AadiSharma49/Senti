@@ -13,11 +13,10 @@ export default function LockScreen() {
   const { state, lock } = useLockStore()
 
   useEffect(() => {
-    // Boot sequence: brief boot -> play sound -> lock
+    // Boot sequence: brief boot -> preload sounds -> lock
     useLockStore.getState().startBoot()
     const t = setTimeout(() => {
       audioManager.preload()
-      audioManager.play('startup')
       lock()
     }, 600)
     return () => clearTimeout(t)
@@ -88,7 +87,7 @@ export default function LockScreen() {
               initial={{ opacity: 1, scale: 1 }}
               animate={{
                 opacity: 1,
-                scale: state === 'failed_attempt' ? [1, 1.02, 0.98, 1] : 1,
+                scale: state === 'failed' ? [1, 1.02, 0.98, 1] : 1,
               }}
               exit={{ opacity: 0, scale: 0.9 }}
               transition={{ duration: 0.4 }}

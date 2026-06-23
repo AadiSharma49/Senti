@@ -1,7 +1,9 @@
 import { create } from 'zustand'
+import type { AuthMethod } from '../types/auth'
 
 export interface SettingsState {
   security: {
+    enabledMethods: AuthMethod[]
     maxAttempts: number
     lockoutDuration: number
     pin: string
@@ -32,6 +34,7 @@ const persist = (key: string, value: any) => {
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   security: safe('senti:security', {
+    enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[],
     maxAttempts: 3,
     lockoutDuration: 30,
     pin: '1234',
@@ -40,7 +43,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setupCompleted: safe('senti:setupCompleted', false),
 
   setSecurity: (s) => {
-    const curr = safe('senti:security', { maxAttempts: 3, lockoutDuration: 30, pin: '1234' })
+    const curr = safe('senti:security', { enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[], maxAttempts: 3, lockoutDuration: 30, pin: '1234' })
     const next = { ...curr, ...s }
     persist('senti:security', next)
     set({ security: next })
@@ -53,6 +56,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   resetConfiguration: () => {
     const defaultSecurity = {
+      enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[],
       maxAttempts: 3,
       lockoutDuration: 30,
       pin: '1234',

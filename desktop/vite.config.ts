@@ -23,7 +23,6 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            // Disable plugin's default lib mode (avoids formats: ['es','cjs'] merge concatenation)
             lib: false,
             rollupOptions: {
               input: 'electron/preload.ts',
@@ -45,5 +44,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    modulePreload: false,
+    assetsInlineLimit: 0,
   },
 })

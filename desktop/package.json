@@ -6,10 +6,25 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "build": "tsc && vite build && electron-builder --dir",
     "preview": "vite preview",
     "electron:dev": "npm run dev",
     "electron:build": "vite build && electron-builder"
+  },
+  "build": {
+    "win": {
+      "sign": false,
+      "certificateFile": null,
+      "certificatePassword": null,
+      "verifyUpdateCodeSignature": false
+    },
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "dist-electron/**/*",
+      "dist/**/*"
+    ]
   },
   "dependencies": {
     "react": "^18.3.1",
