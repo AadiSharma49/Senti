@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import ErrorBoundary from '../common/ErrorBoundary'
 import Background from '../common/Background'
 import ParticleField from '../common/ParticleField'
 import Visualizer from '../visualizer/Visualizer'
@@ -13,11 +14,10 @@ export default function LockScreen() {
   const { state, lock } = useLockStore()
 
   useEffect(() => {
-    // Boot sequence: brief boot -> play sound -> lock
+    // Boot sequence: brief boot -> preload sounds -> lock
     useLockStore.getState().startBoot()
     const t = setTimeout(() => {
       audioManager.preload()
-      audioManager.play('startup')
       lock()
     }, 600)
     return () => clearTimeout(t)
@@ -50,8 +50,7 @@ export default function LockScreen() {
       animate={{ opacity: state === 'unlocked' ? 0 : 1 }}
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
-      <Background />
-      <ParticleField />
+      <ErrorBoundary name="Background"><Background /></ErrorBoundary>
 
       <div className="z-10 flex flex-col items-center">
         <AnimatePresence mode="wait">
@@ -64,7 +63,7 @@ export default function LockScreen() {
               transition={{ duration: 0.7, ease: 'easeOut' }}
               className="flex flex-col items-center gap-8"
             >
-              <Visualizer />
+              <ErrorBoundary name="Visualizer"><Visualizer /></ErrorBoundary>
               <motion.div
                 className="text-accent text-xl font-display"
                 initial={{ opacity: 0, y: 12 }}
@@ -94,14 +93,14 @@ export default function LockScreen() {
               transition={{ duration: 0.4 }}
               className="flex flex-col items-center gap-12"
             >
-                <Visualizer />
-                <UnlockPanel />
+                <ErrorBoundary name="Visualizer"><Visualizer /></ErrorBoundary>
+                <ErrorBoundary name="UnlockPanel"><UnlockPanel /></ErrorBoundary>
             </motion.div>
           )}
         </AnimatePresence>
 
-        <SettingsButton />
-        <SettingsPanel />
+        <ErrorBoundary name="SettingsButton"><SettingsButton /></ErrorBoundary>
+        <ErrorBoundary name="SettingsPanel"><SettingsPanel /></ErrorBoundary>
       </div>
     </motion.div>
   )

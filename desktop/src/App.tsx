@@ -1,23 +1,13 @@
-import { AnimatePresence } from 'framer-motion'
+import React from 'react'
+import ErrorBoundary from './components/common/ErrorBoundary'
 import LockScreen from './components/lockscreen/LockScreen'
-import SetupWizard from './components/onboarding/SetupWizard'
-import { useSettingsStore } from './state/settingsStore'
 
 function App() {
-  const settings = useSettingsStore((s) => s)
-  const securityConfigured = settings.security.pin.trim().length >= 4
-  const needsSetup = !settings.setupCompleted || !securityConfigured
-
+  console.log('[Senti] App.tsx - rendering LockScreen standalone')
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      <AnimatePresence mode="wait">
-        {needsSetup ? (
-          <SetupWizard key="setup-wizard" />
-        ) : (
-          <LockScreen key="lock-screen" />
-        )}
-      </AnimatePresence>
-    </div>
+    <ErrorBoundary name="root">
+      <LockScreen />
+    </ErrorBoundary>
   )
 }
 
