@@ -1,6 +1,5 @@
 import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import ErrorBoundary from '../common/ErrorBoundary'
 import Background from '../common/Background'
 import ParticleField from '../common/ParticleField'
 import Visualizer from '../visualizer/Visualizer'
@@ -50,7 +49,8 @@ export default function LockScreen() {
       animate={{ opacity: state === 'unlocked' ? 0 : 1 }}
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
-      <ErrorBoundary name="Background"><Background /></ErrorBoundary>
+      <Background />
+      <ParticleField />
 
       <div className="z-10 flex flex-col items-center">
         <AnimatePresence mode="wait">
@@ -63,7 +63,7 @@ export default function LockScreen() {
               transition={{ duration: 0.7, ease: 'easeOut' }}
               className="flex flex-col items-center gap-8"
             >
-              <ErrorBoundary name="Visualizer"><Visualizer /></ErrorBoundary>
+              <Visualizer />
               <motion.div
                 className="text-accent text-xl font-display"
                 initial={{ opacity: 0, y: 12 }}
@@ -93,14 +93,14 @@ export default function LockScreen() {
               transition={{ duration: 0.4 }}
               className="flex flex-col items-center gap-12"
             >
-                <ErrorBoundary name="Visualizer"><Visualizer /></ErrorBoundary>
-                <ErrorBoundary name="UnlockPanel"><UnlockPanel /></ErrorBoundary>
+                <Visualizer />
+                <UnlockPanel />
             </motion.div>
           )}
         </AnimatePresence>
 
-        <ErrorBoundary name="SettingsButton"><SettingsButton /></ErrorBoundary>
-        <ErrorBoundary name="SettingsPanel"><SettingsPanel /></ErrorBoundary>
+        <SettingsButton />
+        <SettingsPanel />
       </div>
     </motion.div>
   )
