@@ -1,11 +1,22 @@
-import { defineConfig } from 'vite'
+import { defineConfig, Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import path from 'path'
 
+function removeCrossOrigin(): Plugin {
+  return {
+    name: 'remove-crossorigin',
+    enforce: 'post',
+    transformIndexHtml(html) {
+      return html.replace(/ crossorigin/g, '')
+    },
+  }
+}
+
 export default defineConfig({
   plugins: [
     react(),
+    removeCrossOrigin(),
     electron([
       {
         entry: 'electron/main.ts',

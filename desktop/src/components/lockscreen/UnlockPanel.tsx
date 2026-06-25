@@ -8,7 +8,7 @@ export default function UnlockPanel() {
   const [showBackupPin, setShowBackupPin] = useState(false)
   const [pin, setPinInput] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const { state, failedAttempts, verifyPin, enterPinEntry, lockoutUntil } = useLockStore()
+  const { state, failedAttempts, verifyPin, enterPinEntry, authSuccess, authFail, lockoutUntil } = useLockStore()
   const settings = useSettingsStore((s) => s)
   const [shake, setShake] = useState(false)
   const [now, setNow] = useState(Date.now())
@@ -40,20 +40,18 @@ export default function UnlockPanel() {
   const handleSubmit = () => {
     if (pin.length !== 4 || isVerifying) return
     if (lockedActive) return
-<<<<<<< HEAD
     const success = verifyPin(pin)
-    if (!success) { setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500) }
-    else { setPinInput('') }
-=======
-    const result = await unlock(pin)
-    if (result === 'failed') {
-      audioManager.play('denied')
-      setPinInput(''); setShake(true); setTimeout(() => setShake(false), 500)
-    } else if (result === 'success') {
+    if (success) {
       audioManager.play('unlock')
+      authSuccess()
       setPinInput('')
+    } else {
+      audioManager.play('denied')
+      authFail()
+      setPinInput('')
+      setShake(true)
+      setTimeout(() => setShake(false), 500)
     }
->>>>>>> 987bb372cd635a7c30832c8d2b288c38a77305b3
   }
 
   const backupStatus = lockedActive

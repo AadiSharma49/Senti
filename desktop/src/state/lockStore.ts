@@ -1,10 +1,7 @@
 import { create } from 'zustand'
 import { useSettingsStore } from './settingsStore'
-<<<<<<< HEAD
-import type { LockStore, SessionState, AuthMethod } from '../types/auth'
-=======
 import { audioManager } from '../services/audioManager'
->>>>>>> 987bb372cd635a7c30832c8d2b288c38a77305b3
+import type { LockStore, SessionState, AuthMethod } from '../types/auth'
 
 let lockoutResetTimer: number | null = null
 
