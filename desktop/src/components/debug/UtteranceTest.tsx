@@ -19,7 +19,8 @@ export default function UtteranceTest() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.code === 'KeyS') {
+      // Ctrl+Alt: AMD Radeon software grabs many Ctrl+Shift combos globally
+      if (e.ctrlKey && e.altKey && e.code === 'KeyU') {
         e.preventDefault()
         setIsOpen(true)
       }
