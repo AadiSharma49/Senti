@@ -7,10 +7,13 @@ import UnlockPanel from './UnlockPanel'
 import SettingsButton from '../common/SettingsButton'
 import SettingsPanel from '../common/SettingsPanel'
 import { useLockStore } from '../../state/lockStore'
+import { useVoiceAuthStore } from '../../state/voiceAuthStore'
+import { useUiStore } from '../../state/uiStore'
 import { audioManager } from '../../services/audioManager'
 
 export default function LockScreen() {
   const { state, lock } = useLockStore()
+  const settingsOpen = useUiStore((s) => s.settingsOpen)
 
   useEffect(() => {
     // Boot sequence: brief boot -> preload sounds -> lock
@@ -21,6 +24,28 @@ export default function LockScreen() {
     }, 600)
     return () => clearTimeout(t)
   }, [lock])
+
+  // Voice unlock session lifecycle:
+  // - starts when the screen locks (mic on, listening for the passphrase)
+  // - pauses while the settings panel is open (enrollment needs the mic)
+  // - stops on unlock
+  useEffect(() => {
+    const voice = useVoiceAuthStore.getState()
+    if (settingsOpen || state === 'unlocked' || state === 'lockout') {
+      if (voice.state !== 'idle' && voice.state !== 'matched') voice.stopSession()
+      return
+    }
+    if (state === 'locked' || state === 'listening_voice') {
+      if (state === 'locked') voice.resetAttempts()
+      void voice.startSession()
+    }
+  }, [state, settingsOpen])
+
+  useEffect(() => {
+    return () => {
+      useVoiceAuthStore.getState().stopSession()
+    }
+  }, [])
 
   useEffect(() => {
     if (state === 'unlocked') {

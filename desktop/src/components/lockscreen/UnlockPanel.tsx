@@ -2,7 +2,77 @@ import React, { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useLockStore } from '../../state/lockStore'
 import { useSettingsStore } from '../../state/settingsStore'
+import { useVoiceAuthStore } from '../../state/voiceAuthStore'
 import { audioManager } from '../../services/audioManager'
+
+const VOICE_MAX_ATTEMPTS = 3
+
+function VoiceStatusCard() {
+  const { state, attempts } = useVoiceAuthStore()
+
+  if (state === 'idle' || state === 'unavailable') return null
+
+  const isActive = state === 'listening' || state === 'verifying' || state === 'loading'
+  const text =
+    state === 'loading'
+      ? 'Starting voice engine…'
+      : state === 'listening'
+      ? 'Say your passphrase to unlock'
+      : state === 'verifying'
+      ? 'Verifying your voice…'
+      : state === 'rejected'
+      ? `Voice not recognized (${attempts}/${VOICE_MAX_ATTEMPTS})`
+      : state === 'fallback'
+      ? 'Voice attempts used — enter your PIN'
+      : 'Voice recognized — unlocking'
+
+  return (
+    <div
+      className={`rounded-3xl border p-5 ring-1 ring-white/5 shadow-lg transition-colors ${
+        state === 'rejected'
+          ? 'border-red-400/40 bg-red-500/10 shadow-red-700/10'
+          : state === 'matched'
+          ? 'border-green-400/40 bg-green-500/10 shadow-green-700/10'
+          : 'border-white/10 bg-gradient-to-br from-white/5 to-white/10 shadow-cyan-700/10'
+      }`}
+    >
+      <div className="flex items-center gap-4">
+        <div className="relative flex h-10 w-10 items-center justify-center">
+          {isActive && (
+            <motion.div
+              className={`absolute inset-0 rounded-full ${state === 'verifying' ? 'bg-accent/30' : 'bg-accent/20'}`}
+              animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
+              transition={{ duration: state === 'verifying' ? 1 : 2, repeat: Infinity, ease: 'easeOut' }}
+            />
+          )}
+          {/* Microphone icon */}
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            className={`h-5 w-5 relative ${
+              state === 'rejected' ? 'text-red-300' : state === 'matched' ? 'text-green-300' : 'text-accent'
+            }`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+          </svg>
+        </div>
+        <div>
+          <div className="font-semibold text-white">Voice Unlock</div>
+          <p
+            className={`text-sm ${
+              state === 'rejected' ? 'text-red-300' : state === 'matched' ? 'text-green-300' : 'text-secondary'
+            }`}
+          >
+            {text}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export default function UnlockPanel() {
   const [showBackupPin, setShowBackupPin] = useState(false)
@@ -76,6 +146,8 @@ export default function UnlockPanel() {
             <div className="text-xs uppercase tracking-[0.3em] text-accent">Unlock</div>
             <div className="text-2xl font-display mt-2">Senti is locked</div>
           </div>
+
+          <VoiceStatusCard />
 
           <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/10 p-5 ring-1 ring-white/5 shadow-lg shadow-cyan-700/10">
             <div className="flex items-start justify-between gap-4">

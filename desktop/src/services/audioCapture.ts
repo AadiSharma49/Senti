@@ -247,3 +247,11 @@ export class AudioCapture {
     })
   }
 }
+
+/**
+ * App-wide shared microphone instance. Production code (voice unlock,
+ * enrollment, future clap engine) must use this single instance and
+ * subscribe to it — never create additional captures. Debug panels may
+ * create their own isolated instances.
+ */
+export const audioCapture = new AudioCapture()

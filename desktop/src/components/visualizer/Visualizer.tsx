@@ -9,6 +9,7 @@ import { useLockStore } from '../../state/lockStore'
 export default function Visualizer() {
   const { state } = useLockStore()
   const isVerifying = state === 'verifying'
+  const isListening = state === 'listening_voice'
   const isFailed = state === 'failed'
   const isLockout = state === 'lockout'
 
@@ -32,10 +33,10 @@ export default function Visualizer() {
       <motion.div
         className={`absolute w-1/2 h-1/2 rounded-full border opacity-40 glow-ring ${isLockout ? 'border-red-400 bg-red-500/10' : 'border-accent'}`}
         animate={{
-          scale: isLockout ? [1, 1.05, 1] : isVerifying ? [1, 1.2, 1] : [1, 1.12, 1],
-          opacity: isLockout ? [0.45, 0.82, 0.45] : isVerifying ? [0.5, 0.95, 0.5] : [0.4, 0.7, 0.4],
+          scale: isLockout ? [1, 1.05, 1] : isVerifying ? [1, 1.2, 1] : isListening ? [1, 1.16, 1] : [1, 1.12, 1],
+          opacity: isLockout ? [0.45, 0.82, 0.45] : isVerifying ? [0.5, 0.95, 0.5] : isListening ? [0.45, 0.85, 0.45] : [0.4, 0.7, 0.4],
         }}
-        transition={{ duration: isLockout ? 2.8 : isVerifying ? 2 : 4, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: isLockout ? 2.8 : isVerifying ? 2 : isListening ? 2.6 : 4, repeat: Infinity, ease: 'easeInOut' }}
       />
 
       {/* Central glowing orb */}
