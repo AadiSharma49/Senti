@@ -32,9 +32,8 @@ Thumbs.db
 logs
 *.log
 
-# Downloaded ML models and staged ONNX runtime (fetched via `npm run setup:voice`)
+# Downloaded ML models (fetched via `npm run setup:voice`)
 desktop/public/models/
-desktop/public/ort/
 
 # Misc
 .npm
