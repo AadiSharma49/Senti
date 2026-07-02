@@ -18,6 +18,8 @@ const MODEL_ID = 'wespeaker-voxceleb-resnet34-LM'
 const MODEL_SAMPLE_RATE = 16000
 
 // All assets are local: never touch the HuggingFace hub or CDNs.
+// (allowLocalModels defaults to false in browser environments)
+env.allowLocalModels = true
 env.allowRemoteModels = false
 env.localModelPath = '/models/'
 if (env.backends?.onnx?.wasm) {
