@@ -7,7 +7,7 @@
  *
  * Run with: npm run setup:voice
  */
-import { mkdir, copyFile, stat } from 'fs/promises'
+import { mkdir, copyFile, stat, readdir } from 'fs/promises'
 import { createWriteStream } from 'fs'
 import { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -29,12 +29,9 @@ const MODEL_FILES = [
   'onnx/model.onnx', // fp32, ~26 MB — best accuracy for security use
 ]
 
-const ORT_FILES = [
-  'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.jsep.wasm',
-  'ort-wasm-simd-threaded.mjs',
-  'ort-wasm-simd-threaded.jsep.mjs',
-]
+// Copy every runtime variant (base/jsep/asyncify/jspi × wasm/mjs):
+// which one onnxruntime-web picks depends on its version and features.
+const ORT_FILE_PATTERN = /^ort-.*\.(wasm|mjs)$/
 
 async function exists(p) {
   try {
@@ -66,13 +63,10 @@ for (const file of MODEL_FILES) {
 
 console.log(`[setup-voice] ORT runtime -> ${ORT_DIR}`)
 await mkdir(ORT_DIR, { recursive: true })
-for (const file of ORT_FILES) {
-  const src = path.join(ORT_DIST, file)
-  if (!(await exists(src))) {
-    console.log(`  skip (not in dist): ${file}`)
-    continue
-  }
-  await copyFile(src, path.join(ORT_DIR, file))
+const distFiles = await readdir(ORT_DIST)
+for (const file of distFiles) {
+  if (!ORT_FILE_PATTERN.test(file)) continue
+  await copyFile(path.join(ORT_DIST, file), path.join(ORT_DIR, file))
   console.log(`  copied: ${file}`)
 }
 
