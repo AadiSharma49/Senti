@@ -4,6 +4,7 @@ import SetupWizard from './components/onboarding/SetupWizard'
 import AudioCaptureTest from './components/debug/AudioCaptureTest'
 import VADTest from './components/debug/VADTest'
 import UtteranceTest from './components/debug/UtteranceTest'
+import VoiceAuthTest from './components/debug/VoiceAuthTest'
 import { useSettingsStore } from './state/settingsStore'
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
       <AudioCaptureTest />
       <VADTest />
       <UtteranceTest />
+      <VoiceAuthTest />
     </div>
   )
 }
