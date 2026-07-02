@@ -40,7 +40,7 @@ class AudioManager {
     if (audio) {
       audio.currentTime = 0
       audio.play().catch(() => {
-        // Autoplay may be blocked – ignore silently
+        // Autoplay may be blocked - ignore silently
       })
     }
   }

@@ -1,15 +1,15 @@
 import { existsSync as b } from "fs";
-import w from "http";
+import v from "http";
 import g from "electron";
-import c from "path";
-import { fileURLToPath as v } from "url";
-const { app: r, BrowserWindow: p, screen: _, ipcMain: f } = g, V = v(import.meta.url), d = c.dirname(V), h = process.env.VITE_DEV_SERVER_URL, m = "http://localhost:5173";
+import i from "path";
+import { fileURLToPath as w } from "url";
+const { app: r, BrowserWindow: p, screen: _, ipcMain: f } = g, V = w(import.meta.url), d = i.dirname(V), h = process.env.VITE_DEV_SERVER_URL, E = "http://localhost:5173";
 let e = null;
 function y(s, a = 15e3) {
-  return new Promise((i, o) => {
+  return new Promise((c, o) => {
     const t = Date.now(), n = () => {
-      w.get(s, (R) => {
-        R.statusCode === 200 ? i() : l();
+      v.get(s, (R) => {
+        R.statusCode === 200 ? c() : l();
       }).on("error", l);
     }, l = () => {
       Date.now() - t > a ? o(new Error(`Vite dev server not reachable at ${s}`)) : setTimeout(n, 300);
@@ -17,8 +17,8 @@ function y(s, a = 15e3) {
     n();
   });
 }
-function E() {
-  const { width: s, height: a } = _.getPrimaryDisplay().workAreaSize, i = c.join(d, "preload.cjs");
+function m() {
+  const { width: s, height: a } = _.getPrimaryDisplay().workAreaSize, c = i.join(d, "preload.cjs");
   if (e = new p({
     width: s,
     height: a,
@@ -34,23 +34,24 @@ function E() {
     thickFrame: !1,
     show: !1,
     webPreferences: {
-      preload: i,
+      preload: c,
       contextIsolation: !0,
       nodeIntegration: !1,
       sandbox: !1
     }
   }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), h)
-    e.loadURL(m).catch((o) => {
+    e.loadURL(E).catch((o) => {
       console.error("[Electron] Failed to load dev server:", o.message);
     });
   else {
-    const o = c.join(d, "../dist/index.html");
+    const o = i.join(d, "../dist/index.html");
     b(o) ? e.loadFile(o).catch((t) => {
       console.error("[Electron] Failed to load production file:", t.message);
     }) : console.error("[Electron] Production build not found at:", o);
   }
   e.webContents.on("did-finish-load", () => {
-    e == null || e.show(), e == null || e.focus();
+    var o, t;
+    e == null || e.show(), e == null || e.focus(), (t = (o = e == null ? void 0 : e.webContents) == null ? void 0 : o.openDevTools) == null || t.call(o);
   }), e.webContents.on("did-fail-load", (o, t, n, l, u) => {
     console.error("[Electron] Renderer load failed:", { errorCode: t, errorDescription: n, validatedURL: l, isMainFrame: u });
   }), e.webContents.on("console-message", (o, t, n) => {
@@ -76,15 +77,15 @@ function F() {
 r.whenReady().then(async () => {
   if (h)
     try {
-      await y(m);
+      await y(E);
     } catch (s) {
       console.error("[Electron] Vite dev server failed to start:", s), r.quit();
       return;
     }
-  E(), F(), process.platform === "win32" && r.setLoginItemSettings({ openAtLogin: !0 });
+  m(), F(), process.platform === "win32" && r.setLoginItemSettings({ openAtLogin: !0 });
 });
 r.on("activate", () => {
-  p.getAllWindows().length === 0 ? E() : (e == null || e.show(), e == null || e.focus());
+  p.getAllWindows().length === 0 ? m() : (e == null || e.show(), e == null || e.focus());
 });
 r.on("window-all-closed", () => {
   process.platform !== "darwin" && r.quit();

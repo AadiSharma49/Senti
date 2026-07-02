@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSettingsStore } from '../../state/settingsStore'
+import { useVoiceProfileStore } from '../../state/voiceProfileStore'
+import VoiceEnrollment from './VoiceEnrollment'
 
 const isNumeric = (value: string) => /^[0-9]*$/.test(value)
 
@@ -8,13 +10,14 @@ export default function SetupWizard() {
   const settings = useSettingsStore((s) => s)
   const setSecurity = useSettingsStore((s) => s.setSecurity)
   const setSetupCompleted = useSettingsStore((s) => s.setSetupCompleted)
+  const voiceProfile = useVoiceProfileStore((s) => s.profile)
 
   const [step, setStep] = useState(0)
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState<string | null>(null)
 
-  const stepLabels = ['Security', 'Review', 'Finish']
+  const stepLabels = ['Security', 'Voice', 'Review', 'Finish']
   const progress = useMemo(() => (step / (stepLabels.length - 1)) * 100, [step, stepLabels.length])
 
   const validateSecurity = () => {
@@ -55,7 +58,8 @@ export default function SetupWizard() {
     setStep(stepLabels.length - 1)
   }
 
-  const currentTitle = step === 0 ? 'Security' : step === 1 ? 'Review' : 'Complete'
+  const currentTitle =
+    step === 0 ? 'Security' : step === 1 ? 'Voice Unlock' : step === 2 ? 'Review' : 'Complete'
 
   return (
     <motion.div className="relative w-full h-full flex items-center justify-center overflow-hidden">
@@ -81,7 +85,7 @@ export default function SetupWizard() {
               <AnimatePresence mode="wait">
                 {step === 0 && (
                   <motion.div key="security" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
-                    <p className="text-sm text-secondary mb-6">Choose a secure PIN to lock Senti.</p>
+                    <p className="text-sm text-secondary mb-6">Choose a secure PIN to lock Senti. PIN is the emergency fallback for all other unlock methods.</p>
                     <div className="grid gap-4">
                       <input type="password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="PIN" className="input-glass" />
                       <input type="password" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Confirm PIN" className="input-glass" />
@@ -90,6 +94,18 @@ export default function SetupWizard() {
                 )}
 
                 {step === 1 && (
+                  <motion.div key="voice" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
+                    {voiceProfile ? (
+                      <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
+                        ✓ Voice enrolled ({voiceProfile.sampleCount} samples). You can re-enroll anytime from Settings.
+                      </div>
+                    ) : (
+                      <VoiceEnrollment />
+                    )}
+                  </motion.div>
+                )}
+
+                {step === 2 && (
                   <motion.div key="review" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <p className="text-sm text-secondary mb-6">Review your secure setup before finishing.</p>
                     <div className="grid gap-4">
@@ -97,11 +113,19 @@ export default function SetupWizard() {
                         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Security</div>
                         <div className="text-sm text-white/80">PIN is configured and kept secure locally.</div>
                       </div>
+                      <div className="glass rounded-3xl border border-white/10 p-4">
+                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Voice Unlock</div>
+                        <div className="text-sm text-white/80">
+                          {voiceProfile
+                            ? `Enrolled — Senti will unlock when it recognizes your voice.`
+                            : 'Skipped — you can enroll your voice later from Settings.'}
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 )}
 
-                {step === 2 && (
+                {step === 3 && (
                   <motion.div key="complete" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <div className="text-lg font-semibold text-white">Setup complete</div>
                     <p className="text-sm text-secondary mt-3">Senti is ready. Your settings are now stored locally and the lockscreen will return automatically.</p>
@@ -121,16 +145,21 @@ export default function SetupWizard() {
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                {step > 0 && step < 2 && (
+                {step > 0 && step < 3 && (
                   <button onClick={handleBack} className="rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/5 transition">Back</button>
                 )}
-                {step < 1 && (
+                {step === 0 && (
                   <button onClick={handleNext} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Next</button>
                 )}
                 {step === 1 && (
-                  <button onClick={handleFinish} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Finish Setup</button>
+                  <button onClick={handleNext} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">
+                    {voiceProfile ? 'Next' : 'Skip for now'}
+                  </button>
                 )}
                 {step === 2 && (
+                  <button onClick={handleFinish} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Finish Setup</button>
+                )}
+                {step === 3 && (
                   <button onClick={() => setSetupCompleted(true)} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Continue</button>
                 )}
               </div>

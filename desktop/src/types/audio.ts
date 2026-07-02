@@ -1,7 +1,7 @@
 /**
  * Audio types for Senti authentication pipeline.
  * Shared across Voice Engine, Clap Engine, and future Wake Word.
- * No business logic — only type definitions.
+ * No business logic - only type definitions.
  */
 
 /** Current state of the microphone capture system */
@@ -51,6 +51,18 @@ export interface MicrophoneStatus {
   deviceLabel: string | null
   /** Sample rate of the active audio context */
   sampleRate: number | null
+}
+
+/** A complete captured speech segment (contiguous PCM) */
+export interface Utterance {
+  /** Gapless Float32 PCM samples (-1.0 to 1.0) of the full segment */
+  samples: Float32Array
+  /** Sample rate in Hz */
+  sampleRate: number
+  /** Duration of the utterance in seconds */
+  duration: number
+  /** Timestamp (performance.now) when the utterance started */
+  timestamp: number
 }
 
 /** Callback type for audio frame subscribers */

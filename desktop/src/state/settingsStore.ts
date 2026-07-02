@@ -32,19 +32,27 @@ const persist = (key: string, value: any) => {
   } catch {}
 }
 
+const DEFAULT_SECURITY: SettingsState['security'] = {
+  enabledMethods: ['voice', 'clap', 'pin'],
+  maxAttempts: 3,
+  lockoutDuration: 30,
+  pin: '1234',
+}
+
+// Merge with defaults so configs saved by older versions (missing newer
+// fields like enabledMethods) can never produce undefined properties.
+const loadSecurity = (): SettingsState['security'] => ({
+  ...DEFAULT_SECURITY,
+  ...safe<Partial<SettingsState['security']>>('senti:security', {}),
+})
+
 export const useSettingsStore = create<SettingsState>((set) => ({
-  security: safe('senti:security', {
-    enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[],
-    maxAttempts: 3,
-    lockoutDuration: 30,
-    pin: '1234',
-  }),
+  security: loadSecurity(),
 
   setupCompleted: safe('senti:setupCompleted', false),
 
   setSecurity: (s) => {
-    const curr = safe('senti:security', { enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[], maxAttempts: 3, lockoutDuration: 30, pin: '1234' })
-    const next = { ...curr, ...s }
+    const next = { ...loadSecurity(), ...s }
     persist('senti:security', next)
     set({ security: next })
   },
@@ -55,12 +63,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   resetConfiguration: () => {
-    const defaultSecurity = {
-      enabledMethods: ['voice', 'clap', 'pin'] as AuthMethod[],
-      maxAttempts: 3,
-      lockoutDuration: 30,
-      pin: '1234',
-    }
+    const defaultSecurity = { ...DEFAULT_SECURITY }
 
     try {
       localStorage.removeItem('senti:security')

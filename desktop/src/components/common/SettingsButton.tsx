@@ -3,8 +3,8 @@ import { motion } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 
 /**
- * Simple settings button displayed on the lock‑screen.
- * Currently it only logs a message – the full settings UI will be added in later phases.
+ * Simple settings button displayed on the lock-screen.
+ * Currently it only logs a message - the full settings UI will be added in later phases.
  */
 export default function SettingsButton() {
   const open = useUiStore((s) => s.openSettings)

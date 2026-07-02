@@ -86,6 +86,7 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.show()
     mainWindow?.focus()
+    mainWindow?.webContents?.openDevTools?.()
   })
 
   mainWindow.webContents.on('did-fail-load', (_event: unknown, errorCode: number, errorDescription: string, validatedURL: string, isMainFrame: boolean) => {

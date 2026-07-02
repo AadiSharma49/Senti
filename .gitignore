@@ -32,6 +32,9 @@ Thumbs.db
 logs
 *.log
 
+# Downloaded ML models (fetched via `npm run setup:voice`)
+desktop/public/models/
+
 # Misc
 .npm
 .eslintcache

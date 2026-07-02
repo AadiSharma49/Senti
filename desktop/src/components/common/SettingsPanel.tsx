@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
+import { useVoiceProfileStore } from '../../state/voiceProfileStore'
+import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 
 export default function SettingsPanel() {
   const open = useUiStore((s) => s.settingsOpen)
@@ -9,6 +11,9 @@ export default function SettingsPanel() {
 
   const settings = useSettingsStore((s) => s)
   const setSecurity = useSettingsStore((s) => s.setSecurity)
+  const voiceProfile = useVoiceProfileStore((s) => s.profile)
+  const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
+  const [reEnrolling, setReEnrolling] = useState(false)
 
   // pin form
   const [currentPin, setCurrentPin] = useState('')
@@ -56,7 +61,7 @@ export default function SettingsPanel() {
       <div className="glass-strong p-4 rounded-lg flex items-center justify-between">
         <div>
           <div className="section-title text-lg">Control Center</div>
-          <div className="section-sub">Senti — Settings</div>
+          <div className="section-sub">Senti - Settings</div>
         </div>
         <div className="flex gap-2">
           <button
@@ -108,15 +113,56 @@ export default function SettingsPanel() {
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <h4 className="section-title">Unlock Methods</h4>
-          <p className="section-sub mb-3">Senti uses PIN-based unlock.</p>
+          <p className="section-sub mb-3">Voice is the primary unlock. PIN is the emergency fallback.</p>
           <div className="grid gap-3">
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-semibold text-white">🔐 PIN Unlock</div>
-                  <div className="text-xs text-green-400 mt-1">✓ Configured</div>
+                  <div className="font-semibold text-white">Voice Unlock</div>
+                  <div className={`text-xs mt-1 ${voiceProfile ? 'text-green-400' : 'text-secondary'}`}>
+                    {voiceProfile
+                      ? `Enrolled — ${voiceProfile.sampleCount} samples, ${new Date(voiceProfile.createdAt).toLocaleDateString()}`
+                      : 'Not enrolled'}
+                  </div>
                 </div>
                 <div className="text-xs text-secondary">Primary</div>
+              </div>
+              {reEnrolling ? (
+                <div className="mt-3">
+                  <VoiceEnrollment onComplete={() => setReEnrolling(false)} />
+                  <button
+                    onClick={() => setReEnrolling(false)}
+                    className="mt-3 rounded-md border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-2 flex items-center gap-2">
+                  <button
+                    onClick={() => setReEnrolling(true)}
+                    className="px-3 py-1 rounded-md bg-accent text-black text-xs glow-ring"
+                  >
+                    {voiceProfile ? 'Re-enroll Voice' : 'Enroll Voice'}
+                  </button>
+                  {voiceProfile && (
+                    <button
+                      onClick={clearVoiceProfile}
+                      className="px-3 py-1 rounded-md border border-red-400/30 text-red-300 text-xs hover:bg-red-500/10"
+                    >
+                      Remove Profile
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <div className="font-semibold text-white">PIN Unlock</div>
+                  <div className="text-xs text-green-400 mt-1">Configured</div>
+                </div>
+                <div className="text-xs text-secondary">Fallback</div>
               </div>
             </div>
           </div>
