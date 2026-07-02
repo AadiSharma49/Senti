@@ -3,6 +3,7 @@ import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
 import AudioCaptureTest from './components/debug/AudioCaptureTest'
 import VADTest from './components/debug/VADTest'
+import UtteranceTest from './components/debug/UtteranceTest'
 import { useSettingsStore } from './state/settingsStore'
 
 function App() {
@@ -21,6 +22,7 @@ function App() {
       </AnimatePresence>
       <AudioCaptureTest />
       <VADTest />
+      <UtteranceTest />
     </div>
   )
 }

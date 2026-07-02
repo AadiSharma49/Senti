@@ -1,164 +1,102 @@
-import { existsSync } from "fs";
-import http from "http";
-import electron from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-const { app, BrowserWindow, screen, ipcMain } = electron;
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
-const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-const DEV_SERVER_URL = "http://localhost:5173";
-let mainWindow = null;
-function waitForVite(url, timeout = 15e3) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const tryConnect = () => {
-      const req = http.get(url, (res) => {
-        if (res.statusCode === 200) {
-          resolve();
-        } else {
-          retry();
-        }
-      });
-      req.on("error", retry);
+import { existsSync as b } from "fs";
+import v from "http";
+import g from "electron";
+import i from "path";
+import { fileURLToPath as w } from "url";
+const { app: r, BrowserWindow: p, screen: _, ipcMain: f } = g, V = w(import.meta.url), d = i.dirname(V), h = process.env.VITE_DEV_SERVER_URL, E = "http://localhost:5173";
+let e = null;
+function y(s, a = 15e3) {
+  return new Promise((c, o) => {
+    const t = Date.now(), n = () => {
+      v.get(s, (R) => {
+        R.statusCode === 200 ? c() : l();
+      }).on("error", l);
+    }, l = () => {
+      Date.now() - t > a ? o(new Error(`Vite dev server not reachable at ${s}`)) : setTimeout(n, 300);
     };
-    const retry = () => {
-      if (Date.now() - start > timeout) {
-        reject(new Error(`Vite dev server not reachable at ${url}`));
-      } else {
-        setTimeout(tryConnect, 300);
-      }
-    };
-    tryConnect();
+    n();
   });
 }
-function createWindow() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const preloadPath = path.join(__dirname$1, "preload.cjs");
-  mainWindow = new BrowserWindow({
-    width,
-    height,
-    fullscreen: true,
-    frame: false,
-    transparent: false,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    thickFrame: false,
-    show: false,
+function m() {
+  const { width: s, height: a } = _.getPrimaryDisplay().workAreaSize, c = i.join(d, "preload.cjs");
+  if (e = new p({
+    width: s,
+    height: a,
+    fullscreen: !0,
+    frame: !1,
+    transparent: !1,
+    resizable: !1,
+    maximizable: !1,
+    minimizable: !1,
+    alwaysOnTop: !0,
+    skipTaskbar: !0,
+    hasShadow: !1,
+    thickFrame: !1,
+    show: !1,
     webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
+      preload: c,
+      contextIsolation: !0,
+      nodeIntegration: !1,
+      sandbox: !1
     }
-  });
-  mainWindow.setVisibleOnAllWorkspaces(true);
-  mainWindow.setMenuBarVisibility(false);
-  if (VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(DEV_SERVER_URL).catch((err) => {
-      console.error("[Electron] Failed to load dev server:", err.message);
+  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), h)
+    e.loadURL(E).catch((o) => {
+      console.error("[Electron] Failed to load dev server:", o.message);
     });
-  } else {
-    const prodPath = path.join(__dirname$1, "../dist/index.html");
-    if (existsSync(prodPath)) {
-      mainWindow.loadFile(prodPath).catch((err) => {
-        console.error("[Electron] Failed to load production file:", err.message);
-      });
-    } else {
-      console.error("[Electron] Production build not found at:", prodPath);
-    }
+  else {
+    const o = i.join(d, "../dist/index.html");
+    b(o) ? e.loadFile(o).catch((t) => {
+      console.error("[Electron] Failed to load production file:", t.message);
+    }) : console.error("[Electron] Production build not found at:", o);
   }
-  mainWindow.webContents.on("did-finish-load", () => {
-    var _a, _b;
-    mainWindow == null ? void 0 : mainWindow.show();
-    mainWindow == null ? void 0 : mainWindow.focus();
-    (_b = (_a = mainWindow == null ? void 0 : mainWindow.webContents) == null ? void 0 : _a.openDevTools) == null ? void 0 : _b.call(_a);
-  });
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    console.error("[Electron] Renderer load failed:", { errorCode, errorDescription, validatedURL, isMainFrame });
-  });
-  mainWindow.webContents.on("console-message", (_event, level, message) => {
-    const prefix = ["INFO", "WARN", "ERROR", "DEBUG"][level] || "LOG";
-    console.log(`[Renderer:${prefix}] ${message}`);
-  });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    console.error("[Electron] Renderer process gone:", details);
-  });
-  mainWindow.webContents.on("unresponsive", () => {
+  e.webContents.on("did-finish-load", () => {
+    var o, t;
+    e == null || e.show(), e == null || e.focus(), (t = (o = e == null ? void 0 : e.webContents) == null ? void 0 : o.openDevTools) == null || t.call(o);
+  }), e.webContents.on("did-fail-load", (o, t, n, l, u) => {
+    console.error("[Electron] Renderer load failed:", { errorCode: t, errorDescription: n, validatedURL: l, isMainFrame: u });
+  }), e.webContents.on("console-message", (o, t, n) => {
+    const l = ["INFO", "WARN", "ERROR", "DEBUG"][t] || "LOG";
+    console.log(`[Renderer:${l}] ${n}`);
+  }), e.webContents.on("render-process-gone", (o, t) => {
+    console.error("[Electron] Renderer process gone:", t);
+  }), e.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
-  });
-  mainWindow.on("blur", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
-  });
-  mainWindow.on("minimize", (event) => {
-    event.preventDefault();
-    if (mainWindow) {
-      mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-  mainWindow.on("leave-full-screen", () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(true);
-    }
+  }), e.on("blur", () => {
+    e && !e.isDestroyed() && e.focus();
+  }), e.on("minimize", (o) => {
+    o.preventDefault(), e && (e.restore(), e.focus());
+  }), e.on("leave-full-screen", () => {
+    e && e.setFullScreen(!0);
   });
 }
-function enforceFocus() {
+function F() {
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (!mainWindow.isFocused() && mainWindow.isVisible()) {
-        mainWindow.focus();
-      }
-      if (!mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(true);
-      }
-    }
+    e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
   }, 500);
 }
-app.whenReady().then(async () => {
-  if (VITE_DEV_SERVER_URL) {
+r.whenReady().then(async () => {
+  if (h)
     try {
-      await waitForVite(DEV_SERVER_URL);
-    } catch (e) {
-      console.error("[Electron] Vite dev server failed to start:", e);
-      app.quit();
+      await y(E);
+    } catch (s) {
+      console.error("[Electron] Vite dev server failed to start:", s), r.quit();
       return;
     }
-  }
-  createWindow();
-  enforceFocus();
-  if (process.platform === "win32") {
-    app.setLoginItemSettings({ openAtLogin: true });
-  }
+  m(), F(), process.platform === "win32" && r.setLoginItemSettings({ openAtLogin: !0 });
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    mainWindow == null ? void 0 : mainWindow.show();
-    mainWindow == null ? void 0 : mainWindow.focus();
-  }
+r.on("activate", () => {
+  p.getAllWindows().length === 0 ? m() : (e == null || e.show(), e == null || e.focus());
 });
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+r.on("window-all-closed", () => {
+  process.platform !== "darwin" && r.quit();
 });
-app.on("before-quit", () => {
-  mainWindow = null;
+r.on("before-quit", () => {
+  e = null;
 });
-ipcMain.handle("senti:get-platform", () => process.platform);
-ipcMain.handle("senti:lock", () => {
-  mainWindow == null ? void 0 : mainWindow.show();
-  mainWindow == null ? void 0 : mainWindow.focus();
-  mainWindow == null ? void 0 : mainWindow.setFullScreen(true);
+f.handle("senti:get-platform", () => process.platform);
+f.handle("senti:lock", () => {
+  e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
 });
-ipcMain.handle("senti:quit", () => {
-  app.quit();
+f.handle("senti:quit", () => {
+  r.quit();
 });

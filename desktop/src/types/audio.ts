@@ -53,6 +53,18 @@ export interface MicrophoneStatus {
   sampleRate: number | null
 }
 
+/** A complete captured speech segment (contiguous PCM) */
+export interface Utterance {
+  /** Gapless Float32 PCM samples (-1.0 to 1.0) of the full segment */
+  samples: Float32Array
+  /** Sample rate in Hz */
+  sampleRate: number
+  /** Duration of the utterance in seconds */
+  duration: number
+  /** Timestamp (performance.now) when the utterance started */
+  timestamp: number
+}
+
 /** Callback type for audio frame subscribers */
 export type AudioFrameCallback = (frame: AudioFrame, level: AudioLevel) => void
 

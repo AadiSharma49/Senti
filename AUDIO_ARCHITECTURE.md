@@ -52,13 +52,15 @@ navigator.mediaDevices.getUserMedia({ audio: true })
     AudioContext.createMediaStreamSource(stream)
          │
          ▼
-    AnalyserNode (fftSize: 2048)
+    ScriptProcessorNode (buffer: 2048 samples ≈ 46ms)
          │
          ▼
-    requestAnimationFrame loop (~60fps)
+    onaudioprocess callback (~21 frames/sec, CONTIGUOUS)
          │
-         ├── getFloatTimeDomainData(dataArray)
+         ├── copy inputBuffer channel data
          │       → Float32Array of raw PCM samples (-1.0 to 1.0)
+         │       → every sample delivered exactly once, in order
+         │       → frames can be concatenated into a gapless recording
          │
          └── compute RMS + Peak
                  → AudioLevel { rms, peak, clipped }
@@ -105,11 +107,34 @@ navigator.mediaDevices.getUserMedia({ audio: true })
 ```typescript
 {
   sampleRate: 44100,     // Hz
-  fftSize: 2048,         // AnalyserNode FFT size
-  frameDuration: 0.05,   // 50ms per frame (~60fps capture loop)
-  maxBufferFrames: 40,   // 2 seconds of buffered audio at 50ms
+  fftSize: 2048,         // ScriptProcessorNode buffer size (≈46ms per frame)
+  frameDuration: 0.05,   // nominal frame duration (informational)
+  maxBufferFrames: 40,   // 2 seconds of buffered audio at ~50ms
 }
 ```
+
+> **Note:** capture originally used an AnalyserNode polled from a
+> requestAnimationFrame loop. That produced overlapping snapshots that could
+> not be concatenated into a recording. It was replaced with a
+> ScriptProcessorNode so frames are contiguous (required by the
+> UtteranceRecorder and voice enrollment). ScriptProcessorNode is deprecated
+> but fully supported in Chromium; migrating to AudioWorklet later is a
+> change contained entirely inside `audioCapture.ts`.
+
+### UtteranceRecorder (`src/services/utteranceRecorder.ts`)
+
+Turns the continuous frame stream into discrete speech segments using the VAD:
+
+```
+listening ──(VAD: speaking)──► recording ──(VAD: silent / 6s cap)──► Utterance emitted
+    ▲                                                                      │
+    └──────────────────────────────────────────────────────────────────────┘
+```
+
+- Pre-roll buffer (~280ms) preserves speech onset before the VAD attack time
+- Utterances shorter than 0.3s are discarded as noise blips
+- Emits `Utterance { samples, sampleRate, duration, timestamp }` — gapless PCM
+- Consumers: voice enrollment (Phase 5) and speaker verification
 
 ## Resource Lifecycle
 

@@ -5,7 +5,16 @@
  * authentication engines (Voice, Clap, Wake Word).
  *
  * Uses only Web Audio API:
- *   MediaDevices.getUserMedia -> AudioContext -> AnalyserNode
+ *   MediaDevices.getUserMedia -> AudioContext -> ScriptProcessorNode
+ *
+ * Frames are CONTIGUOUS: every microphone sample is delivered exactly
+ * once, in order. Subscribers can concatenate frame samples to rebuild
+ * a gapless recording (required for voice enrollment/verification).
+ *
+ * ScriptProcessorNode is deprecated in favor of AudioWorklet, but it is
+ * fully supported in Chromium, needs no separate module file, and works
+ * under both dev-server and file:// production loads. Migrating to
+ * AudioWorklet is a contained future change inside this service only.
  *
  * No authentication logic. No backend. No Electron IPC. No AI.
  */
@@ -22,9 +31,9 @@ import type {
 
 const DEFAULT_CONFIG: Required<AudioCaptureConfig> = {
   sampleRate: 44100,
-  fftSize: 2048,
-  frameDuration: 0.05, // 50 ms per frame
-  maxBufferFrames: 40,  // 2 seconds at 50ms
+  fftSize: 2048,        // processor buffer size: 2048 samples ≈ 46ms per frame at 44.1kHz
+  frameDuration: 0.05,  // nominal frame duration (informational)
+  maxBufferFrames: 40,  // 2 seconds at ~50ms
 }
 
 export class AudioCapture {
@@ -36,18 +45,13 @@ export class AudioCapture {
   private stream: MediaStream | null = null
   private audioContext: AudioContext | null = null
   private source: MediaStreamAudioSourceNode | null = null
-  private analyser: AnalyserNode | null = null
-  private animationFrameId: number | null = null
+  private processor: ScriptProcessorNode | null = null
 
   private frameCallbacks: Set<AudioFrameCallback> = new Set()
   private statusCallbacks: Set<AudioStatusCallback> = new Set()
 
-  private dataArray: Float32Array | null = null
-  private fftSize: number = DEFAULT_CONFIG.fftSize
-
   constructor(config?: AudioCaptureConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config }
-    this.fftSize = this.config.fftSize
   }
 
   // --- Public API ---------------------------------------------------
@@ -84,13 +88,15 @@ export class AudioCapture {
       // Create source from stream
       this.source = this.audioContext.createMediaStreamSource(this.stream)
 
-      // Create analyser for level detection + raw data
-      this.analyser = this.audioContext.createAnalyser()
-      this.analyser.fftSize = this.fftSize
-      this.source.connect(this.analyser)
+      // ScriptProcessorNode delivers contiguous PCM buffers.
+      // Buffer size 2048 at 44.1kHz -> one frame every ~46ms.
+      this.processor = this.audioContext.createScriptProcessor(this.config.fftSize, 1, 1)
+      this.processor.onaudioprocess = (event) => this.handleAudioProcess(event)
 
-      // Pre-allocate data array
-      this.dataArray = new Float32Array(this.analyser.frequencyBinCount)
+      this.source.connect(this.processor)
+      // Processor must be connected to destination to run; its output
+      // buffer is left as silence so no mic audio reaches the speakers.
+      this.processor.connect(this.audioContext.destination)
 
       // Resume context if suspended (browser autoplay policy)
       if (this.audioContext.state === 'suspended') {
@@ -98,9 +104,6 @@ export class AudioCapture {
       }
 
       this.setState('active')
-
-      // Start the capture loop
-      this.captureLoop()
     } catch (err) {
       this.handleError(err)
       throw err
@@ -109,10 +112,11 @@ export class AudioCapture {
 
   /** Stop capturing audio and release resources */
   stop(): void {
-    // Stop the animation loop
-    if (this.animationFrameId !== null) {
-      cancelAnimationFrame(this.animationFrameId)
-      this.animationFrameId = null
+    // Stop and release the processor
+    if (this.processor) {
+      this.processor.onaudioprocess = null
+      this.processor.disconnect()
+      this.processor = null
     }
 
     // Stop and release media stream tracks
@@ -126,16 +130,11 @@ export class AudioCapture {
       this.source.disconnect()
       this.source = null
     }
-    if (this.analyser) {
-      this.analyser.disconnect()
-      this.analyser = null
-    }
     if (this.audioContext) {
       this.audioContext.close().catch(() => {})
       this.audioContext = null
     }
 
-    this.dataArray = null
     this.deviceLabel = null
     this.error = null
     this.setState('idle')
@@ -161,7 +160,7 @@ export class AudioCapture {
     }
   }
 
-  /** Subscribe to raw audio frames (called ~20 times/sec) */
+  /** Subscribe to contiguous audio frames (one every ~46ms) */
   subscribe(callback: AudioFrameCallback): () => void {
     this.frameCallbacks.add(callback)
     return () => {
@@ -187,7 +186,6 @@ export class AudioCapture {
   // --- Private ------------------------------------------------------
 
   private lastLevel: AudioLevel = { rms: 0, peak: 0, clipped: false }
-  private lastTimestamp: number = 0
 
   private setState(newState: AudioCaptureState): void {
     this.state = newState
@@ -222,28 +220,23 @@ export class AudioCapture {
     return { rms, peak, clipped: peak >= 1.0 }
   }
 
-  private buildFrame(): AudioFrame {
-    const now = performance.now()
-    const duration = (now - this.lastTimestamp) / 1000
-    this.lastTimestamp = now
-
-    const samples = new Float32Array(this.dataArray!.length)
-    this.analyser!.getFloatTimeDomainData(samples)
-
-    return {
-      samples,
-      sampleRate: this.audioContext!.sampleRate,
-      channels: 1,
-      timestamp: now,
-      duration,
-    }
-  }
-
-  private captureLoop(): void {
+  private handleAudioProcess(event: AudioProcessingEvent): void {
     if (this.state !== 'active') return
 
-    const frame = this.buildFrame()
-    this.lastLevel = this.computeLevel(frame.samples)
+    const input = event.inputBuffer.getChannelData(0)
+    // Copy: the underlying buffer is reused by the audio engine
+    const samples = new Float32Array(input)
+    const sampleRate = this.audioContext?.sampleRate ?? this.config.sampleRate
+
+    const frame: AudioFrame = {
+      samples,
+      sampleRate,
+      channels: 1,
+      timestamp: performance.now(),
+      duration: samples.length / sampleRate,
+    }
+
+    this.lastLevel = this.computeLevel(samples)
 
     this.frameCallbacks.forEach((cb) => {
       try {
@@ -252,7 +245,5 @@ export class AudioCapture {
         // Silently ignore subscriber errors
       }
     })
-
-    this.animationFrameId = requestAnimationFrame(() => this.captureLoop())
   }
 }
