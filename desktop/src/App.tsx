@@ -1,6 +1,8 @@
 import { AnimatePresence } from 'framer-motion'
 import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
+import AudioCaptureTest from './components/debug/AudioCaptureTest'
+import VADTest from './components/debug/VADTest'
 import { useSettingsStore } from './state/settingsStore'
 
 function App() {
@@ -17,6 +19,8 @@ function App() {
           <LockScreen key="lock-screen" />
         )}
       </AnimatePresence>
+      <AudioCaptureTest />
+      <VADTest />
     </div>
   )
 }

@@ -1,11 +1,11 @@
 /**
- * AudioCapture — Reusable microphone capture service.
+ * AudioCapture - Reusable microphone capture service.
  *
  * Provides raw PCM audio frames and RMS levels for downstream
  * authentication engines (Voice, Clap, Wake Word).
  *
  * Uses only Web Audio API:
- *   MediaDevices.getUserMedia → AudioContext → AnalyserNode
+ *   MediaDevices.getUserMedia -> AudioContext -> AnalyserNode
  *
  * No authentication logic. No backend. No Electron IPC. No AI.
  */
@@ -50,14 +50,14 @@ export class AudioCapture {
     this.fftSize = this.config.fftSize
   }
 
-  // ─── Public API ───────────────────────────────────────────────
+  // --- Public API ---------------------------------------------------
 
   /** Request microphone permission without starting capture */
   async requestPermission(): Promise<boolean> {
     try {
       this.setState('requesting')
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-      // Stop the test stream immediately — we only needed permission
+      // Stop the test stream immediately - we only needed permission
       stream.getTracks().forEach((t) => t.stop())
       this.setState('idle')
       return true
@@ -184,7 +184,7 @@ export class AudioCapture {
     this.statusCallbacks.clear()
   }
 
-  // ─── Private ──────────────────────────────────────────────────
+  // --- Private ------------------------------------------------------
 
   private lastLevel: AudioLevel = { rms: 0, peak: 0, clipped: false }
   private lastTimestamp: number = 0

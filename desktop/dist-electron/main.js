@@ -1,101 +1,164 @@
-import { existsSync as b } from "fs";
-import w from "http";
-import g from "electron";
-import c from "path";
-import { fileURLToPath as v } from "url";
-const { app: r, BrowserWindow: p, screen: _, ipcMain: f } = g, V = v(import.meta.url), d = c.dirname(V), h = process.env.VITE_DEV_SERVER_URL, m = "http://localhost:5173";
-let e = null;
-function y(s, a = 15e3) {
-  return new Promise((i, o) => {
-    const t = Date.now(), n = () => {
-      w.get(s, (R) => {
-        R.statusCode === 200 ? i() : l();
-      }).on("error", l);
-    }, l = () => {
-      Date.now() - t > a ? o(new Error(`Vite dev server not reachable at ${s}`)) : setTimeout(n, 300);
+import { existsSync } from "fs";
+import http from "http";
+import electron from "electron";
+import path from "path";
+import { fileURLToPath } from "url";
+const { app, BrowserWindow, screen, ipcMain } = electron;
+const __filename$1 = fileURLToPath(import.meta.url);
+const __dirname$1 = path.dirname(__filename$1);
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+const DEV_SERVER_URL = "http://localhost:5173";
+let mainWindow = null;
+function waitForVite(url, timeout = 15e3) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const tryConnect = () => {
+      const req = http.get(url, (res) => {
+        if (res.statusCode === 200) {
+          resolve();
+        } else {
+          retry();
+        }
+      });
+      req.on("error", retry);
     };
-    n();
+    const retry = () => {
+      if (Date.now() - start > timeout) {
+        reject(new Error(`Vite dev server not reachable at ${url}`));
+      } else {
+        setTimeout(tryConnect, 300);
+      }
+    };
+    tryConnect();
   });
 }
-function E() {
-  const { width: s, height: a } = _.getPrimaryDisplay().workAreaSize, i = c.join(d, "preload.cjs");
-  if (e = new p({
-    width: s,
-    height: a,
-    fullscreen: !0,
-    frame: !1,
-    transparent: !1,
-    resizable: !1,
-    maximizable: !1,
-    minimizable: !1,
-    alwaysOnTop: !0,
-    skipTaskbar: !0,
-    hasShadow: !1,
-    thickFrame: !1,
-    show: !1,
+function createWindow() {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  const preloadPath = path.join(__dirname$1, "preload.cjs");
+  mainWindow = new BrowserWindow({
+    width,
+    height,
+    fullscreen: true,
+    frame: false,
+    transparent: false,
+    resizable: false,
+    maximizable: false,
+    minimizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    hasShadow: false,
+    thickFrame: false,
+    show: false,
     webPreferences: {
-      preload: i,
-      contextIsolation: !0,
-      nodeIntegration: !1,
-      sandbox: !1
+      preload: preloadPath,
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
     }
-  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), h)
-    e.loadURL(m).catch((o) => {
-      console.error("[Electron] Failed to load dev server:", o.message);
+  });
+  mainWindow.setVisibleOnAllWorkspaces(true);
+  mainWindow.setMenuBarVisibility(false);
+  if (VITE_DEV_SERVER_URL) {
+    mainWindow.loadURL(DEV_SERVER_URL).catch((err) => {
+      console.error("[Electron] Failed to load dev server:", err.message);
     });
-  else {
-    const o = c.join(d, "../dist/index.html");
-    b(o) ? e.loadFile(o).catch((t) => {
-      console.error("[Electron] Failed to load production file:", t.message);
-    }) : console.error("[Electron] Production build not found at:", o);
+  } else {
+    const prodPath = path.join(__dirname$1, "../dist/index.html");
+    if (existsSync(prodPath)) {
+      mainWindow.loadFile(prodPath).catch((err) => {
+        console.error("[Electron] Failed to load production file:", err.message);
+      });
+    } else {
+      console.error("[Electron] Production build not found at:", prodPath);
+    }
   }
-  e.webContents.on("did-finish-load", () => {
-    e == null || e.show(), e == null || e.focus();
-  }), e.webContents.on("did-fail-load", (o, t, n, l, u) => {
-    console.error("[Electron] Renderer load failed:", { errorCode: t, errorDescription: n, validatedURL: l, isMainFrame: u });
-  }), e.webContents.on("console-message", (o, t, n) => {
-    const l = ["INFO", "WARN", "ERROR", "DEBUG"][t] || "LOG";
-    console.log(`[Renderer:${l}] ${n}`);
-  }), e.webContents.on("render-process-gone", (o, t) => {
-    console.error("[Electron] Renderer process gone:", t);
-  }), e.webContents.on("unresponsive", () => {
+  mainWindow.webContents.on("did-finish-load", () => {
+    var _a, _b;
+    mainWindow == null ? void 0 : mainWindow.show();
+    mainWindow == null ? void 0 : mainWindow.focus();
+    (_b = (_a = mainWindow == null ? void 0 : mainWindow.webContents) == null ? void 0 : _a.openDevTools) == null ? void 0 : _b.call(_a);
+  });
+  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error("[Electron] Renderer load failed:", { errorCode, errorDescription, validatedURL, isMainFrame });
+  });
+  mainWindow.webContents.on("console-message", (_event, level, message) => {
+    const prefix = ["INFO", "WARN", "ERROR", "DEBUG"][level] || "LOG";
+    console.log(`[Renderer:${prefix}] ${message}`);
+  });
+  mainWindow.webContents.on("render-process-gone", (_event, details) => {
+    console.error("[Electron] Renderer process gone:", details);
+  });
+  mainWindow.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
-  }), e.on("blur", () => {
-    e && !e.isDestroyed() && e.focus();
-  }), e.on("minimize", (o) => {
-    o.preventDefault(), e && (e.restore(), e.focus());
-  }), e.on("leave-full-screen", () => {
-    e && e.setFullScreen(!0);
+  });
+  mainWindow.on("blur", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.focus();
+    }
+  });
+  mainWindow.on("minimize", (event) => {
+    event.preventDefault();
+    if (mainWindow) {
+      mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+  mainWindow.on("leave-full-screen", () => {
+    if (mainWindow) {
+      mainWindow.setFullScreen(true);
+    }
   });
 }
-function F() {
+function enforceFocus() {
   setInterval(() => {
-    e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (!mainWindow.isFocused() && mainWindow.isVisible()) {
+        mainWindow.focus();
+      }
+      if (!mainWindow.isFullScreen()) {
+        mainWindow.setFullScreen(true);
+      }
+    }
   }, 500);
 }
-r.whenReady().then(async () => {
-  if (h)
+app.whenReady().then(async () => {
+  if (VITE_DEV_SERVER_URL) {
     try {
-      await y(m);
-    } catch (s) {
-      console.error("[Electron] Vite dev server failed to start:", s), r.quit();
+      await waitForVite(DEV_SERVER_URL);
+    } catch (e) {
+      console.error("[Electron] Vite dev server failed to start:", e);
+      app.quit();
       return;
     }
-  E(), F(), process.platform === "win32" && r.setLoginItemSettings({ openAtLogin: !0 });
+  }
+  createWindow();
+  enforceFocus();
+  if (process.platform === "win32") {
+    app.setLoginItemSettings({ openAtLogin: true });
+  }
 });
-r.on("activate", () => {
-  p.getAllWindows().length === 0 ? E() : (e == null || e.show(), e == null || e.focus());
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    createWindow();
+  } else {
+    mainWindow == null ? void 0 : mainWindow.show();
+    mainWindow == null ? void 0 : mainWindow.focus();
+  }
 });
-r.on("window-all-closed", () => {
-  process.platform !== "darwin" && r.quit();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
+  }
 });
-r.on("before-quit", () => {
-  e = null;
+app.on("before-quit", () => {
+  mainWindow = null;
 });
-f.handle("senti:get-platform", () => process.platform);
-f.handle("senti:lock", () => {
-  e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
+ipcMain.handle("senti:get-platform", () => process.platform);
+ipcMain.handle("senti:lock", () => {
+  mainWindow == null ? void 0 : mainWindow.show();
+  mainWindow == null ? void 0 : mainWindow.focus();
+  mainWindow == null ? void 0 : mainWindow.setFullScreen(true);
 });
-f.handle("senti:quit", () => {
-  r.quit();
+ipcMain.handle("senti:quit", () => {
+  app.quit();
 });

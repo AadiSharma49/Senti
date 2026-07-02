@@ -1,24 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react'
 import { AudioCapture } from '../../services/audioCapture'
-import type { AudioLevel, MicrophoneStatus } from '../../types/audio'
+import { VoiceActivityDetector } from '../../services/voiceActivityDetector'
+import type { AudioLevel } from '../../types/audio'
 
-export default function AudioCaptureTest() {
+export default function VADTest() {
   const captureRef = useRef<AudioCapture | null>(null)
+  const vadRef = useRef<VoiceActivityDetector | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const [permissionGranted, setPermissionGranted] = useState(false)
   const [recording, setRecording] = useState(false)
-  const [status, setStatus] = useState<MicrophoneStatus>({
-    state: 'idle',
-    error: null,
-    deviceLabel: null,
-    sampleRate: null,
-  })
+  const [vadState, setVadState] = useState<'silent' | 'speaking'>('silent')
   const [level, setLevel] = useState<AudioLevel>({ rms: 0, peak: 0, clipped: false })
-  const subscriberCountRef = useRef(0)
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'A') {
+      if (e.ctrlKey && e.shiftKey && e.key === 'V') {
         e.preventDefault()
         setIsOpen(true)
       }
@@ -32,9 +28,8 @@ export default function AudioCaptureTest() {
 
   useEffect(() => {
     return () => {
-      if (captureRef.current) {
-        captureRef.current.dispose()
-      }
+      if (captureRef.current) captureRef.current.dispose()
+      if (vadRef.current) vadRef.current.stop()
     }
   }, [])
 
@@ -44,33 +39,41 @@ export default function AudioCaptureTest() {
     captureRef.current = capture
     const granted = await capture.requestPermission()
     setPermissionGranted(granted)
-    if (granted) {
-      setStatus(capture.getStatus())
-    }
   }
 
   const handleStart = async () => {
     if (!captureRef.current || recording) return
     await captureRef.current.start()
     setRecording(true)
-    subscriberCountRef.current = 1
 
     captureRef.current.onStatusChange((s) => {
-      setStatus(s)
+      if (s.error) setPermissionGranted(false)
     })
 
     captureRef.current.subscribe((_frame, lvl) => {
       setLevel(lvl)
     })
+
+    const vad = new VoiceActivityDetector()
+    vadRef.current = vad
+    vad.onStateChange((state) => {
+      setVadState(state)
+    })
+    vad.start(captureRef.current)
   }
 
   const handleStop = () => {
-    if (!captureRef.current || !recording) return
-    captureRef.current.dispose()
-    subscriberCountRef.current = 0
+    if (vadRef.current) {
+      vadRef.current.stop()
+      vadRef.current = null
+    }
+    if (captureRef.current) {
+      captureRef.current.dispose()
+      captureRef.current = null
+    }
     setRecording(false)
     setPermissionGranted(false)
-    setStatus({ state: 'idle', error: null, deviceLabel: null, sampleRate: null })
+    setVadState('silent')
     setLevel({ rms: 0, peak: 0, clipped: false })
   }
 
@@ -84,19 +87,24 @@ export default function AudioCaptureTest() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="rounded-xl border border-white/20 bg-black/90 p-6 text-white w-72">
-        <h3 className="text-sm font-semibold mb-4 text-accent">Audio Capture Test</h3>
+        <h3 className="text-sm font-semibold mb-4 text-accent">VAD Test</h3>
 
         <div className="space-y-2 text-xs mb-4">
           <div>Permission: {permissionGranted ? 'Granted' : 'Not granted'}</div>
           <div>Recording: {recording ? 'Active' : 'Stopped'}</div>
-          <div>State: {status.state}</div>
-          <div>Device: {status.deviceLabel || 'None'}</div>
-          <div>Sample Rate: {status.sampleRate || '-'}</div>
+          <div>VAD State: {vadState === 'silent' ? 'Silent' : 'Speaking'}</div>
           <div>RMS: {level.rms.toFixed(4)}</div>
-          <div>Peak: {level.peak.toFixed(4)}</div>
-          <div>Clipped: {level.clipped ? 'Yes' : 'No'}</div>
-          <div>Subscribers: {subscriberCountRef.current}</div>
-          {status.error && <div className="text-red-400">Error: {status.error}</div>}
+          <div>Threshold: 0.02</div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-accent transition-all"
+              style={{ width: `${Math.min(100, (level.rms / 0.05) * 100)}%` }}
+            />
+          </div>
+          <div
+            className="h-0.5 bg-accent/60"
+            style={{ marginLeft: `${(0.02 / 0.05) * 100}%`, width: '1px' }}
+          />
         </div>
 
         <div className="flex flex-col gap-2">

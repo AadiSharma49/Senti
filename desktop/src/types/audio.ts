@@ -1,7 +1,7 @@
 /**
  * Audio types for Senti authentication pipeline.
  * Shared across Voice Engine, Clap Engine, and future Wake Word.
- * No business logic — only type definitions.
+ * No business logic - only type definitions.
  */
 
 /** Current state of the microphone capture system */

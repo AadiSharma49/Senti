@@ -56,7 +56,7 @@ export default function SettingsPanel() {
       <div className="glass-strong p-4 rounded-lg flex items-center justify-between">
         <div>
           <div className="section-title text-lg">Control Center</div>
-          <div className="section-sub">Senti — Settings</div>
+          <div className="section-sub">Senti - Settings</div>
         </div>
         <div className="flex gap-2">
           <button
@@ -113,8 +113,8 @@ export default function SettingsPanel() {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="flex items-center justify-between mb-2">
                 <div>
-                  <div className="font-semibold text-white">🔐 PIN Unlock</div>
-                  <div className="text-xs text-green-400 mt-1">✓ Configured</div>
+                  <div className="font-semibold text-white">PIN Unlock</div>
+                  <div className="text-xs text-green-400 mt-1">Configured</div>
                 </div>
                 <div className="text-xs text-secondary">Primary</div>
               </div>

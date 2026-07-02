@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { useLockStore } from '../../state/lockStore'
 
 /**
- * Premium AI visualizer – concentric rings around a glowing central orb
+ * Premium AI visualizer - concentric rings around a glowing central orb
  * that pulse, rotate, and breathe to create a futuristic "AI core" feel.
  */
 export default function Visualizer() {

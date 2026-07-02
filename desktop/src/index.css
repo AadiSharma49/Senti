@@ -15,9 +15,9 @@
   --glass-bg: rgba(18, 18, 26, 0.55);
   --glass-border: rgba(255, 255, 255, 0.06);
 
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
-  --font-display: 'Syne', 'Inter', sans-serif;
+  --font-sans: -apple-system, Segoe UI, system-ui, sans-serif;
+  --font-mono: Consolas, Courier New, monospace;
+  --font-display: -apple-system, Segoe UI, system-ui, sans-serif;
 }
 
 * {

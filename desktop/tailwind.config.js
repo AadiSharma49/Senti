@@ -21,9 +21,8 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'monospace'],
-        display: ['Syne', 'Inter', 'sans-serif'],
+        sans: ['-apple-system', 'Segoe UI', 'system-ui', 'sans-serif'],
+        mono: ['Consolas', 'Courier New', 'monospace'],
       },
       animation: {
         'pulse-glow': 'pulse-glow 3s ease-in-out infinite',
