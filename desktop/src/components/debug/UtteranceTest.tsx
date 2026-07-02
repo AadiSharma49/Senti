@@ -19,7 +19,7 @@ export default function UtteranceTest() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey && e.shiftKey && e.key === 'U') {
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyS') {
         e.preventDefault()
         setIsOpen(true)
       }
