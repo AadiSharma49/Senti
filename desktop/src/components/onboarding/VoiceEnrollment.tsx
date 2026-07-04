@@ -161,8 +161,9 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
       )}
 
       {phase === 'done' && (
-        <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
-          ✓ Voice enrolled. Senti now recognizes your voice.
+        <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
+          <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
+          Voice enrolled. Senti now recognizes your voice.
         </div>
       )}
 

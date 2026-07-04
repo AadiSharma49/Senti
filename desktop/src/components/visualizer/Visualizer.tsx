@@ -1,99 +1,130 @@
-import React from 'react'
-import { motion } from 'framer-motion'
+import { motion, useTransform } from 'framer-motion'
 import { useLockStore } from '../../state/lockStore'
+import { useAudioLevel } from '../../hooks/useAudioLevel'
 
 /**
- * Premium AI visualizer - concentric rings around a glowing central orb
- * that pulse, rotate, and breathe to create a futuristic "AI core" feel.
+ * Senti living orb — an iridescent holographic ring that breathes on its
+ * own and reacts to the user's voice in real time. Colour shifts with the
+ * auth state (listening / verifying / failed / lockout).
  */
 export default function Visualizer() {
   const { state } = useLockStore()
+  const level = useAudioLevel()
+
   const isVerifying = state === 'verifying'
   const isListening = state === 'listening_voice'
   const isFailed = state === 'failed'
   const isLockout = state === 'lockout'
+  const alarm = isFailed || isLockout
+
+  // Voice-reactive transforms (driven by live mic level, no re-render)
+  const ringScale = useTransform(level, [0, 1], [1, 1.14])
+  const coreScale = useTransform(level, [0, 1], [1, 1.55])
+  const coreOpacity = useTransform(level, [0, 1], [0.55, 1])
+  const glowBlur = useTransform(level, [0, 1], [18, 42])
+  const haloOpacity = useTransform(level, [0, 1], [0.25, 0.7])
+
+  // Iridescent conic gradient for the ring band (holographic look)
+  const iridescent =
+    'conic-gradient(from 0deg,#00d4ff,#4d9bff,#b14dff,#00e5a0,#7c4dff,#00d4ff)'
+  const alarmGradient =
+    'conic-gradient(from 0deg,#ff5a5a,#ff2d55,#ff8a3d,#ff2d55,#ff5a5a)'
+
+  const ringMask =
+    'radial-gradient(closest-side, transparent 60%, #000 63%, #000 80%, transparent 84%)'
 
   return (
-    <div className="relative w-72 h-72 flex items-center justify-center">
-      {/* Outermost orbit ring */}
+    <div className="relative flex h-72 w-72 items-center justify-center">
+      {/* Soft outer halo that pulses with the voice */}
       <motion.div
-        className={`absolute w-full h-full rounded-full border ${isLockout ? 'border-red-400/60' : 'border-accent-muted'}`}
-        animate={{ rotate: 360 }}
-        transition={{ duration: isLockout ? 40 : 30, repeat: Infinity, ease: 'linear' }}
-      />
-
-      {/* Middle orbit ring (counter-rotating) */}
-      <motion.div
-        className={`absolute w-3/4 h-3/4 rounded-full border opacity-60 ${isLockout ? 'border-red-500/40' : 'border-accent-muted'}`}
-        animate={{ rotate: -360 }}
-        transition={{ duration: isLockout ? 30 : 22, repeat: Infinity, ease: 'linear' }}
-      />
-
-      {/* Inner pulsing ring */}
-      <motion.div
-        className={`absolute w-1/2 h-1/2 rounded-full border opacity-40 glow-ring ${isLockout ? 'border-red-400 bg-red-500/10' : 'border-accent'}`}
-        animate={{
-          scale: isLockout ? [1, 1.05, 1] : isVerifying ? [1, 1.2, 1] : isListening ? [1, 1.16, 1] : [1, 1.12, 1],
-          opacity: isLockout ? [0.45, 0.82, 0.45] : isVerifying ? [0.5, 0.95, 0.5] : isListening ? [0.45, 0.85, 0.45] : [0.4, 0.7, 0.4],
+        className="absolute h-full w-full rounded-full"
+        style={{
+          opacity: haloOpacity,
+          background: alarm
+            ? 'radial-gradient(circle, rgba(255,60,60,0.35) 0%, transparent 65%)'
+            : 'radial-gradient(circle, rgba(0,212,255,0.28) 0%, transparent 65%)',
         }}
-        transition={{ duration: isLockout ? 2.8 : isVerifying ? 2 : isListening ? 2.6 : 4, repeat: Infinity, ease: 'easeInOut' }}
       />
 
-      {/* Central glowing orb */}
+      {/* Outer iridescent ring (slow spin) */}
       <motion.div
-        className={`absolute w-20 h-20 rounded-full ${isLockout ? 'bg-red-500/80' : 'bg-accent-glow'} glow-ring-strong`}
-        animate={{
-          scale: isLockout ? [1, 1.18, 1] : isVerifying ? [1, 1.15, 1] : [1, 1.08, 1],
-          boxShadow: isFailed
-            ? [
-                '0 0 30px rgba(255,96,96,0.35), 0 0 60px rgba(255,96,96,0.25)',
-                '0 0 50px rgba(255,96,96,0.6), 0 0 100px rgba(255,96,96,0.35)',
-                '0 0 30px rgba(255,96,96,0.35), 0 0 60px rgba(255,96,96,0.25)',
-              ]
-            : isLockout
-            ? [
-                '0 0 40px rgba(255,80,80,0.45), 0 0 90px rgba(255,50,50,0.3)',
-                '0 0 70px rgba(255,90,90,0.75), 0 0 140px rgba(255,60,60,0.45)',
-                '0 0 40px rgba(255,80,80,0.45), 0 0 90px rgba(255,50,50,0.3)',
-              ]
-            : isVerifying
-            ? [
-                '0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.25)',
-                '0 0 70px rgba(0,212,255,0.8), 0 0 140px rgba(0,212,255,0.5)',
-                '0 0 40px rgba(0,212,255,0.5), 0 0 80px rgba(0,212,255,0.25)',
-              ]
-            : [
-                '0 0 30px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.15)',
-                '0 0 50px rgba(0,212,255,0.5), 0 0 100px rgba(0,212,255,0.3)',
-                '0 0 30px rgba(0,212,255,0.3), 0 0 60px rgba(0,212,255,0.15)',
-              ],
-        }}
-        transition={{ duration: isLockout ? 1.6 : isVerifying ? 1.8 : 3, repeat: Infinity, ease: 'easeInOut' }}
+        className="absolute h-full w-full rounded-full"
+        style={{ scale: ringScale }}
       >
-        {/* Inner bright core */}
-        <div className="absolute inset-2 rounded-full bg-white opacity-30 blur-sm" />
+        <motion.div
+          className="h-full w-full rounded-full"
+          style={{
+            background: alarm ? alarmGradient : iridescent,
+            WebkitMaskImage: ringMask,
+            maskImage: ringMask,
+            filter: `blur(1px) saturate(1.3)`,
+          }}
+          animate={{ rotate: 360 }}
+          transition={{ duration: isLockout ? 26 : isVerifying ? 8 : 20, repeat: Infinity, ease: 'linear' }}
+        />
       </motion.div>
 
-      {/* Orbiting dots */}
-      {[0, 1, 2, 3].map((i) => (
+      {/* Inner counter-rotating ring for the twisted, layered depth */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{ height: '74%', width: '74%', scale: ringScale }}
+      >
         <motion.div
-          key={i}
-          className="absolute w-2 h-2 rounded-full bg-accent glow-ring"
+          className="h-full w-full rounded-full opacity-80"
           style={{
-            width: 6 + i * 2,
-            height: 6 + i * 2,
+            background: alarm ? alarmGradient : iridescent,
+            WebkitMaskImage: ringMask,
+            maskImage: ringMask,
+            filter: 'blur(2px) saturate(1.4) hue-rotate(40deg)',
           }}
-          animate={{
-            rotate: 360,
-          }}
-        transition={{
-          duration: 12 + i * 3,
-          repeat: Infinity,
-          ease: 'linear',
-          delay: i * 1.2,
-        }}
+          animate={{ rotate: -360 }}
+          transition={{ duration: isLockout ? 20 : isVerifying ? 6 : 15, repeat: Infinity, ease: 'linear' }}
         />
-      ))}
+      </motion.div>
+
+      {/* Breathing thin accent ring */}
+      <motion.div
+        className="absolute rounded-full border"
+        style={{
+          height: '52%',
+          width: '52%',
+          borderColor: alarm ? 'rgba(255,90,90,0.6)' : 'rgba(0,212,255,0.5)',
+        }}
+        animate={{
+          scale: isVerifying ? [1, 1.12, 1] : [1, 1.06, 1],
+          opacity: [0.4, 0.8, 0.4],
+        }}
+        transition={{ duration: isVerifying ? 1.8 : isListening ? 2.6 : 4, repeat: Infinity, ease: 'easeInOut' }}
+      />
+
+      {/* Central glowing core — scales with the voice */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          height: '26%',
+          width: '26%',
+          scale: coreScale,
+          opacity: coreOpacity,
+          background: alarm
+            ? 'radial-gradient(circle at 40% 35%, #fff, #ff6b6b 45%, #ff2d55 100%)'
+            : 'radial-gradient(circle at 40% 35%, #ffffff, #67e8ff 40%, #00d4ff 100%)',
+          boxShadow: alarm
+            ? '0 0 40px rgba(255,60,60,0.7)'
+            : '0 0 40px rgba(0,212,255,0.7)',
+          filter: 'blur(0.3px)',
+        }}
+      />
+      {/* Reactive glow layer behind the core */}
+      <motion.div
+        className="absolute rounded-full"
+        style={{
+          height: '26%',
+          width: '26%',
+          scale: coreScale,
+          background: alarm ? 'rgba(255,60,60,0.6)' : 'rgba(0,212,255,0.6)',
+          filter: useTransform(glowBlur, (b) => `blur(${b}px)`),
+        }}
+      />
     </div>
   )
 }

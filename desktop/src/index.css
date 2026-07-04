@@ -24,6 +24,8 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* Senti draws its own cursor (CustomCursor) for a cohesive feel */
+  cursor: none !important;
 }
 
 html, body, #root {
@@ -36,7 +38,6 @@ html, body, #root {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
-  cursor: default;
 }
 
 ::selection {

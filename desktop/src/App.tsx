@@ -1,6 +1,7 @@
 import { AnimatePresence } from 'framer-motion'
 import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
+import CustomCursor from './components/common/CustomCursor'
 import AudioCaptureTest from './components/debug/AudioCaptureTest'
 import VADTest from './components/debug/VADTest'
 import UtteranceTest from './components/debug/UtteranceTest'
@@ -21,6 +22,7 @@ function App() {
           <LockScreen key="lock-screen" />
         )}
       </AnimatePresence>
+      <CustomCursor />
       <AudioCaptureTest />
       <VADTest />
       <UtteranceTest />

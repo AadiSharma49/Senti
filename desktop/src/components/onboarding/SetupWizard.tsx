@@ -96,8 +96,9 @@ export default function SetupWizard() {
                 {step === 1 && (
                   <motion.div key="voice" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     {voiceProfile ? (
-                      <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
-                        ✓ Voice enrolled ({voiceProfile.sampleCount} samples). You can re-enroll anytime from Settings.
+                      <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
+                        <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
+                        Voice enrolled ({voiceProfile.sampleCount} samples). You can re-enroll anytime from Settings.
                       </div>
                     ) : (
                       <VoiceEnrollment />

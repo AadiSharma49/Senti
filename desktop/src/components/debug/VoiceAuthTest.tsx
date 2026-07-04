@@ -260,7 +260,7 @@ export default function VoiceAuthTest() {
                   r.match ? 'bg-green-500/15 text-green-300' : 'bg-red-500/15 text-red-300'
                 }`}
               >
-                <span>{r.match ? '✓ MATCH' : '✗ NO MATCH'}</span>
+                <span>{r.match ? 'MATCH' : 'NO MATCH'}</span>
                 <span>
                   score {r.score.toFixed(3)} · {r.duration.toFixed(1)}s
                 </span>
