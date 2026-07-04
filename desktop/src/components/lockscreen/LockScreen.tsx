@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Background from '../common/Background'
-import ParticleField from '../common/ParticleField'
+import StarField from '../common/StarField'
 import Visualizer from '../visualizer/Visualizer'
 import UnlockPanel from './UnlockPanel'
 import SettingsButton from '../common/SettingsButton'
@@ -75,7 +75,7 @@ export default function LockScreen() {
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
       <Background />
-      <ParticleField />
+      <StarField />
 
       <div className="z-10 flex flex-col items-center">
         <AnimatePresence mode="wait">

@@ -3,10 +3,11 @@ import SentiMark from '@/components/SentiMark'
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: '▚' },
-  { href: '/dashboard/devices', label: 'Devices', icon: '🖥' },
-  { href: '/dashboard/voice', label: 'Voice Profile', icon: '🎙' },
-  { href: '/dashboard/activity', label: 'Security Timeline', icon: '📊' },
-  { href: '/dashboard/settings', label: 'Settings', icon: '⚙' },
+  { href: '/dashboard/devices', label: 'Devices', icon: '▢' },
+  { href: '/dashboard/voice', label: 'Voice Profile', icon: '◉' },
+  { href: '/dashboard/activity', label: 'Security Timeline', icon: '‖' },
+  { href: '/dashboard/download', label: 'Download', icon: '↓' },
+  { href: '/dashboard/settings', label: 'Settings', icon: '◇' },
 ]
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

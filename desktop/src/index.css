@@ -183,6 +183,14 @@ html, body, #root {
     transform: translateX(18px);
   }
 
+  /* Orb rings — GPU-composited rotation for perfectly smooth motion */
+  .orb-ring {
+    transform-box: fill-box;
+    transform-origin: center;
+    will-change: transform;
+    backface-visibility: hidden;
+  }
+
   /* Range styling */
   input[type='range'] {
     -webkit-appearance: none;
@@ -207,4 +215,11 @@ html, body, #root {
     box-shadow: 0 6px 20px var(--accent-glow);
   }
   input[type='range']:focus { outline: none; }
+}
+
+@keyframes orb-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes orb-spin-rev {
+  to { transform: rotate(-360deg); }
 }
