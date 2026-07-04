@@ -3,7 +3,8 @@
 interface SentiAPI {
   platform: () => Promise<string>
   lock: () => Promise<void>
-  quit: () => Promise<void>
+  quit: () => Promise<boolean>
+  setLockState: (locked: boolean) => Promise<void>
 }
 
 declare global {

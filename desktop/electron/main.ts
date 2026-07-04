@@ -2,7 +2,7 @@ import { existsSync } from 'fs'
 import http from 'http'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -14,6 +14,59 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 const DEV_SERVER_URL = 'http://localhost:5173'
 
 let mainWindow: BrowserWindowType | null = null
+
+// --- Lock hardening -------------------------------------------------
+// The renderer is the source of truth for auth; it pushes lock state to
+// the main process via the `senti:set-lock-state` IPC. While locked, the
+// window cannot be closed and common escape hotkeys are swallowed.
+let isLocked = true
+
+// Hotkeys we try to swallow while locked. Windows reserves some
+// combinations for the OS (Ctrl+Alt+Del, and the Win key alone) that no
+// application can intercept — those are handled by the kernel and are out
+// of our reach by design.
+const LOCK_SHORTCUTS = [
+  'Alt+Tab',
+  'Alt+F4',
+  'Alt+Escape',
+  'CommandOrControl+W',
+  'CommandOrControl+Shift+W',
+  'CommandOrControl+Shift+Escape', // Task Manager (best-effort; OS may still win)
+  'Super',                          // Win key (best-effort)
+]
+
+// Documented recovery hatch: if voice AND PIN both fail during
+// development/testing, this force-quits Senti so you can never trap
+// yourself on your own machine. Kept intentionally obscure.
+const RECOVERY_SHORTCUT = 'CommandOrControl+Alt+Shift+Q'
+
+function registerLockShortcuts(): void {
+  for (const accel of LOCK_SHORTCUTS) {
+    try {
+      globalShortcut.register(accel, () => {
+        // Swallow: do nothing while locked.
+      })
+    } catch {
+      // Some accelerators are not registrable on this OS; ignore.
+    }
+  }
+}
+
+function unregisterLockShortcuts(): void {
+  for (const accel of LOCK_SHORTCUTS) {
+    try {
+      if (globalShortcut.isRegistered(accel)) globalShortcut.unregister(accel)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function setLocked(locked: boolean): void {
+  isLocked = locked
+  if (locked) registerLockShortcuts()
+  else unregisterLockShortcuts()
+}
 
 function waitForVite(url: string, timeout = 15000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -86,7 +139,11 @@ function createWindow(): void {
   mainWindow.webContents.on('did-finish-load', () => {
     mainWindow?.show()
     mainWindow?.focus()
-    mainWindow?.webContents?.openDevTools?.()
+    // DevTools grants full renderer control (a total bypass), so only
+    // open it in development where the Vite dev server is running.
+    if (VITE_DEV_SERVER_URL) {
+      mainWindow?.webContents?.openDevTools?.()
+    }
   })
 
   mainWindow.webContents.on('did-fail-load', (_event: unknown, errorCode: number, errorDescription: string, validatedURL: string, isMainFrame: boolean) => {
@@ -117,6 +174,16 @@ function createWindow(): void {
     if (mainWindow) {
       mainWindow.restore()
       mainWindow.focus()
+    }
+  })
+
+  // Block closing the window while locked (Alt+F4, taskbar close, etc.).
+  // The renderer closes the window itself only after a successful unlock,
+  // at which point isLocked is already false.
+  mainWindow.on('close', (event: any) => {
+    if (isLocked) {
+      event.preventDefault()
+      mainWindow?.focus()
     }
   })
 
@@ -154,6 +221,20 @@ app.whenReady().then(async () => {
   createWindow()
   enforceFocus()
 
+  // Start locked: swallow escape hotkeys until the renderer authenticates.
+  setLocked(true)
+
+  // Recovery hatch — always available, even while locked, so a failed
+  // voice/PIN attempt can never permanently trap the user.
+  try {
+    globalShortcut.register(RECOVERY_SHORTCUT, () => {
+      isLocked = false
+      app.exit(0)
+    })
+  } catch {
+    // ignore if not registrable
+  }
+
   if (process.platform === 'win32') {
     app.setLoginItemSettings({ openAtLogin: true })
   }
@@ -178,14 +259,28 @@ app.on('before-quit', () => {
   mainWindow = null
 })
 
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
+})
+
 ipcMain.handle('senti:get-platform', () => process.platform)
 
+// The renderer reports its auth state here (locked = anything but unlocked).
+ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
+  setLocked(!!locked)
+})
+
 ipcMain.handle('senti:lock', () => {
+  setLocked(true)
   mainWindow?.show()
   mainWindow?.focus()
   mainWindow?.setFullScreen(true)
 })
 
 ipcMain.handle('senti:quit', () => {
+  // Quitting is only permitted once unlocked; while locked, exiting the
+  // app must go through authentication (or the recovery hatch).
+  if (isLocked) return false
   app.quit()
+  return true
 })

@@ -1,27 +1,56 @@
-import { existsSync as b } from "fs";
-import v from "http";
-import g from "electron";
-import i from "path";
-import { fileURLToPath as w } from "url";
-const { app: r, BrowserWindow: p, screen: _, ipcMain: f } = g, V = w(import.meta.url), d = i.dirname(V), h = process.env.VITE_DEV_SERVER_URL, E = "http://localhost:5173";
-let e = null;
-function y(s, a = 15e3) {
-  return new Promise((c, o) => {
-    const t = Date.now(), n = () => {
-      v.get(s, (R) => {
-        R.statusCode === 200 ? c() : l();
+import { existsSync as v } from "fs";
+import _ from "http";
+import w from "electron";
+import d from "path";
+import { fileURLToPath as y } from "url";
+const { app: s, BrowserWindow: R, screen: V, ipcMain: a, globalShortcut: i } = w, F = y(import.meta.url), E = d.dirname(F), p = process.env.VITE_DEV_SERVER_URL, g = "http://localhost:5173";
+let e = null, f = !0;
+const b = [
+  "Alt+Tab",
+  "Alt+F4",
+  "Alt+Escape",
+  "CommandOrControl+W",
+  "CommandOrControl+Shift+W",
+  "CommandOrControl+Shift+Escape",
+  // Task Manager (best-effort; OS may still win)
+  "Super"
+  // Win key (best-effort)
+], L = "CommandOrControl+Alt+Shift+Q";
+function O() {
+  for (const o of b)
+    try {
+      i.register(o, () => {
+      });
+    } catch {
+    }
+}
+function D() {
+  for (const o of b)
+    try {
+      i.isRegistered(o) && i.unregister(o);
+    } catch {
+    }
+}
+function h(o) {
+  f = o, o ? O() : D();
+}
+function T(o, c = 15e3) {
+  return new Promise((u, t) => {
+    const r = Date.now(), n = () => {
+      _.get(o, (C) => {
+        C.statusCode === 200 ? u() : l();
       }).on("error", l);
     }, l = () => {
-      Date.now() - t > a ? o(new Error(`Vite dev server not reachable at ${s}`)) : setTimeout(n, 300);
+      Date.now() - r > c ? t(new Error(`Vite dev server not reachable at ${o}`)) : setTimeout(n, 300);
     };
     n();
   });
 }
-function m() {
-  const { width: s, height: a } = _.getPrimaryDisplay().workAreaSize, c = i.join(d, "preload.cjs");
-  if (e = new p({
-    width: s,
-    height: a,
+function S() {
+  const { width: o, height: c } = V.getPrimaryDisplay().workAreaSize, u = d.join(E, "preload.cjs");
+  if (e = new R({
+    width: o,
+    height: c,
     fullscreen: !0,
     frame: !1,
     transparent: !1,
@@ -34,69 +63,82 @@ function m() {
     thickFrame: !1,
     show: !1,
     webPreferences: {
-      preload: c,
+      preload: u,
       contextIsolation: !0,
       nodeIntegration: !1,
       sandbox: !1
     }
-  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), h)
-    e.loadURL(E).catch((o) => {
-      console.error("[Electron] Failed to load dev server:", o.message);
+  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), p)
+    e.loadURL(g).catch((t) => {
+      console.error("[Electron] Failed to load dev server:", t.message);
     });
   else {
-    const o = i.join(d, "../dist/index.html");
-    b(o) ? e.loadFile(o).catch((t) => {
-      console.error("[Electron] Failed to load production file:", t.message);
-    }) : console.error("[Electron] Production build not found at:", o);
+    const t = d.join(E, "../dist/index.html");
+    v(t) ? e.loadFile(t).catch((r) => {
+      console.error("[Electron] Failed to load production file:", r.message);
+    }) : console.error("[Electron] Production build not found at:", t);
   }
   e.webContents.on("did-finish-load", () => {
-    var o, t;
-    e == null || e.show(), e == null || e.focus(), (t = (o = e == null ? void 0 : e.webContents) == null ? void 0 : o.openDevTools) == null || t.call(o);
-  }), e.webContents.on("did-fail-load", (o, t, n, l, u) => {
-    console.error("[Electron] Renderer load failed:", { errorCode: t, errorDescription: n, validatedURL: l, isMainFrame: u });
-  }), e.webContents.on("console-message", (o, t, n) => {
-    const l = ["INFO", "WARN", "ERROR", "DEBUG"][t] || "LOG";
+    var t, r;
+    e == null || e.show(), e == null || e.focus(), p && ((r = (t = e == null ? void 0 : e.webContents) == null ? void 0 : t.openDevTools) == null || r.call(t));
+  }), e.webContents.on("did-fail-load", (t, r, n, l, m) => {
+    console.error("[Electron] Renderer load failed:", { errorCode: r, errorDescription: n, validatedURL: l, isMainFrame: m });
+  }), e.webContents.on("console-message", (t, r, n) => {
+    const l = ["INFO", "WARN", "ERROR", "DEBUG"][r] || "LOG";
     console.log(`[Renderer:${l}] ${n}`);
-  }), e.webContents.on("render-process-gone", (o, t) => {
-    console.error("[Electron] Renderer process gone:", t);
+  }), e.webContents.on("render-process-gone", (t, r) => {
+    console.error("[Electron] Renderer process gone:", r);
   }), e.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
   }), e.on("blur", () => {
     e && !e.isDestroyed() && e.focus();
-  }), e.on("minimize", (o) => {
-    o.preventDefault(), e && (e.restore(), e.focus());
+  }), e.on("minimize", (t) => {
+    t.preventDefault(), e && (e.restore(), e.focus());
+  }), e.on("close", (t) => {
+    f && (t.preventDefault(), e == null || e.focus());
   }), e.on("leave-full-screen", () => {
     e && e.setFullScreen(!0);
   });
 }
-function F() {
+function k() {
   setInterval(() => {
     e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
   }, 500);
 }
-r.whenReady().then(async () => {
-  if (h)
+s.whenReady().then(async () => {
+  if (p)
     try {
-      await y(E);
-    } catch (s) {
-      console.error("[Electron] Vite dev server failed to start:", s), r.quit();
+      await T(g);
+    } catch (o) {
+      console.error("[Electron] Vite dev server failed to start:", o), s.quit();
       return;
     }
-  m(), F(), process.platform === "win32" && r.setLoginItemSettings({ openAtLogin: !0 });
+  S(), k(), h(!0);
+  try {
+    i.register(L, () => {
+      f = !1, s.exit(0);
+    });
+  } catch {
+  }
+  process.platform === "win32" && s.setLoginItemSettings({ openAtLogin: !0 });
 });
-r.on("activate", () => {
-  p.getAllWindows().length === 0 ? m() : (e == null || e.show(), e == null || e.focus());
+s.on("activate", () => {
+  R.getAllWindows().length === 0 ? S() : (e == null || e.show(), e == null || e.focus());
 });
-r.on("window-all-closed", () => {
-  process.platform !== "darwin" && r.quit();
+s.on("window-all-closed", () => {
+  process.platform !== "darwin" && s.quit();
 });
-r.on("before-quit", () => {
+s.on("before-quit", () => {
   e = null;
 });
-f.handle("senti:get-platform", () => process.platform);
-f.handle("senti:lock", () => {
-  e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
+s.on("will-quit", () => {
+  i.unregisterAll();
 });
-f.handle("senti:quit", () => {
-  r.quit();
+a.handle("senti:get-platform", () => process.platform);
+a.handle("senti:set-lock-state", (o, c) => {
+  h(!!c);
 });
+a.handle("senti:lock", () => {
+  h(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
+});
+a.handle("senti:quit", () => f ? !1 : (s.quit(), !0));
