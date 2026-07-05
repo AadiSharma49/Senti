@@ -12,18 +12,17 @@ export default function SiteHeader() {
         <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
           <a href="/#features" className="transition hover:text-white">Features</a>
           <a href="/#how" className="transition hover:text-white">How it works</a>
-          <a href="/#download" className="transition hover:text-white">Download</a>
         </nav>
         <div className="flex items-center gap-3">
           <Link href="/login" className="text-sm text-white/70 transition hover:text-white">
             Sign in
           </Link>
-          <Link
-            href="/signup"
+          <a
+            href="/#waitlist"
             className="rounded-full bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-glow"
           >
-            Get started
-          </Link>
+            Get early access
+          </a>
         </div>
       </div>
     </header>
