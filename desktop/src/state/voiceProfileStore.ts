@@ -14,9 +14,14 @@ import { create } from 'zustand'
 /** Minimum similarity for a voice match. Tunable; will become a dashboard-synced policy. */
 export const DEFAULT_VOICE_THRESHOLD = 0.5
 
+/** Minimum word-level similarity for the spoken phrase to count as a match. */
+export const DEFAULT_PHRASE_THRESHOLD = 0.6
+
 export interface VoiceProfile {
   /** Averaged, L2-normalized speaker embedding */
   embedding: number[]
+  /** The wake phrase the user must speak (normalized). Empty = voice-only. */
+  phrase: string
   /** How many enrollment utterances were averaged */
   sampleCount: number
   /** Embedding model the profile was created with */

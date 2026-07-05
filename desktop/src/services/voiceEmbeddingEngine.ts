@@ -1,10 +1,5 @@
-import { env, AutoProcessor, AutoModel } from '@huggingface/transformers'
-// ORT WASM runtime resolved by Vite (?url) so dev server and production
-// build both serve the loader as a real module; /public files cannot be
-// dynamically imported. The asyncify variant is what onnxruntime-web
-// selects in Chromium/Electron.
-import ortWasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.wasm?url'
-import ortMjsUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.asyncify.mjs?url'
+import './transformersEnv'
+import { AutoProcessor, AutoModel } from '@huggingface/transformers'
 import type { Utterance } from '../types/audio'
 
 /**
@@ -22,17 +17,6 @@ import type { Utterance } from '../types/audio'
 
 const MODEL_ID = 'wespeaker-voxceleb-resnet34-LM'
 const MODEL_SAMPLE_RATE = 16000
-
-// All assets are local: never touch the HuggingFace hub or CDNs.
-// (allowLocalModels defaults to false in browser environments)
-env.allowLocalModels = true
-env.allowRemoteModels = false
-env.localModelPath = '/models/'
-if (env.backends?.onnx?.wasm) {
-  env.backends.onnx.wasm.wasmPaths = { wasm: ortWasmUrl, mjs: ortMjsUrl }
-  // Single-threaded: worker threads require cross-origin isolation
-  env.backends.onnx.wasm.numThreads = 1
-}
 
 export type EngineState = 'idle' | 'loading' | 'ready' | 'error'
 export type EngineStateCallback = (state: EngineState, error?: string) => void

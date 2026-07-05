@@ -1,8 +1,10 @@
 /**
- * One-time setup for the on-device speaker verification model.
+ * One-time setup for the on-device voice models.
  *
- * Downloads the WeSpeaker ResNet34-LM speaker embedding model (ONNX)
- * into public/models/ so the app runs fully offline with no CDN access.
+ * Downloads into public/models/ so the app runs fully offline:
+ *   - WeSpeaker ResNet34-LM  → speaker verification (WHO is speaking)
+ *   - Whisper tiny.en (ONNX) → speech recognition (WHAT was said)
+ *
  * (The onnxruntime WASM runtime itself is bundled by Vite from
  * node_modules — see voiceEmbeddingEngine.ts.)
  *
@@ -17,15 +19,38 @@ import { fileURLToPath } from 'url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(__dirname, '..')
+const MODELS_DIR = path.join(root, 'public', 'models')
 
-const MODEL_ID = 'wespeaker-voxceleb-resnet34-LM'
-const HF_BASE = `https://huggingface.co/onnx-community/${MODEL_ID}/resolve/main`
-const MODEL_DIR = path.join(root, 'public', 'models', MODEL_ID)
-
-const MODEL_FILES = [
-  'config.json',
-  'preprocessor_config.json',
-  'onnx/model.onnx', // fp32, ~26 MB — best accuracy for security use
+// Each model mirrors its HuggingFace repo into public/models/<localId>/.
+const MODELS = [
+  {
+    localId: 'wespeaker-voxceleb-resnet34-LM',
+    base: 'https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/resolve/main',
+    files: [
+      'config.json',
+      'preprocessor_config.json',
+      'onnx/model.onnx', // fp32, ~26 MB — best accuracy for security use
+    ],
+  },
+  {
+    localId: 'whisper-tiny.en',
+    base: 'https://huggingface.co/Xenova/whisper-tiny.en/resolve/main',
+    files: [
+      'config.json',
+      'generation_config.json',
+      'preprocessor_config.json',
+      'tokenizer.json',
+      'tokenizer_config.json',
+      'added_tokens.json',
+      'special_tokens_map.json',
+      'normalizer.json',
+      'merges.txt',
+      'vocab.json',
+      // q8 (quantized) variants — what transformers.js loads with dtype 'q8'
+      'onnx/encoder_model_quantized.onnx',
+      'onnx/decoder_model_merged_quantized.onnx',
+    ],
+  },
 ]
 
 async function exists(p) {
@@ -39,7 +64,7 @@ async function exists(p) {
 
 async function download(url, dest) {
   if (await exists(dest)) {
-    console.log(`  skip (exists): ${path.basename(dest)}`)
+    console.log(`  skip (exists): ${path.relative(MODELS_DIR, dest)}`)
     return
   }
   console.log(`  downloading: ${url}`)
@@ -48,12 +73,15 @@ async function download(url, dest) {
   await mkdir(path.dirname(dest), { recursive: true })
   await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
   const { size } = await stat(dest)
-  console.log(`  saved: ${path.basename(dest)} (${(size / 1024 / 1024).toFixed(1)} MB)`)
+  console.log(`  saved: ${path.relative(MODELS_DIR, dest)} (${(size / 1024 / 1024).toFixed(1)} MB)`)
 }
 
-console.log(`[setup-voice] Model files -> ${MODEL_DIR}`)
-for (const file of MODEL_FILES) {
-  await download(`${HF_BASE}/${file}`, path.join(MODEL_DIR, file))
+for (const model of MODELS) {
+  const dir = path.join(MODELS_DIR, model.localId)
+  console.log(`[setup-voice] ${model.localId} -> ${dir}`)
+  for (const file of model.files) {
+    await download(`${model.base}/${file}`, path.join(dir, file))
+  }
 }
 
 console.log('[setup-voice] Done.')

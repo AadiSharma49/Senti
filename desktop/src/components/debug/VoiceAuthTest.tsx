@@ -96,6 +96,7 @@ export default function VoiceAuthTest() {
           const averaged = averageEmbeddings(enrollBufferRef.current)
           useVoiceProfileStore.getState().setProfile({
             embedding: Array.from(averaged),
+            phrase: '', // debug panel: voice-only, no phrase gate
             sampleCount: enrollBufferRef.current.length,
             modelId: 'wespeaker-voxceleb-resnet34-LM',
             createdAt: new Date().toISOString(),
