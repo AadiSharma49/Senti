@@ -1,5 +1,6 @@
 import { PageHeader, Card, Badge } from '@/components/ui'
 import SentiMark from '@/components/SentiMark'
+import SecurityModeSelector from '@/components/SecurityModeSelector'
 
 export default function VoiceProfilePage() {
   return (
@@ -8,6 +9,14 @@ export default function VoiceProfilePage() {
         title="Voice Profile"
         subtitle="Your voiceprint is enrolled on your devices and synced to your account."
       />
+
+      <Card className="mb-6">
+        <h2 className="text-lg font-semibold text-white">Security mode</h2>
+        <p className="mt-1 mb-4 text-sm text-white/50">
+          Choose how strict voice unlock is. This policy applies to every device on your account.
+        </p>
+        <SecurityModeSelector initial="phrase_and_voice" />
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

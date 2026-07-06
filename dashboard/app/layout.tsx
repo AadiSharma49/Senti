@@ -1,4 +1,6 @@
 import type { Metadata } from 'next'
+import { ClerkProvider } from '@clerk/nextjs'
+import { clerkEnabled } from '@/lib/auth'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -8,9 +10,12 @@ export const metadata: Metadata = {
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
-  return (
+  const body = (
     <html lang="en">
       <body className="min-h-screen bg-bg font-sans antialiased">{children}</body>
     </html>
   )
+  // Only mount ClerkProvider when keys are configured, so the app runs
+  // without Clerk during early development.
+  return clerkEnabled ? <ClerkProvider>{body}</ClerkProvider> : body
 }

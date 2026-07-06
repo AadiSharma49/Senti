@@ -1,5 +1,7 @@
 import Link from 'next/link'
+import { SignOutButton } from '@clerk/nextjs'
 import SentiMark from '@/components/SentiMark'
+import { clerkEnabled } from '@/lib/auth'
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: '▚' },
@@ -32,9 +34,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           ))}
         </nav>
         <div className="mt-10 border-t border-white/5 pt-6">
-          <Link href="/login" className="flex items-center gap-3 px-3 text-sm text-white/40 transition hover:text-white">
-            ← Sign out
-          </Link>
+          {clerkEnabled ? (
+            <SignOutButton redirectUrl="/login">
+              <button className="flex items-center gap-3 px-3 text-sm text-white/40 transition hover:text-white">
+                ← Sign out
+              </button>
+            </SignOutButton>
+          ) : (
+            <Link href="/login" className="flex items-center gap-3 px-3 text-sm text-white/40 transition hover:text-white">
+              ← Sign out
+            </Link>
+          )}
         </div>
       </aside>
 
