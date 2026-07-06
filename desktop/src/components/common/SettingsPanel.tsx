@@ -1,53 +1,40 @@
-import React, { useState } from 'react'
+import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
-import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 
+/**
+ * Read-only Control Center. Per the platform design, the desktop is a
+ * secure endpoint: it USES the configuration but does not edit it. Voice,
+ * security mode and PIN are managed from the Senti dashboard (source of
+ * truth) and synced down. A device reset is offered only to re-provision.
+ */
 export default function SettingsPanel() {
   const open = useUiStore((s) => s.settingsOpen)
   const close = useUiStore((s) => s.closeSettings)
 
-  const settings = useSettingsStore((s) => s)
-  const setSecurity = useSettingsStore((s) => s.setSecurity)
+  const resetConfiguration = useSettingsStore((s) => s.resetConfiguration)
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
+  const securityMode = useVoiceProfileStore((s) => s.securityMode)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
-  const [reEnrolling, setReEnrolling] = useState(false)
 
-  // pin form
-  const [currentPin, setCurrentPin] = useState('')
-  const [newPin, setNewPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
-  const [pinMessage, setPinMessage] = useState<{ type: 'error' | 'success' | null; text: string | null }>({ type: null, text: null })
-
-  const changePin = () => {
-    setPinMessage({ type: null, text: null })
-    const stored = settings.security.pin
-    if (currentPin !== stored) {
-      setPinMessage({ type: 'error', text: 'Current PIN is incorrect' })
-      return
-    }
-    if (!newPin || newPin.length === 0) {
-      setPinMessage({ type: 'error', text: 'New PIN cannot be empty' })
-      return
-    }
-    if (newPin !== confirmPin) {
-      setPinMessage({ type: 'error', text: 'New PIN and confirmation do not match' })
-      return
-    }
-
-    setSecurity({ pin: newPin })
-    setCurrentPin('')
-    setNewPin('')
-    setConfirmPin('')
-    setPinMessage({ type: 'success', text: 'PIN updated' })
+  const handleReset = () => {
+    const ok = window.confirm(
+      'Reset this device? This clears the local voice profile and PIN and re-runs first-time setup.'
+    )
+    if (!ok) return
+    clearVoiceProfile()
+    resetConfiguration()
+    close()
   }
 
   const sectionVariant = {
     hidden: { opacity: 0, y: 6 },
     visible: { opacity: 1, y: 0 },
   }
+
+  const modeLabel = securityMode === 'voice_only' ? 'Voice only' : 'Phrase + Voice'
 
   const panel = (
     <motion.aside
@@ -61,111 +48,47 @@ export default function SettingsPanel() {
       <div className="glass-strong p-4 rounded-lg flex items-center justify-between">
         <div>
           <div className="section-title text-lg">Control Center</div>
-          <div className="section-sub">Senti - Settings</div>
+          <div className="section-sub">This device · read-only</div>
         </div>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              close()
-            }}
-            className="px-3 py-1 rounded-md bg-accent text-black glow-ring"
-          >
-            Save & Close
-          </button>
-          <button onClick={close} className="px-3 py-1 rounded-md glass-hoverable">Close</button>
-        </div>
+        <button onClick={close} className="px-3 py-1 rounded-md glass-hoverable">Close</button>
+      </div>
+
+      <div className="glass rounded-2xl p-4 text-sm text-white/70">
+        Settings are managed from your{' '}
+        <span className="text-accent">Senti dashboard</span> and synced to this device.
+        Senti is a secure endpoint — it can&apos;t be edited here.
       </div>
 
       <div className="flex-1 overflow-auto pr-2 space-y-4 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">Security</h4>
-          <p className="section-sub mb-3">Change your PIN. Senti stores PIN locally only.</p>
+          <h4 className="section-title">Unlock Methods</h4>
+          <p className="section-sub mb-3">Voice is the primary unlock. PIN is the emergency fallback.</p>
           <div className="grid gap-3">
-            <input
-              value={currentPin}
-              onChange={(e) => setCurrentPin(e.target.value)}
-              placeholder="Current PIN"
-              type="password"
-              className="input-glass"
+            <ReadonlyRow
+              title="Voice Unlock"
+              tag="Primary"
+              status={voiceProfile ? 'Enrolled' : 'Not enrolled'}
+              ok={!!voiceProfile}
+              detail={
+                voiceProfile
+                  ? `${voiceProfile.sampleCount} samples · ${new Date(voiceProfile.createdAt).toLocaleDateString()}`
+                  : undefined
+              }
             />
-            <input
-              value={newPin}
-              onChange={(e) => setNewPin(e.target.value)}
-              placeholder="New PIN"
-              type="password"
-              className="input-glass"
-            />
-            <input
-              value={confirmPin}
-              onChange={(e) => setConfirmPin(e.target.value)}
-              placeholder="Confirm New PIN"
-              type="password"
-              className="input-glass"
-            />
-            <div className="flex items-center gap-3">
-              <button onClick={changePin} className="px-3 py-1 rounded-md bg-accent text-black glow-ring">Change PIN</button>
-              <div className={`text-sm ${pinMessage.type === 'error' ? 'text-red-400' : 'text-green-400'}`}>
-                {pinMessage.text}
-              </div>
-            </div>
+            <ReadonlyRow title="Security Mode" tag="Policy" status={modeLabel} ok />
+            <ReadonlyRow title="PIN Unlock" tag="Fallback" status="Configured" ok />
           </div>
         </motion.section>
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">Unlock Methods</h4>
-          <p className="section-sub mb-3">Voice is the primary unlock. PIN is the emergency fallback.</p>
-          <div className="grid gap-3">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="font-semibold text-white">Voice Unlock</div>
-                  <div className={`text-xs mt-1 ${voiceProfile ? 'text-green-400' : 'text-secondary'}`}>
-                    {voiceProfile
-                      ? `Enrolled — ${voiceProfile.sampleCount} samples, ${new Date(voiceProfile.createdAt).toLocaleDateString()}`
-                      : 'Not enrolled'}
-                  </div>
-                </div>
-                <div className="text-xs text-secondary">Primary</div>
-              </div>
-              {reEnrolling ? (
-                <div className="mt-3">
-                  <VoiceEnrollment onComplete={() => setReEnrolling(false)} />
-                  <button
-                    onClick={() => setReEnrolling(false)}
-                    className="mt-3 rounded-md border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <div className="mt-2 flex items-center gap-2">
-                  <button
-                    onClick={() => setReEnrolling(true)}
-                    className="px-3 py-1 rounded-md bg-accent text-black text-xs glow-ring"
-                  >
-                    {voiceProfile ? 'Re-enroll Voice' : 'Enroll Voice'}
-                  </button>
-                  {voiceProfile && (
-                    <button
-                      onClick={clearVoiceProfile}
-                      className="px-3 py-1 rounded-md border border-red-400/30 text-red-300 text-xs hover:bg-red-500/10"
-                    >
-                      Remove Profile
-                    </button>
-                  )}
-                </div>
-              )}
-            </div>
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <div className="font-semibold text-white">PIN Unlock</div>
-                  <div className="text-xs text-green-400 mt-1">Configured</div>
-                </div>
-                <div className="text-xs text-secondary">Fallback</div>
-              </div>
-            </div>
-          </div>
+          <h4 className="section-title">Device</h4>
+          <p className="section-sub mb-3">Re-provision this device from scratch.</p>
+          <button
+            onClick={handleReset}
+            className="px-3 py-2 rounded-md border border-red-400/30 text-red-300 text-xs hover:bg-red-500/10"
+          >
+            Reset device &amp; re-run setup
+          </button>
         </motion.section>
       </div>
     </motion.aside>
@@ -187,5 +110,32 @@ export default function SettingsPanel() {
         </>
       )}
     </AnimatePresence>
+  )
+}
+
+function ReadonlyRow({
+  title,
+  tag,
+  status,
+  ok,
+  detail,
+}: {
+  title: string
+  tag: string
+  status: string
+  ok: boolean
+  detail?: string
+}) {
+  return (
+    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="font-semibold text-white">{title}</div>
+          <div className={`text-xs mt-1 ${ok ? 'text-green-400' : 'text-secondary'}`}>{status}</div>
+          {detail && <div className="text-xs text-secondary mt-0.5">{detail}</div>}
+        </div>
+        <div className="text-xs text-secondary">{tag}</div>
+      </div>
+    </div>
   )
 }

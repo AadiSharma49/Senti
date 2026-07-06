@@ -132,9 +132,10 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
     const voiceOk = score >= threshold
 
     // Phrase check (WHAT): transcription must match the wake phrase.
-    // Skipped only for legacy profiles enrolled without a phrase.
+    // Enforced only in phrase_and_voice mode with a phrase enrolled.
+    const { securityMode } = useVoiceProfileStore.getState()
     let phraseOk = true
-    if (profile.phrase) {
+    if (securityMode === 'phrase_and_voice' && profile.phrase) {
       const heard = await transcribe(utterance)
       phraseOk = phraseSimilarity(heard, profile.phrase) >= DEFAULT_PHRASE_THRESHOLD
     }

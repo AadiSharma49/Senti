@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSettingsStore } from '../../state/settingsStore'
-import { useVoiceProfileStore } from '../../state/voiceProfileStore'
+import { useVoiceProfileStore, type SecurityMode } from '../../state/voiceProfileStore'
 import VoiceEnrollment from './VoiceEnrollment'
 
 const isNumeric = (value: string) => /^[0-9]*$/.test(value)
@@ -16,6 +16,7 @@ export default function SetupWizard() {
   const [pin, setPin] = useState('')
   const [confirmPin, setConfirmPin] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [mode, setMode] = useState<SecurityMode | null>(null)
 
   const stepLabels = ['Security', 'Voice', 'Review', 'Finish']
   const progress = useMemo(() => (step / (stepLabels.length - 1)) * 100, [step, stepLabels.length])
@@ -98,10 +99,36 @@ export default function SetupWizard() {
                     {voiceProfile ? (
                       <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
                         <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-                        Voice enrolled ({voiceProfile.sampleCount} samples). You can re-enroll anytime from Settings.
+                        Voice enrolled ({voiceProfile.sampleCount} samples, {mode === 'voice_only' ? 'voice-only' : 'phrase + voice'}).
+                      </div>
+                    ) : mode === null ? (
+                      <div className="grid gap-3">
+                        <p className="text-sm text-secondary mb-1">Choose how strict voice unlock should be.</p>
+                        <button
+                          onClick={() => setMode('phrase_and_voice')}
+                          className="text-left rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-accent/40"
+                        >
+                          <div className="font-semibold text-white">Phrase + Voice</div>
+                          <div className="text-xs text-secondary mt-1">Unlock needs your wake phrase AND your voice. Most secure.</div>
+                        </button>
+                        <button
+                          onClick={() => setMode('voice_only')}
+                          className="text-left rounded-2xl border border-white/10 bg-white/5 p-4 transition hover:border-accent/40"
+                        >
+                          <div className="font-semibold text-white">Voice only</div>
+                          <div className="text-xs text-secondary mt-1">Any words unlock, as long as it&apos;s your voice. More convenient.</div>
+                        </button>
                       </div>
                     ) : (
-                      <VoiceEnrollment />
+                      <div className="grid gap-3">
+                        <div className="flex items-center justify-between">
+                          <div className="text-xs uppercase tracking-[0.25em] text-accent">
+                            {mode === 'voice_only' ? 'Voice only' : 'Phrase + Voice'}
+                          </div>
+                          <button onClick={() => setMode(null)} className="text-xs text-secondary hover:text-white transition">Change</button>
+                        </div>
+                        <VoiceEnrollment mode={mode} />
+                      </div>
                     )}
                   </motion.div>
                 )}
