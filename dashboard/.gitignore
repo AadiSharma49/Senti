@@ -1,6 +1,8 @@
 /node_modules
 /.next
 /data
+/lib/generated
+/prisma/migrations/dev.db*
 /out
 /build
 next-env.d.ts

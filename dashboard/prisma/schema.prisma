@@ -1,0 +1,82 @@
+// Senti platform data model.
+// The dashboard owns this data; devices are secure endpoints that read it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// One row per account. `id` is the Clerk user id.
+model User {
+  id        String   @id
+  email     String?  @unique
+  createdAt DateTime @default(now())
+
+  policy  Policy?
+  devices Device[]
+  events  UnlockEvent[]
+}
+
+enum SecurityMode {
+  voice_only
+  phrase_and_voice
+}
+
+/// The account security policy the devices obey.
+model Policy {
+  id              String       @id @default(cuid())
+  userId          String       @unique
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  securityMode    SecurityMode @default(phrase_and_voice)
+  voiceThreshold  Float        @default(0.5)
+  maxAttempts     Int          @default(3)
+  lockoutDuration Int          @default(30)
+  updatedAt       DateTime     @updatedAt
+}
+
+enum DeviceStatus {
+  online
+  locked
+  offline
+}
+
+/// A computer running Senti under this account.
+model Device {
+  id            String       @id @default(cuid())
+  userId        String
+  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  os            String
+  status        DeviceStatus @default(offline)
+  voiceEnrolled Boolean      @default(false)
+  lastSeen      DateTime     @default(now())
+  createdAt     DateTime     @default(now())
+
+  events UnlockEvent[]
+}
+
+enum EventType {
+  voice_unlock
+  pin_unlock
+  voice_rejected
+  lockout
+  enrolled
+}
+
+/// Security timeline entry.
+model UnlockEvent {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  deviceId  String?
+  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  type      EventType
+  detail    String?
+  createdAt DateTime  @default(now())
+
+  @@index([userId, createdAt])
+}
