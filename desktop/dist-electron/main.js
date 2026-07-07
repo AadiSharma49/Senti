@@ -1,9 +1,10 @@
-import { existsSync as v } from "fs";
+import { existsSync as C } from "fs";
 import _ from "http";
-import w from "electron";
-import d from "path";
-import { fileURLToPath as y } from "url";
-const { app: s, BrowserWindow: R, screen: V, ipcMain: a, globalShortcut: i } = w, F = y(import.meta.url), E = d.dirname(F), p = process.env.VITE_DEV_SERVER_URL, g = "http://localhost:5173";
+import w from "os";
+import y from "electron";
+import p from "path";
+import { fileURLToPath as V } from "url";
+const { app: s, BrowserWindow: R, screen: F, ipcMain: a, globalShortcut: i } = y, L = V(import.meta.url), E = p.dirname(L), d = process.env.VITE_DEV_SERVER_URL, g = "http://localhost:5173";
 let e = null, f = !0;
 const b = [
   "Alt+Tab",
@@ -15,8 +16,8 @@ const b = [
   // Task Manager (best-effort; OS may still win)
   "Super"
   // Win key (best-effort)
-], L = "CommandOrControl+Alt+Shift+Q";
-function O() {
+], O = "CommandOrControl+Alt+Shift+Q";
+function D() {
   for (const o of b)
     try {
       i.register(o, () => {
@@ -24,7 +25,7 @@ function O() {
     } catch {
     }
 }
-function D() {
+function T() {
   for (const o of b)
     try {
       i.isRegistered(o) && i.unregister(o);
@@ -32,13 +33,13 @@ function D() {
     }
 }
 function h(o) {
-  f = o, o ? O() : D();
+  f = o, o ? D() : T();
 }
-function T(o, c = 15e3) {
+function k(o, c = 15e3) {
   return new Promise((u, t) => {
     const r = Date.now(), n = () => {
-      _.get(o, (C) => {
-        C.statusCode === 200 ? u() : l();
+      _.get(o, (v) => {
+        v.statusCode === 200 ? u() : l();
       }).on("error", l);
     }, l = () => {
       Date.now() - r > c ? t(new Error(`Vite dev server not reachable at ${o}`)) : setTimeout(n, 300);
@@ -47,7 +48,7 @@ function T(o, c = 15e3) {
   });
 }
 function S() {
-  const { width: o, height: c } = V.getPrimaryDisplay().workAreaSize, u = d.join(E, "preload.cjs");
+  const { width: o, height: c } = F.getPrimaryDisplay().workAreaSize, u = p.join(E, "preload.cjs");
   if (e = new R({
     width: o,
     height: c,
@@ -68,19 +69,19 @@ function S() {
       nodeIntegration: !1,
       sandbox: !1
     }
-  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), p)
+  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), d)
     e.loadURL(g).catch((t) => {
       console.error("[Electron] Failed to load dev server:", t.message);
     });
   else {
-    const t = d.join(E, "../dist/index.html");
-    v(t) ? e.loadFile(t).catch((r) => {
+    const t = p.join(E, "../dist/index.html");
+    C(t) ? e.loadFile(t).catch((r) => {
       console.error("[Electron] Failed to load production file:", r.message);
     }) : console.error("[Electron] Production build not found at:", t);
   }
   e.webContents.on("did-finish-load", () => {
     var t, r;
-    e == null || e.show(), e == null || e.focus(), p && ((r = (t = e == null ? void 0 : e.webContents) == null ? void 0 : t.openDevTools) == null || r.call(t));
+    e == null || e.show(), e == null || e.focus(), d && ((r = (t = e == null ? void 0 : e.webContents) == null ? void 0 : t.openDevTools) == null || r.call(t));
   }), e.webContents.on("did-fail-load", (t, r, n, l, m) => {
     console.error("[Electron] Renderer load failed:", { errorCode: r, errorDescription: n, validatedURL: l, isMainFrame: m });
   }), e.webContents.on("console-message", (t, r, n) => {
@@ -100,22 +101,22 @@ function S() {
     e && e.setFullScreen(!0);
   });
 }
-function k() {
+function A() {
   setInterval(() => {
     e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
   }, 500);
 }
 s.whenReady().then(async () => {
-  if (p)
+  if (d)
     try {
-      await T(g);
+      await k(g);
     } catch (o) {
       console.error("[Electron] Vite dev server failed to start:", o), s.quit();
       return;
     }
-  S(), k(), h(!0);
+  S(), A(), h(!0);
   try {
-    i.register(L, () => {
+    i.register(O, () => {
       f = !1, s.exit(0);
     });
   } catch {
@@ -135,6 +136,10 @@ s.on("will-quit", () => {
   i.unregisterAll();
 });
 a.handle("senti:get-platform", () => process.platform);
+a.handle("senti:device-info", () => ({
+  hostname: w.hostname(),
+  platform: process.platform
+}));
 a.handle("senti:set-lock-state", (o, c) => {
   h(!!c);
 });

@@ -1,12 +1,16 @@
 // Senti platform data model.
 // The dashboard owns this data; devices are secure endpoints that read it.
+//
+// Local dev uses SQLite (a single file — no server, no Docker). For
+// production you can switch `provider` to "postgresql" and point
+// DATABASE_URL at Neon; the models stay the same.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -21,62 +25,49 @@ model User {
   events  UnlockEvent[]
 }
 
-enum SecurityMode {
-  voice_only
-  phrase_and_voice
-}
-
 /// The account security policy the devices obey.
+/// securityMode: "voice_only" | "phrase_and_voice"
 model Policy {
-  id              String       @id @default(cuid())
-  userId          String       @unique
-  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  securityMode    SecurityMode @default(phrase_and_voice)
-  voiceThreshold  Float        @default(0.5)
-  maxAttempts     Int          @default(3)
-  lockoutDuration Int          @default(30)
-  updatedAt       DateTime     @updatedAt
-}
-
-enum DeviceStatus {
-  online
-  locked
-  offline
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  securityMode    String   @default("phrase_and_voice")
+  voiceThreshold  Float    @default(0.5)
+  maxAttempts     Int      @default(3)
+  lockoutDuration Int      @default(30)
+  updatedAt       DateTime @updatedAt
 }
 
 /// A computer running Senti under this account.
+/// status: "online" | "locked" | "offline"
 model Device {
-  id            String       @id @default(cuid())
+  id            String   @id @default(cuid())
   userId        String
-  user          User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name          String
   os            String
-  status        DeviceStatus @default(offline)
-  voiceEnrolled Boolean      @default(false)
-  lastSeen      DateTime     @default(now())
-  createdAt     DateTime     @default(now())
+  status        String   @default("offline")
+  voiceEnrolled Boolean  @default(false)
+  /// Secret the desktop uses to authenticate as this device.
+  token         String   @unique
+  linked        Boolean  @default(false)
+  lastSeen      DateTime @default(now())
+  createdAt     DateTime @default(now())
 
   events UnlockEvent[]
 }
 
-enum EventType {
-  voice_unlock
-  pin_unlock
-  voice_rejected
-  lockout
-  enrolled
-}
-
 /// Security timeline entry.
+/// type: "voice_unlock" | "pin_unlock" | "voice_rejected" | "lockout" | "enrolled"
 model UnlockEvent {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   deviceId  String?
-  device    Device?   @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  type      EventType
+  device    Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  type      String
   detail    String?
-  createdAt DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([userId, createdAt])
 }

@@ -1,8 +1,10 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
+import { useDeviceStore } from '../../state/deviceStore'
+import { syncPolicyFromDashboard } from '../../services/policySync'
 
 /**
  * Read-only Control Center. Per the platform design, the desktop is a
@@ -18,6 +20,29 @@ export default function SettingsPanel() {
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
   const securityMode = useVoiceProfileStore((s) => s.securityMode)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
+
+  const deviceToken = useDeviceStore((s) => s.token)
+  const setToken = useDeviceStore((s) => s.setToken)
+  const clearToken = useDeviceStore((s) => s.clearToken)
+  const [tokenInput, setTokenInput] = useState('')
+  const [linkMsg, setLinkMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const linkDevice = async () => {
+    if (!tokenInput.trim()) return
+    setToken(tokenInput)
+    setTokenInput('')
+    const ok = await syncPolicyFromDashboard()
+    setLinkMsg(
+      ok
+        ? { ok: true, text: 'Linked. Policy synced from your account.' }
+        : { ok: false, text: 'Could not reach the dashboard. Check the token and that the dashboard is running.' }
+    )
+  }
+
+  const unlink = () => {
+    clearToken()
+    setLinkMsg(null)
+  }
 
   const handleReset = () => {
     const ok = window.confirm(
@@ -78,6 +103,46 @@ export default function SettingsPanel() {
             <ReadonlyRow title="Security Mode" tag="Policy" status={modeLabel} ok />
             <ReadonlyRow title="PIN Unlock" tag="Fallback" status="Configured" ok />
           </div>
+        </motion.section>
+
+        <motion.section variants={sectionVariant} initial="hidden" animate="visible">
+          <h4 className="section-title">Account</h4>
+          <p className="section-sub mb-3">
+            Link this device to your Senti account so it follows your dashboard settings.
+          </p>
+          {deviceToken ? (
+            <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4">
+              <div className="flex items-center gap-2 text-sm text-green-300">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
+                Linked to your account
+              </div>
+              <button
+                onClick={unlink}
+                className="mt-3 px-3 py-1 rounded-md border border-white/10 text-xs text-white/70 hover:bg-white/5"
+              >
+                Unlink
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              <input
+                value={tokenInput}
+                onChange={(e) => setTokenInput(e.target.value)}
+                placeholder="Paste pairing token from dashboard"
+                className="input-glass"
+              />
+              <button
+                onClick={linkDevice}
+                disabled={!tokenInput.trim()}
+                className="px-3 py-2 rounded-md bg-accent text-black text-xs glow-ring disabled:opacity-50"
+              >
+                Link to account
+              </button>
+            </div>
+          )}
+          {linkMsg && (
+            <div className={`mt-2 text-xs ${linkMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{linkMsg.text}</div>
+          )}
         </motion.section>
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">

@@ -1,15 +1,19 @@
 import { useVoiceProfileStore, type SecurityMode } from '../state/voiceProfileStore'
 import { useSettingsStore } from '../state/settingsStore'
+import { useDeviceStore } from '../state/deviceStore'
 
 /**
  * policySync - the desktop is a secure endpoint that OBEYS the dashboard.
- * On boot it pulls the account security policy and applies it locally, so
- * changes made on the dashboard take effect on this device.
+ * If this device is linked to an account (has a pairing token), it pulls
+ * that account's policy and reports its own status. Otherwise it falls
+ * back to the shared local policy.
  *
- * Local dev: the dashboard serves the policy at localhost:3000. Later this
- * becomes the authenticated account API (per-user, over HTTPS).
+ * Local dev uses localhost:3000. Later this becomes the account API over
+ * HTTPS.
  */
-const POLICY_URL = 'http://localhost:3000/api/policy'
+const BASE = 'http://localhost:3000'
+const DEVICE_POLICY_URL = `${BASE}/api/device/policy`
+const SHARED_POLICY_URL = `${BASE}/api/policy`
 
 interface RemotePolicy {
   securityMode?: SecurityMode
@@ -18,27 +22,53 @@ interface RemotePolicy {
   lockoutDuration?: number
 }
 
-/** Fetch and apply the dashboard policy. Returns true if applied. */
-export async function syncPolicyFromDashboard(): Promise<boolean> {
+function applyPolicy(p: RemotePolicy): void {
+  const voice = useVoiceProfileStore.getState()
+  if (p.securityMode === 'voice_only' || p.securityMode === 'phrase_and_voice') {
+    voice.setSecurityMode(p.securityMode)
+  }
+  if (typeof p.voiceThreshold === 'number') voice.setThreshold(p.voiceThreshold)
+
+  const sec: { maxAttempts?: number; lockoutDuration?: number } = {}
+  if (typeof p.maxAttempts === 'number') sec.maxAttempts = p.maxAttempts
+  if (typeof p.lockoutDuration === 'number') sec.lockoutDuration = p.lockoutDuration
+  if (Object.keys(sec).length > 0) useSettingsStore.getState().setSecurity(sec)
+}
+
+const prettyOs = (platform: string): string =>
+  platform === 'win32' ? 'Windows' : platform === 'darwin' ? 'macOS' : platform === 'linux' ? 'Linux' : platform
+
+async function deviceInfo(): Promise<{ hostname: string; platform: string }> {
   try {
-    const res = await fetch(POLICY_URL, { cache: 'no-store' })
+    const info = await window.senti?.deviceInfo?.()
+    if (info) return info
+  } catch {
+    // ignore
+  }
+  return { hostname: 'This device', platform: 'win32' }
+}
+
+/** Fetch and apply the account (or shared) policy. Returns true if applied. */
+export async function syncPolicyFromDashboard(): Promise<boolean> {
+  const token = useDeviceStore.getState().token
+  try {
+    if (token) {
+      const info = await deviceInfo()
+      const voiceEnrolled = !!useVoiceProfileStore.getState().profile
+      const res = await fetch(DEVICE_POLICY_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' }),
+      })
+      if (!res.ok) return false
+      const data = await res.json()
+      applyPolicy(data.policy ?? {})
+      return true
+    }
+
+    const res = await fetch(SHARED_POLICY_URL, { cache: 'no-store' })
     if (!res.ok) return false
-    const p = (await res.json()) as RemotePolicy
-
-    const voice = useVoiceProfileStore.getState()
-    if (p.securityMode === 'voice_only' || p.securityMode === 'phrase_and_voice') {
-      voice.setSecurityMode(p.securityMode)
-    }
-    if (typeof p.voiceThreshold === 'number') {
-      voice.setThreshold(p.voiceThreshold)
-    }
-
-    const sec: { maxAttempts?: number; lockoutDuration?: number } = {}
-    if (typeof p.maxAttempts === 'number') sec.maxAttempts = p.maxAttempts
-    if (typeof p.lockoutDuration === 'number') sec.lockoutDuration = p.lockoutDuration
-    if (Object.keys(sec).length > 0) {
-      useSettingsStore.getState().setSecurity(sec)
-    }
+    applyPolicy((await res.json()) as RemotePolicy)
     return true
   } catch {
     // Dashboard not reachable — keep the last known local policy.

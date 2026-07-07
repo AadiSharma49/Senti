@@ -1,5 +1,6 @@
 import { existsSync } from 'fs'
 import http from 'http'
+import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
 const { app, BrowserWindow, screen, ipcMain, globalShortcut } = electron
@@ -264,6 +265,11 @@ app.on('will-quit', () => {
 })
 
 ipcMain.handle('senti:get-platform', () => process.platform)
+
+ipcMain.handle('senti:device-info', () => ({
+  hostname: os.hostname(),
+  platform: process.platform,
+}))
 
 // The renderer reports its auth state here (locked = anything but unlocked).
 ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {

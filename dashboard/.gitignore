@@ -2,7 +2,8 @@
 /.next
 /data
 /lib/generated
-/prisma/migrations/dev.db*
+/prisma/*.db
+/prisma/*.db-journal
 /out
 /build
 next-env.d.ts
