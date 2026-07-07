@@ -1,7 +1,13 @@
+import { currentUser } from '@clerk/nextjs/server'
 import { PageHeader, Card } from '@/components/ui'
 import SecurityPolicyEditor from '@/components/SecurityPolicyEditor'
+import { clerkEnabled } from '@/lib/auth'
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const user = clerkEnabled ? await currentUser() : null
+  const name = user?.fullName || user?.firstName || user?.username || 'Your account'
+  const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || '—'
+
   return (
     <div>
       <PageHeader title="Settings" subtitle="Account and security policy — the source of truth for your devices." />
@@ -10,8 +16,8 @@ export default function SettingsPage() {
         <Card>
           <h2 className="text-lg font-semibold text-white">Account</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Field label="Name" value="Aaditya Sharma" />
-            <Field label="Email" value="sharmaaaditya142@gmail.com" />
+            <Field label="Name" value={name} />
+            <Field label="Email" value={email} />
           </div>
         </Card>
 
