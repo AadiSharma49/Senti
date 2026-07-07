@@ -13,7 +13,6 @@ import { useDeviceStore } from '../state/deviceStore'
  */
 const BASE = 'http://localhost:3000'
 const DEVICE_POLICY_URL = `${BASE}/api/device/policy`
-const SHARED_POLICY_URL = `${BASE}/api/policy`
 
 interface RemotePolicy {
   securityMode?: SecurityMode
@@ -48,27 +47,26 @@ async function deviceInfo(): Promise<{ hostname: string; platform: string }> {
   return { hostname: 'This device', platform: 'win32' }
 }
 
-/** Fetch and apply the account (or shared) policy. Returns true if applied. */
+/**
+ * Pull and apply this account's policy. Only runs when the device is
+ * linked (has a pairing token); an unlinked device is standalone and uses
+ * its local config. Returns true if a policy was applied.
+ */
 export async function syncPolicyFromDashboard(): Promise<boolean> {
   const token = useDeviceStore.getState().token
-  try {
-    if (token) {
-      const info = await deviceInfo()
-      const voiceEnrolled = !!useVoiceProfileStore.getState().profile
-      const res = await fetch(DEVICE_POLICY_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' }),
-      })
-      if (!res.ok) return false
-      const data = await res.json()
-      applyPolicy(data.policy ?? {})
-      return true
-    }
+  if (!token) return false // unlinked: use local config, don't call the dashboard
 
-    const res = await fetch(SHARED_POLICY_URL, { cache: 'no-store' })
+  try {
+    const info = await deviceInfo()
+    const voiceEnrolled = !!useVoiceProfileStore.getState().profile
+    const res = await fetch(DEVICE_POLICY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' }),
+    })
     if (!res.ok) return false
-    applyPolicy((await res.json()) as RemotePolicy)
+    const data = await res.json()
+    applyPolicy(data.policy ?? {})
     return true
   } catch {
     // Dashboard not reachable — keep the last known local policy.
