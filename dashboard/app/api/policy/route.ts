@@ -36,7 +36,8 @@ export async function GET() {
     const { userId } = auth()
     if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const user = await currentUser()
-    const policy = await getOrCreatePolicy(userId, user?.primaryEmailAddress?.emailAddress)
+    const name = user?.firstName || user?.fullName || undefined
+    const policy = await getOrCreatePolicy(userId, user?.primaryEmailAddress?.emailAddress, name)
     return NextResponse.json(policy)
   }
   return NextResponse.json(await readFilePolicy())

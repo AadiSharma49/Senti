@@ -17,11 +17,18 @@ function toPolicy(row: {
 }
 
 /** Ensure the account exists and return its policy (creating a default). */
-export async function getOrCreatePolicy(userId: string, email?: string | null): Promise<Policy> {
+export async function getOrCreatePolicy(
+  userId: string,
+  email?: string | null,
+  name?: string | null
+): Promise<Policy> {
+  const fields: { email?: string; name?: string } = {}
+  if (email) fields.email = email
+  if (name) fields.name = name
   await prisma.user.upsert({
     where: { id: userId },
-    update: email ? { email } : {},
-    create: { id: userId, email: email ?? null },
+    update: fields,
+    create: { id: userId, email: email ?? null, name: name ?? null },
   })
   const existing = await prisma.policy.findUnique({ where: { userId } })
   if (existing) return toPolicy(existing)

@@ -9,11 +9,13 @@ import SettingsPanel from '../common/SettingsPanel'
 import { useLockStore } from '../../state/lockStore'
 import { useVoiceAuthStore } from '../../state/voiceAuthStore'
 import { useUiStore } from '../../state/uiStore'
+import { useGreetingStore } from '../../state/greetingStore'
 import { audioManager } from '../../services/audioManager'
 
 export default function LockScreen() {
   const { state, lock } = useLockStore()
   const settingsOpen = useUiStore((s) => s.settingsOpen)
+  const greeting = useGreetingStore((s) => s.text)
 
   useEffect(() => {
     // Boot sequence: brief boot -> preload sounds -> lock
@@ -48,22 +50,30 @@ export default function LockScreen() {
   }, [])
 
   useEffect(() => {
-    if (state === 'unlocked') {
-      // allow the fade animation to complete then close the window
-      const t = setTimeout(() => {
-        try {
-          // prefer electron API if available
-          // @ts-ignore
-          if (window.senti && typeof window.senti.lock === 'function') {
-            // closing via main process may be preferable
-            // @ts-ignore
-            window.close()
-          } else {
-            window.close()
-          }
-        } catch {}
-      }, 900)
-      return () => clearTimeout(t)
+    if (state !== 'unlocked') return
+
+    let closed = false
+    const close = () => {
+      if (closed) return
+      closed = true
+      try {
+        window.close()
+      } catch {}
+    }
+
+    // Speak the AI greeting, then close shortly after it finishes.
+    // A hard cap guarantees the window always closes even if TTS stalls.
+    const hardCap = setTimeout(close, 9000)
+    useGreetingStore
+      .getState()
+      .greet()
+      .finally(() => {
+        setTimeout(close, 500)
+      })
+
+    return () => {
+      clearTimeout(hardCap)
+      useGreetingStore.getState().reset()
     }
   }, [state])
 
@@ -71,7 +81,7 @@ export default function LockScreen() {
     <motion.div
       className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden"
       initial={{ opacity: 0 }}
-      animate={{ opacity: state === 'unlocked' ? 0 : 1 }}
+      animate={{ opacity: 1 }}
       transition={{ duration: 0.9, ease: 'easeInOut' }}
     >
       <Background />
@@ -90,20 +100,21 @@ export default function LockScreen() {
             >
               <Visualizer />
               <motion.div
-                className="text-accent text-xl font-display"
+                className="text-accent text-xs uppercase tracking-[0.3em]"
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.5 }}
+                transition={{ delay: 0.2, duration: 0.5 }}
               >
-                System unlocked
+                Unlocked
               </motion.div>
               <motion.div
-                className="text-secondary text-sm uppercase tracking-widest"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
+                key={greeting}
+                className="max-w-xl px-6 text-center text-2xl font-display text-white text-glow"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5 }}
               >
-                Press any key to lock
+                {greeting || 'Welcome back.'}
               </motion.div>
             </motion.div>
           ) : (
