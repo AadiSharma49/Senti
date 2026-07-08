@@ -20,9 +20,24 @@ model User {
   email     String?  @unique
   createdAt DateTime @default(now())
 
-  policy  Policy?
-  devices Device[]
-  events  UnlockEvent[]
+  policy       Policy?
+  voiceProfile VoiceProfile?
+  devices      Device[]
+  events       UnlockEvent[]
+}
+
+/// The account's enrolled voiceprint (captured on a device, synced up so
+/// it flows to the user's other devices). Embedding stored as a JSON array.
+model VoiceProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  embedding   String
+  phrase      String   @default("")
+  sampleCount Int      @default(0)
+  modelId     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 /// The account security policy the devices obey.

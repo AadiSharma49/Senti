@@ -59,6 +59,49 @@ export async function getDeviceByToken(token: string) {
   return prisma.device.findUnique({ where: { token } })
 }
 
+export interface VoiceprintData {
+  embedding: number[]
+  phrase: string
+  sampleCount: number
+  modelId: string
+}
+
+/** The account's voiceprint (embedding parsed back to numbers), or null. */
+export async function getVoiceprint(userId: string): Promise<(VoiceprintData & { createdAt: Date }) | null> {
+  const row = await prisma.voiceProfile.findUnique({ where: { userId } })
+  if (!row) return null
+  let embedding: number[] = []
+  try {
+    embedding = JSON.parse(row.embedding) as number[]
+  } catch {
+    embedding = []
+  }
+  return { embedding, phrase: row.phrase, sampleCount: row.sampleCount, modelId: row.modelId, createdAt: row.createdAt }
+}
+
+/** Whether the account has a voiceprint, plus lightweight metadata (no embedding). */
+export async function getVoiceprintStatus(userId: string) {
+  const row = await prisma.voiceProfile.findUnique({
+    where: { userId },
+    select: { phrase: true, sampleCount: true, modelId: true, createdAt: true },
+  })
+  return row
+}
+
+export async function upsertVoiceprint(userId: string, data: VoiceprintData) {
+  const embedding = JSON.stringify(data.embedding)
+  await prisma.voiceProfile.upsert({
+    where: { userId },
+    update: { embedding, phrase: data.phrase, sampleCount: data.sampleCount, modelId: data.modelId },
+    create: { userId, embedding, phrase: data.phrase, sampleCount: data.sampleCount, modelId: data.modelId },
+  })
+}
+
+export async function deleteVoiceprint(userId: string) {
+  await prisma.voiceProfile.deleteMany({ where: { userId } })
+  await prisma.device.updateMany({ where: { userId }, data: { voiceEnrolled: false } })
+}
+
 /** Record that a device checked in, and let it report its name/os. */
 export async function touchDevice(
   id: string,

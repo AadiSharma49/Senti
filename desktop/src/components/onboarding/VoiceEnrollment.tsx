@@ -10,6 +10,7 @@ import {
   type SecurityMode,
 } from '../../state/voiceProfileStore'
 import { useVoiceAuthStore } from '../../state/voiceAuthStore'
+import { uploadVoiceprint } from '../../services/voiceprintSync'
 
 const ENROLL_SAMPLES = 3
 const MIN_PHRASE_WORDS = 2
@@ -74,6 +75,8 @@ export default function VoiceEnrollment({ mode, onComplete }: VoiceEnrollmentPro
     setSecurityMode(mode)
     cleanup()
     setPhase('done')
+    // If linked to an account, sync the new voiceprint up to it.
+    void uploadVoiceprint()
     onComplete?.()
   }
 

@@ -5,6 +5,7 @@ import { useSettingsStore } from '../../state/settingsStore'
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useDeviceStore } from '../../state/deviceStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
+import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
 
 /**
  * Read-only Control Center. Per the platform design, the desktop is a
@@ -32,9 +33,15 @@ export default function SettingsPanel() {
     setToken(tokenInput)
     setTokenInput('')
     const ok = await syncPolicyFromDashboard()
+    if (ok) {
+      // Push a local voiceprint up, or pull the account's down if this
+      // device doesn't have one yet.
+      if (useVoiceProfileStore.getState().profile) await uploadVoiceprint()
+      else await ensureVoiceprint()
+    }
     setLinkMsg(
       ok
-        ? { ok: true, text: 'Linked. Policy synced from your account.' }
+        ? { ok: true, text: 'Linked. Synced with your account.' }
         : { ok: false, text: 'Could not reach the dashboard. Check the token and that the dashboard is running.' }
     )
   }

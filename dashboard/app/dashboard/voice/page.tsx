@@ -1,9 +1,20 @@
+import { auth } from '@clerk/nextjs/server'
 import { PageHeader, Card, Badge } from '@/components/ui'
 import SentiMark from '@/components/SentiMark'
 import SecurityModeSelector from '@/components/SecurityModeSelector'
 import VoiceSensitivity from '@/components/VoiceSensitivity'
+import DeleteVoiceprintButton from '@/components/DeleteVoiceprintButton'
+import { clerkEnabled } from '@/lib/auth'
+import { dbEnabled } from '@/lib/prisma'
+import { getVoiceprintStatus, listDevices } from '@/lib/db'
 
-export default function VoiceProfilePage() {
+export default async function VoiceProfilePage() {
+  const accounts = clerkEnabled && dbEnabled
+  const userId = accounts ? auth().userId : null
+  const voiceprint = userId ? await getVoiceprintStatus(userId) : null
+  const devices = userId ? await listDevices(userId) : []
+  const enrolledDevices = devices.filter((d) => d.voiceEnrolled).length
+
   return (
     <div>
       <PageHeader
@@ -23,31 +34,40 @@ export default function VoiceProfilePage() {
             <SentiMark size={56} />
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-semibold text-white">Voice matching</h2>
-                <Badge tone="good">Active</Badge>
+                <h2 className="text-lg font-semibold text-white">Voiceprint</h2>
+                {voiceprint ? <Badge tone="good">Enrolled</Badge> : <Badge tone="neutral">Not enrolled</Badge>}
               </div>
               <p className="mt-1 text-sm text-white/50">
-                Model: WeSpeaker ResNet34 · 256-dim embedding, verified on-device
+                {voiceprint
+                  ? `${voiceprint.sampleCount} samples · ${
+                      voiceprint.phrase ? 'phrase + voice' : 'voice only'
+                    } · enrolled ${new Date(voiceprint.createdAt).toLocaleDateString()}`
+                  : 'Enroll on your device — Senti captures your voice there and syncs it to your account.'}
               </p>
             </div>
           </div>
 
-          <div className="mt-6">
-            <VoiceSensitivity />
+          <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60">
+            {voiceprint
+              ? `Synced to ${enrolledDevices} of ${devices.length} linked device${devices.length === 1 ? '' : 's'}. Enrollment and re-enrollment run on your device with the microphone.`
+              : 'Open Senti on your computer, link this device, and enroll your voice. It will appear here.'}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/55">
-            Enrollment (learning your voiceprint) runs on your device with the microphone.
-            Open Senti on your computer to enroll or re-enroll.
-          </div>
+          {voiceprint && (
+            <div className="mt-4">
+              <DeleteVoiceprintButton />
+            </div>
+          )}
         </Card>
 
         <Card>
-          <h2 className="text-lg font-semibold text-white">Privacy</h2>
-          <ul className="mt-4 grid gap-3 text-sm text-white/60">
-            <li className="flex gap-2"><span className="text-accent">•</span> Voiceprint stored on-device</li>
-            <li className="flex gap-2"><span className="text-accent">•</span> Only a 256-number embedding syncs — never audio</li>
-            <li className="flex gap-2"><span className="text-accent">•</span> Verification runs locally, offline</li>
+          <h2 className="text-lg font-semibold text-white">Voice sensitivity</h2>
+          <p className="mt-1 mb-4 text-sm text-white/50">Higher is stricter.</p>
+          <VoiceSensitivity />
+
+          <ul className="mt-6 grid gap-2 text-xs text-white/55">
+            <li className="flex gap-2"><span className="text-accent">•</span> Voiceprint is 256 numbers — never audio</li>
+            <li className="flex gap-2"><span className="text-accent">•</span> Captured and verified on-device</li>
             <li className="flex gap-2"><span className="text-accent">•</span> Delete anytime, everywhere</li>
           </ul>
         </Card>
