@@ -2,9 +2,8 @@ import { create } from 'zustand'
 import { audioCapture } from '../services/audioCapture'
 import { UtteranceRecorder } from '../services/utteranceRecorder'
 import { voiceEmbeddingEngine, cosineSimilarity } from '../services/voiceEmbeddingEngine'
-import { loadSpeechRecognition, transcribe, phraseSimilarity } from '../services/speechRecognition'
 import { audioManager } from '../services/audioManager'
-import { useVoiceProfileStore, DEFAULT_PHRASE_THRESHOLD } from './voiceProfileStore'
+import { useVoiceProfileStore } from './voiceProfileStore'
 import { useSettingsStore } from './settingsStore'
 import { useLockStore } from './lockStore'
 import type { Utterance } from '../types/audio'
@@ -75,7 +74,7 @@ export const useVoiceAuthStore = create<VoiceAuthStore>((set, get) => ({
 
     set({ state: 'loading', error: null })
     try {
-      await Promise.all([voiceEmbeddingEngine.load(), loadSpeechRecognition()])
+      await voiceEmbeddingEngine.load()
       await audioCapture.start()
     } catch (err) {
       set({
@@ -126,21 +125,11 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
       return
     }
 
-    // Voice check (WHO): speaker embedding similarity.
+    // Voice-only unlock: is this the enrolled speaker?
     const embedding = await voiceEmbeddingEngine.computeEmbedding(utterance)
     const score = cosineSimilarity(embedding, profile.embedding)
-    const voiceOk = score >= threshold
 
-    // Phrase check (WHAT): transcription must match the wake phrase.
-    // Enforced only in phrase_and_voice mode with a phrase enrolled.
-    const { securityMode } = useVoiceProfileStore.getState()
-    let phraseOk = true
-    if (securityMode === 'phrase_and_voice' && profile.phrase) {
-      const heard = await transcribe(utterance)
-      phraseOk = phraseSimilarity(heard, profile.phrase) >= DEFAULT_PHRASE_THRESHOLD
-    }
-
-    if (voiceOk && phraseOk) {
+    if (score >= threshold) {
       useVoiceAuthStore.setState({ lastScore: score })
       useVoiceAuthStore.getState().stopSession('matched')
       audioManager.play('unlock')
@@ -148,7 +137,7 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
       return
     }
 
-    // Rejected: right words but wrong voice, or wrong words entirely.
+    // Rejected: not the enrolled voice.
     audioManager.play('denied')
     const attempts = useVoiceAuthStore.getState().attempts + 1
     if (attempts >= MAX_VOICE_ATTEMPTS) {

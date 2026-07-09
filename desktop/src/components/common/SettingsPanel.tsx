@@ -6,12 +6,11 @@ import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useDeviceStore } from '../../state/deviceStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
 import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
+import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 
 /**
- * Read-only Control Center. Per the platform design, the desktop is a
- * secure endpoint: it USES the configuration but does not edit it. Voice,
- * security mode and PIN are managed from the Senti dashboard (source of
- * truth) and synced down. A device reset is offered only to re-provision.
+ * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
+ * linking are managed too. (Dashboard remains the future source of truth.)
  */
 export default function SettingsPanel() {
   const open = useUiStore((s) => s.settingsOpen)
@@ -19,8 +18,8 @@ export default function SettingsPanel() {
 
   const resetConfiguration = useSettingsStore((s) => s.resetConfiguration)
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
-  const securityMode = useVoiceProfileStore((s) => s.securityMode)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
+  const [enrolling, setEnrolling] = useState(false)
 
   const deviceToken = useDeviceStore((s) => s.token)
   const setToken = useDeviceStore((s) => s.setToken)
@@ -66,8 +65,6 @@ export default function SettingsPanel() {
     visible: { opacity: 1, y: 0 },
   }
 
-  const modeLabel = securityMode === 'voice_only' ? 'Voice only' : 'Phrase + Voice'
-
   const panel = (
     <motion.aside
       initial={{ x: '100%' }}
@@ -80,35 +77,59 @@ export default function SettingsPanel() {
       <div className="glass-strong p-4 rounded-lg flex items-center justify-between">
         <div>
           <div className="section-title text-lg">Control Center</div>
-          <div className="section-sub">This device · read-only</div>
+          <div className="section-sub">Senti — Settings</div>
         </div>
         <button onClick={close} className="px-3 py-1 rounded-md glass-hoverable">Close</button>
       </div>
 
-      <div className="glass rounded-2xl p-4 text-sm text-white/70">
-        Settings are managed from your{' '}
-        <span className="text-accent">Senti dashboard</span> and synced to this device.
-        Senti is a secure endpoint — it can&apos;t be edited here.
-      </div>
-
       <div className="flex-1 overflow-auto pr-2 space-y-4 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">Unlock Methods</h4>
-          <p className="section-sub mb-3">Voice is the primary unlock. PIN is the emergency fallback.</p>
-          <div className="grid gap-3">
-            <ReadonlyRow
-              title="Voice Unlock"
-              tag="Primary"
-              status={voiceProfile ? 'Enrolled' : 'Not enrolled'}
-              ok={!!voiceProfile}
-              detail={
-                voiceProfile
-                  ? `${voiceProfile.sampleCount} samples · ${new Date(voiceProfile.createdAt).toLocaleDateString()}`
-                  : undefined
-              }
-            />
-            <ReadonlyRow title="Security Mode" tag="Policy" status={modeLabel} ok />
-            <ReadonlyRow title="PIN Unlock" tag="Fallback" status="Configured" ok />
+          <h4 className="section-title">Voice Unlock</h4>
+          <p className="section-sub mb-3">Your voice unlocks Senti. Enroll or re-enroll here.</p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="font-semibold text-white">Voiceprint</div>
+                <div className={`text-xs mt-1 ${voiceProfile ? 'text-green-400' : 'text-secondary'}`}>
+                  {voiceProfile
+                    ? `Enrolled — ${voiceProfile.sampleCount} samples`
+                    : 'Not enrolled'}
+                </div>
+              </div>
+              <div className="text-xs text-secondary">Primary</div>
+            </div>
+            {enrolling ? (
+              <div className="mt-3">
+                <VoiceEnrollment onComplete={() => setEnrolling(false)} />
+                <button
+                  onClick={() => setEnrolling(false)}
+                  className="mt-3 rounded-md border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => setEnrolling(true)}
+                  className="px-3 py-1 rounded-md bg-accent text-black text-xs glow-ring"
+                >
+                  {voiceProfile ? 'Re-enroll Voice' : 'Enroll Voice'}
+                </button>
+                {voiceProfile && (
+                  <button
+                    onClick={clearVoiceProfile}
+                    className="px-3 py-1 rounded-md border border-red-400/30 text-red-300 text-xs hover:bg-red-500/10"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+            <div className="font-semibold text-white">PIN Unlock</div>
+            <div className="text-xs text-green-400">Configured · fallback</div>
           </div>
         </motion.section>
 
@@ -182,32 +203,5 @@ export default function SettingsPanel() {
         </>
       )}
     </AnimatePresence>
-  )
-}
-
-function ReadonlyRow({
-  title,
-  tag,
-  status,
-  ok,
-  detail,
-}: {
-  title: string
-  tag: string
-  status: string
-  ok: boolean
-  detail?: string
-}) {
-  return (
-    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="font-semibold text-white">{title}</div>
-          <div className={`text-xs mt-1 ${ok ? 'text-green-400' : 'text-secondary'}`}>{status}</div>
-          {detail && <div className="text-xs text-secondary mt-0.5">{detail}</div>}
-        </div>
-        <div className="text-xs text-secondary">{tag}</div>
-      </div>
-    </div>
   )
 }

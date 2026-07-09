@@ -56,21 +56,8 @@ export default function SecurityPolicyEditor() {
 
   return (
     <div className="grid gap-3">
-      <Row label="Security mode" desc="How strict voice unlock is">
-        <div className="flex overflow-hidden rounded-lg border border-white/10">
-          {(['phrase_and_voice', 'voice_only'] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => save({ securityMode: m })}
-              disabled={loading}
-              className={`px-3 py-1.5 text-xs transition ${
-                policy.securityMode === m ? 'bg-accent text-black' : 'text-white/70 hover:bg-white/5'
-              }`}
-            >
-              {m === 'phrase_and_voice' ? 'Phrase + Voice' : 'Voice only'}
-            </button>
-          ))}
-        </div>
+      <Row label="Voice unlock" desc="Your voice unlocks Senti">
+        <span className="text-sm font-medium text-accent">On</span>
       </Row>
 
       <Row label="Max attempts before lockout" desc="Failed PIN attempts">

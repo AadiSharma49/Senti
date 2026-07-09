@@ -1,7 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { PageHeader, Card, Badge } from '@/components/ui'
 import SentiMark from '@/components/SentiMark'
-import SecurityModeSelector from '@/components/SecurityModeSelector'
 import VoiceSensitivity from '@/components/VoiceSensitivity'
 import DeleteVoiceprintButton from '@/components/DeleteVoiceprintButton'
 import { clerkEnabled } from '@/lib/auth'
@@ -19,14 +18,8 @@ export default async function VoiceProfilePage() {
     <div>
       <PageHeader
         title="Voice Profile"
-        subtitle="Manage how voice unlock behaves. This policy applies to every device on your account."
+        subtitle="Your voice unlocks Senti on every device on your account."
       />
-
-      <Card className="mb-6">
-        <h2 className="text-lg font-semibold text-white">Security mode</h2>
-        <p className="mt-1 mb-4 text-sm text-white/50">Choose how strict voice unlock is.</p>
-        <SecurityModeSelector />
-      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">
@@ -39,9 +32,9 @@ export default async function VoiceProfilePage() {
               </div>
               <p className="mt-1 text-sm text-white/50">
                 {voiceprint
-                  ? `${voiceprint.sampleCount} samples · ${
-                      voiceprint.phrase ? 'phrase + voice' : 'voice only'
-                    } · enrolled ${new Date(voiceprint.createdAt).toLocaleDateString()}`
+                  ? `${voiceprint.sampleCount} samples · enrolled ${new Date(
+                      voiceprint.createdAt
+                    ).toLocaleDateString()}`
                   : 'Enroll on your device — Senti captures your voice there and syncs it to your account.'}
               </p>
             </div>

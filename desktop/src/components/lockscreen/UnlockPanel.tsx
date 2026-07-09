@@ -3,21 +3,37 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useLockStore } from '../../state/lockStore'
 import { useSettingsStore } from '../../state/settingsStore'
 import { useVoiceAuthStore } from '../../state/voiceAuthStore'
+import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { audioManager } from '../../services/audioManager'
 
 const VOICE_MAX_ATTEMPTS = 3
 
 function VoiceStatusCard() {
   const { state, attempts } = useVoiceAuthStore()
+  const hasProfile = useVoiceProfileStore((s) => !!s.profile)
 
-  if (state === 'idle' || state === 'unavailable') return null
+  // Brief idle flash while the session starts — don't show yet.
+  if (state === 'idle') return null
+
+  // No voiceprint enrolled: tell the user how to turn voice unlock on.
+  if (state === 'unavailable') {
+    if (hasProfile) return null // a real error (mic/model) — stay quiet, PIN still works
+    return (
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 ring-1 ring-white/5">
+        <div className="font-semibold text-white">Voice Unlock</div>
+        <p className="mt-1 text-sm text-secondary">
+          Not set up yet. Open Settings (top-right) to enroll your voice.
+        </p>
+      </div>
+    )
+  }
 
   const isActive = state === 'listening' || state === 'verifying' || state === 'loading'
   const text =
     state === 'loading'
       ? 'Starting voice engine…'
       : state === 'listening'
-      ? 'Say your passphrase to unlock'
+      ? 'Speak to unlock'
       : state === 'verifying'
       ? 'Verifying your voice…'
       : state === 'rejected'

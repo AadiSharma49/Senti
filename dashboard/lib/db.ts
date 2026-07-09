@@ -57,6 +57,16 @@ export async function listDevices(userId: string) {
   return prisma.device.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } })
 }
 
+/** The account's security timeline (most recent first). Empty until devices report events. */
+export async function listEvents(userId: string, limit = 25) {
+  return prisma.unlockEvent.findMany({
+    where: { userId },
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    include: { device: true },
+  })
+}
+
 export async function deleteDevice(userId: string, id: string) {
   await prisma.device.deleteMany({ where: { id, userId } })
 }
