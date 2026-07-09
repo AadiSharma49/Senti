@@ -34,22 +34,28 @@ function localGreeting(name?: string | null): string {
 export async function generateGreeting(opts: {
   name?: string | null
   deviceName?: string | null
+  language?: string | null
 }): Promise<string> {
   if (!client) return localGreeting(opts.name)
+  const language = opts.language || 'en-US'
   try {
     const res = await client.messages.create({
       model: 'claude-opus-4-8',
-      max_tokens: 100,
+      max_tokens: 120,
       system:
-        'You are Senti, an AI security assistant that greets its owner the moment their computer unlocks by voice. ' +
+        'You are Senti, an AI security assistant — think Jarvis from Iron Man: calm, sharp, quietly confident. ' +
+        'You greet your owner the moment their computer unlocks by voice. ' +
         'Reply with ONE short spoken greeting, at most ~15 words. Vary it every time — warm, witty, calm, or motivational, ' +
         'your choice. Never reuse a stock phrase. Plain text only: no emoji, no quotation marks, no preamble — just the words to speak.',
       messages: [
         {
           role: 'user',
-          content: `Time of day: ${timeOfDay()}. Owner's name: ${opts.name || 'unknown'}. Device: ${
-            opts.deviceName || 'this computer'
-          }. Generate the greeting.`,
+          content:
+            `Time of day: ${timeOfDay()}. Owner's name: ${opts.name || 'unknown'}. Device: ${
+              opts.deviceName || 'this computer'
+            }. ` +
+            `Speak in the language of BCP-47 locale "${language}" (respond ONLY in that language; if it is English, use English). ` +
+            `Generate the greeting.`,
         },
       ],
     })

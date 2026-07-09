@@ -12,7 +12,9 @@ import type { Utterance } from '../types/audio'
  * auth decisions here.
  */
 
-const MODEL_ID = 'whisper-tiny.en'
+// Multilingual Whisper — transcribes wake phrases in any language and
+// auto-detects the language spoken.
+const MODEL_ID = 'whisper-tiny'
 const ASR_SAMPLE_RATE = 16000
 
 let asr: any = null

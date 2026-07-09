@@ -33,8 +33,9 @@ const MODELS = [
     ],
   },
   {
-    localId: 'whisper-tiny.en',
-    base: 'https://huggingface.co/Xenova/whisper-tiny.en/resolve/main',
+    // Multilingual Whisper (99 languages) so wake phrases work in any language.
+    localId: 'whisper-tiny',
+    base: 'https://huggingface.co/Xenova/whisper-tiny/resolve/main',
     files: [
       'config.json',
       'generation_config.json',

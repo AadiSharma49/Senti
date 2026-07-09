@@ -30,7 +30,8 @@ export async function GET(req: Request) {
 
   const user = await prisma.user.findUnique({ where: { id: device.userId } })
   const name = user?.name || user?.email?.split('@')[0] || null
-  const greeting = await generateGreeting({ name, deviceName: device.name })
+  const language = new URL(req.url).searchParams.get('lang') || 'en-US'
+  const greeting = await generateGreeting({ name, deviceName: device.name, language })
 
   return NextResponse.json({ greeting }, { headers: CORS })
 }
