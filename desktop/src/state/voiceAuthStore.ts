@@ -9,36 +9,50 @@ import { useLockStore } from './lockStore'
 import type { Utterance } from '../types/audio'
 
 /**
- * voiceAuthStore - orchestrates the live voice unlock session on the
- * lock screen.
+ * voiceAuthStore - click-to-listen voice unlock.
  *
- * Session lifecycle: LockScreen starts a session when locked and stops
- * it when unlocked (or while the settings panel is open). Each captured
- * utterance is scored against the enrolled voice profile:
- *   match            -> lockStore.authSuccess()
- *   3rd rejection    -> fall back to PIN entry (per auth priority chain)
- *
- * Voice rejections do NOT feed lockStore.authFail(): the PIN lockout
- * counter is reserved for PIN attempts, so background speech can never
- * lock the user out.
+ * The mic is OFF until the user taps "Voice Unlock". Then Senti listens
+ * for ONE utterance, verifies it against the enrolled voiceprint, and
+ * either unlocks or returns to idle. It never listens in the background,
+ * so someone talking nearby can't trigger or interfere with an unlock.
  */
 
 export type VoiceUnlockState =
-  | 'idle'         // no session
+  | 'idle'         // mic off, waiting for the user to tap Voice Unlock
   | 'loading'      // engine/mic starting
-  | 'listening'    // waiting for the passphrase
-  | 'verifying'    // scoring an utterance
-  | 'rejected'     // last utterance did not match (transient)
+  | 'listening'    // listening for the user's voice (single-shot)
+  | 'verifying'    // scoring the captured utterance
+  | 'rejected'     // last utterance did not match (transient) -> idle
   | 'matched'      // unlocked by voice
-  | 'fallback'     // voice attempts exhausted, PIN required
   | 'unavailable'  // no profile / method disabled / mic or model error
 
-const MAX_VOICE_ATTEMPTS = 3
-const REJECTED_FEEDBACK_MS = 1800
+// Stop listening if the user taps but doesn't speak.
+const LISTEN_TIMEOUT_MS = 8000
+const REJECTED_FEEDBACK_MS = 2000
 
 let recorder: UtteranceRecorder | null = null
 let busy = false
+let listenTimer: number | null = null
 let rejectTimer: number | null = null
+
+function clearTimers() {
+  if (listenTimer !== null) {
+    clearTimeout(listenTimer)
+    listenTimer = null
+  }
+  if (rejectTimer !== null) {
+    clearTimeout(rejectTimer)
+    rejectTimer = null
+  }
+}
+
+/** Stop the mic + recorder without changing the store state. */
+function stopCapture() {
+  clearTimers()
+  recorder?.stop()
+  recorder = null
+  audioCapture.stop()
+}
 
 export interface VoiceAuthStore {
   state: VoiceUnlockState
@@ -46,6 +60,7 @@ export interface VoiceAuthStore {
   lastScore: number | null
   error: string | null
 
+  /** User-initiated: begin a single listen-and-verify. */
   startSession: () => Promise<void>
   stopSession: (nextState?: VoiceUnlockState) => void
   resetAttempts: () => void
@@ -65,10 +80,6 @@ export const useVoiceAuthStore = create<VoiceAuthStore>((set, get) => ({
     const voiceEnabled = useSettingsStore.getState().security.enabledMethods.includes('voice')
     if (!profile || !voiceEnabled) {
       set({ state: 'unavailable' })
-      return
-    }
-    if (get().attempts >= MAX_VOICE_ATTEMPTS) {
-      set({ state: 'fallback' })
       return
     }
 
@@ -92,20 +103,19 @@ export const useVoiceAuthStore = create<VoiceAuthStore>((set, get) => ({
     recorder.start(audioCapture)
     set({ state: 'listening' })
 
-    const lock = useLockStore.getState()
-    if (lock.state === 'locked') {
-      lock.startVoiceAttempt()
-    }
+    // Auto-stop if nothing is spoken.
+    listenTimer = window.setTimeout(() => {
+      listenTimer = null
+      const s = get().state
+      if (s === 'listening' || s === 'loading') {
+        stopCapture()
+        set({ state: 'idle' })
+      }
+    }, LISTEN_TIMEOUT_MS)
   },
 
   stopSession: (nextState: VoiceUnlockState = 'idle') => {
-    if (rejectTimer !== null) {
-      clearTimeout(rejectTimer)
-      rejectTimer = null
-    }
-    recorder?.stop()
-    recorder = null
-    audioCapture.stop()
+    stopCapture()
     set({ state: nextState })
   },
 
@@ -114,8 +124,13 @@ export const useVoiceAuthStore = create<VoiceAuthStore>((set, get) => ({
 
 async function handleUtterance(utterance: Utterance): Promise<void> {
   if (busy) return
+  // Single-shot: only the first utterance of a listen is processed.
   if (useVoiceAuthStore.getState().state !== 'listening') return
   busy = true
+  clearTimers()
+  // Stop capturing immediately — we only verify this one utterance.
+  recorder?.stop()
+  recorder = null
   useVoiceAuthStore.setState({ state: 'verifying' })
 
   try {
@@ -129,33 +144,26 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
     const embedding = await voiceEmbeddingEngine.computeEmbedding(utterance)
     const score = cosineSimilarity(embedding, profile.embedding)
 
+    // Done verifying — release the mic either way.
+    audioCapture.stop()
+
     if (score >= threshold) {
-      useVoiceAuthStore.setState({ lastScore: score })
-      useVoiceAuthStore.getState().stopSession('matched')
+      useVoiceAuthStore.setState({ lastScore: score, state: 'matched' })
       audioManager.play('unlock')
       useLockStore.getState().authSuccess()
       return
     }
 
-    // Rejected: not the enrolled voice.
+    // Rejected: not the enrolled voice. Show feedback, then return to idle.
     audioManager.play('denied')
     const attempts = useVoiceAuthStore.getState().attempts + 1
-    if (attempts >= MAX_VOICE_ATTEMPTS) {
-      useVoiceAuthStore.setState({ attempts, lastScore: score })
-      useVoiceAuthStore.getState().stopSession('fallback')
-      const lock = useLockStore.getState()
-      if (lock.state === 'listening_voice') {
-        lock.enterPinEntry()
+    useVoiceAuthStore.setState({ attempts, lastScore: score, state: 'rejected' })
+    rejectTimer = window.setTimeout(() => {
+      rejectTimer = null
+      if (useVoiceAuthStore.getState().state === 'rejected') {
+        useVoiceAuthStore.setState({ state: 'idle' })
       }
-    } else {
-      useVoiceAuthStore.setState({ attempts, lastScore: score, state: 'rejected' })
-      rejectTimer = window.setTimeout(() => {
-        rejectTimer = null
-        if (useVoiceAuthStore.getState().state === 'rejected') {
-          useVoiceAuthStore.setState({ state: 'listening' })
-        }
-      }, REJECTED_FEEDBACK_MS)
-    }
+    }, REJECTED_FEEDBACK_MS)
   } catch {
     useVoiceAuthStore.getState().stopSession('unavailable')
   } finally {

@@ -6,14 +6,9 @@ import { useVoiceAuthStore } from '../../state/voiceAuthStore'
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { audioManager } from '../../services/audioManager'
 
-const VOICE_MAX_ATTEMPTS = 3
-
 function VoiceStatusCard() {
-  const { state, attempts } = useVoiceAuthStore()
+  const { state } = useVoiceAuthStore()
   const hasProfile = useVoiceProfileStore((s) => !!s.profile)
-
-  // Brief idle flash while the session starts — don't show yet.
-  if (state === 'idle') return null
 
   // No voiceprint enrolled: tell the user how to turn voice unlock on.
   if (state === 'unavailable') {
@@ -28,43 +23,57 @@ function VoiceStatusCard() {
     )
   }
 
-  const isActive = state === 'listening' || state === 'verifying' || state === 'loading'
+  if (!hasProfile) return null
+
+  const listening = state === 'listening'
+  const busy = state === 'loading' || state === 'listening' || state === 'verifying'
+  const tone =
+    state === 'rejected'
+      ? 'border-red-400/40 bg-red-500/10 shadow-red-700/10'
+      : state === 'matched'
+      ? 'border-green-400/40 bg-green-500/10 shadow-green-700/10'
+      : 'border-white/10 bg-gradient-to-br from-white/5 to-white/10 shadow-cyan-700/10'
+
   const text =
-    state === 'loading'
-      ? 'Starting voice engine…'
+    state === 'idle'
+      ? 'Tap to unlock with your voice'
+      : state === 'loading'
+      ? 'Starting…'
       : state === 'listening'
-      ? 'Speak to unlock'
+      ? 'Listening — speak now'
       : state === 'verifying'
       ? 'Verifying your voice…'
       : state === 'rejected'
-      ? `Voice not recognized (${attempts}/${VOICE_MAX_ATTEMPTS})`
-      : state === 'fallback'
-      ? 'Voice attempts used — enter your PIN'
+      ? "That's not your voice — tap to try again"
       : 'Voice recognized — unlocking'
 
+  const onTap = () => {
+    if (state === 'idle' || state === 'rejected') {
+      void useVoiceAuthStore.getState().startSession()
+    }
+  }
+
   return (
-    <div
-      className={`rounded-3xl border p-5 ring-1 ring-white/5 shadow-lg transition-colors ${
-        state === 'rejected'
-          ? 'border-red-400/40 bg-red-500/10 shadow-red-700/10'
-          : state === 'matched'
-          ? 'border-green-400/40 bg-green-500/10 shadow-green-700/10'
-          : 'border-white/10 bg-gradient-to-br from-white/5 to-white/10 shadow-cyan-700/10'
-      }`}
-    >
+    <div className={`rounded-3xl border p-5 ring-1 ring-white/5 shadow-lg transition-colors ${tone}`}>
       <div className="flex items-center gap-4">
-        <div className="relative flex h-10 w-10 items-center justify-center">
-          {isActive && (
+        <button
+          onClick={onTap}
+          disabled={busy}
+          aria-label="Voice unlock"
+          className={`relative flex h-12 w-12 items-center justify-center rounded-full transition ${
+            busy ? 'cursor-default' : 'cursor-pointer hover:scale-105'
+          } ${listening ? 'bg-accent/20' : 'bg-white/5'}`}
+        >
+          {(listening || state === 'verifying') && (
             <motion.div
-              className={`absolute inset-0 rounded-full ${state === 'verifying' ? 'bg-accent/30' : 'bg-accent/20'}`}
-              animate={{ scale: [1, 1.5, 1], opacity: [0.6, 0, 0.6] }}
-              transition={{ duration: state === 'verifying' ? 1 : 2, repeat: Infinity, ease: 'easeOut' }}
+              className="absolute inset-0 rounded-full bg-accent/25"
+              animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
+              transition={{ duration: state === 'verifying' ? 1 : 1.8, repeat: Infinity, ease: 'easeOut' }}
             />
           )}
-          {/* Microphone icon */}
           <svg
             xmlns="http://www.w3.org/2000/svg"
-            className={`h-5 w-5 relative ${
+            className={`h-6 w-6 relative ${
               state === 'rejected' ? 'text-red-300' : state === 'matched' ? 'text-green-300' : 'text-accent'
             }`}
             fill="none"
@@ -74,8 +83,8 @@ function VoiceStatusCard() {
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
           </svg>
-        </div>
-        <div>
+        </button>
+        <div className="flex-1">
           <div className="font-semibold text-white">Voice Unlock</div>
           <p
             className={`text-sm ${
@@ -85,6 +94,14 @@ function VoiceStatusCard() {
             {text}
           </p>
         </div>
+        {(state === 'idle' || state === 'rejected') && (
+          <button
+            onClick={onTap}
+            className="rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-glow"
+          >
+            {state === 'rejected' ? 'Retry' : 'Unlock'}
+          </button>
+        )}
       </div>
     </div>
   )

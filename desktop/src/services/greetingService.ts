@@ -35,21 +35,50 @@ function localGreeting(): string {
   return options[Math.floor(Math.random() * options.length)]
 }
 
+export interface Greeting {
+  text: string
+  /** data: URI of human-voice audio (ElevenLabs), or null → use browser TTS. */
+  audio: string | null
+}
+
 /** Get a greeting: from the account (in the device's language) if linked, else local. */
-export async function fetchGreeting(lang: string): Promise<string> {
+export async function fetchGreeting(lang: string): Promise<Greeting> {
   const token = useDeviceStore.getState().token
-  if (!token) return localGreeting()
+  if (!token) return { text: localGreeting(), audio: null }
   try {
     const res = await fetch(`${GREETING_URL}?lang=${encodeURIComponent(lang)}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     })
-    if (!res.ok) return localGreeting()
+    if (!res.ok) return { text: localGreeting(), audio: null }
     const data = await res.json()
-    return typeof data.greeting === 'string' && data.greeting.trim() ? data.greeting.trim() : localGreeting()
+    const text = typeof data.greeting === 'string' && data.greeting.trim() ? data.greeting.trim() : localGreeting()
+    const audio = typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
+    return { text, audio }
   } catch {
-    return localGreeting()
+    return { text: localGreeting(), audio: null }
   }
+}
+
+/** Play pre-generated human-voice audio. Resolves when it ends (or times out). */
+function playAudio(dataUri: string): Promise<void> {
+  return new Promise((resolve) => {
+    try {
+      const audio = new Audio(dataUri)
+      let done = false
+      const finish = () => {
+        if (done) return
+        done = true
+        resolve()
+      }
+      audio.onended = finish
+      audio.onerror = finish
+      audio.play().catch(finish)
+      setTimeout(finish, 12000)
+    } catch {
+      resolve()
+    }
+  })
 }
 
 // --- Voice selection ------------------------------------------------
@@ -99,7 +128,19 @@ function pickVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesi
   return top && top.lang.toLowerCase().startsWith(base) ? top : ranked.find((v) => v.lang.toLowerCase().startsWith('en')) || top
 }
 
-/** Speak text aloud in the given language. Resolves when speech ends (or times out). */
+/**
+ * Speak a greeting: play the human-voice audio when available, otherwise
+ * fall back to the browser's built-in voice.
+ */
+export async function say(greeting: Greeting, lang: string): Promise<void> {
+  if (greeting.audio) {
+    await playAudio(greeting.audio)
+    return
+  }
+  await speak(greeting.text, lang)
+}
+
+/** Speak text aloud with the browser voice. Resolves when speech ends (or times out). */
 export async function speak(text: string, lang: string): Promise<void> {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined
   if (!synth) return

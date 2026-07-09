@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { dbEnabled, prisma } from '@/lib/prisma'
 import { getDeviceByToken } from '@/lib/db'
 import { generateGreeting } from '@/lib/greeting'
+import { generateSpeech } from '@/lib/tts'
 
 /**
  * Device greeting endpoint — the desktop authenticates with its device token
@@ -32,8 +33,10 @@ export async function GET(req: Request) {
   const name = user?.name || user?.email?.split('@')[0] || null
   const language = new URL(req.url).searchParams.get('lang') || 'en-US'
   const greeting = await generateGreeting({ name, deviceName: device.name, language })
+  // Human voice (ElevenLabs) if configured; null → desktop uses browser TTS.
+  const audio = await generateSpeech(greeting)
 
-  return NextResponse.json({ greeting }, { headers: CORS })
+  return NextResponse.json({ greeting, audio }, { headers: CORS })
 }
 
 export async function OPTIONS() {

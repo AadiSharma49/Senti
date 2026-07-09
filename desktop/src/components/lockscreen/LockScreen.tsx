@@ -27,19 +27,13 @@ export default function LockScreen() {
     return () => clearTimeout(t)
   }, [lock])
 
-  // Voice unlock session lifecycle:
-  // - starts when the screen locks (mic on, listening for the passphrase)
-  // - pauses while the settings panel is open (enrollment needs the mic)
-  // - stops on unlock
+  // Voice unlock is click-to-listen (started from the button), never
+  // auto-started. Just make sure the mic is released when the settings
+  // panel opens or the screen unlocks/locks out.
   useEffect(() => {
     const voice = useVoiceAuthStore.getState()
     if (settingsOpen || state === 'unlocked' || state === 'lockout') {
       if (voice.state !== 'idle' && voice.state !== 'matched') voice.stopSession()
-      return
-    }
-    if (state === 'locked' || state === 'listening_voice') {
-      if (state === 'locked') voice.resetAttempts()
-      void voice.startSession()
     }
   }, [state, settingsOpen])
 

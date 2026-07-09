@@ -1,9 +1,9 @@
 import { create } from 'zustand'
-import { fetchGreeting, speak, deviceLang } from '../services/greetingService'
+import { fetchGreeting, say, deviceLang } from '../services/greetingService'
 
 /**
  * greetingStore - holds the current unlock greeting so the lock screen can
- * display it while it's spoken aloud. Uses the device's language.
+ * display it while it's spoken aloud (human voice if available, else TTS).
  */
 export interface GreetingStore {
   text: string
@@ -18,9 +18,9 @@ export const useGreetingStore = create<GreetingStore>((set) => ({
   speaking: false,
   greet: async () => {
     const lang = deviceLang()
-    const text = await fetchGreeting(lang)
-    set({ text, speaking: true })
-    await speak(text, lang)
+    const greeting = await fetchGreeting(lang)
+    set({ text: greeting.text, speaking: true })
+    await say(greeting, lang)
     set({ speaking: false })
   },
   reset: () => set({ text: '', speaking: false }),
