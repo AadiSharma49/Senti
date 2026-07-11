@@ -6,8 +6,10 @@ import Visualizer from '../visualizer/Visualizer'
 import UnlockPanel from './UnlockPanel'
 import SettingsButton from '../common/SettingsButton'
 import SettingsPanel from '../common/SettingsPanel'
+import SentiAssistant from '../assistant/SentiAssistant'
 import { useLockStore } from '../../state/lockStore'
 import { useVoiceAuthStore } from '../../state/voiceAuthStore'
+import { useAssistantStore } from '../../state/assistantStore'
 import { useUiStore } from '../../state/uiStore'
 import { useGreetingStore } from '../../state/greetingStore'
 import { audioManager } from '../../services/audioManager'
@@ -16,6 +18,12 @@ export default function LockScreen() {
   const { state, lock } = useLockStore()
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const greeting = useGreetingStore((s) => s.text)
+
+  const enterDesktop = () => {
+    try {
+      window.close()
+    } catch {}
+  }
 
   useEffect(() => {
     // Boot sequence: brief boot -> preload sounds -> lock
@@ -46,28 +54,21 @@ export default function LockScreen() {
   useEffect(() => {
     if (state !== 'unlocked') return
 
-    let closed = false
-    const close = () => {
-      if (closed) return
-      closed = true
-      try {
-        window.close()
-      } catch {}
-    }
-
-    // Speak the AI greeting, then close shortly after it finishes.
-    // A hard cap guarantees the window always closes even if TTS stalls.
-    const hardCap = setTimeout(close, 9000)
+    // Speak the AI greeting, then open the assistant so the user can talk to
+    // Senti. The user leaves to the desktop with the "Enter desktop" button
+    // (window stays until then — this IS the lock screen).
+    let cancelled = false
     useGreetingStore
       .getState()
       .greet()
       .finally(() => {
-        setTimeout(close, 500)
+        if (!cancelled) setTimeout(() => useAssistantStore.getState().show(), 400)
       })
 
     return () => {
-      clearTimeout(hardCap)
+      cancelled = true
       useGreetingStore.getState().reset()
+      useAssistantStore.getState().hide()
     }
   }, [state])
 
@@ -110,6 +111,25 @@ export default function LockScreen() {
               >
                 {greeting || 'Welcome back.'}
               </motion.div>
+              <motion.div
+                className="flex items-center gap-3"
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4, duration: 0.5 }}
+              >
+                <button
+                  onClick={() => useAssistantStore.getState().show()}
+                  className="rounded-2xl bg-accent px-5 py-2.5 text-sm font-semibold text-black transition hover:bg-accent-glow"
+                >
+                  Talk to Senti
+                </button>
+                <button
+                  onClick={enterDesktop}
+                  className="rounded-2xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-white/10"
+                >
+                  Enter desktop
+                </button>
+              </motion.div>
             </motion.div>
           ) : (
             <motion.div
@@ -125,6 +145,12 @@ export default function LockScreen() {
             >
                 <Visualizer />
                 <UnlockPanel />
+                <button
+                  onClick={() => useAssistantStore.getState().show()}
+                  className="text-xs uppercase tracking-[0.3em] text-secondary transition hover:text-accent"
+                >
+                  Talk to Senti
+                </button>
             </motion.div>
           )}
         </AnimatePresence>
@@ -132,6 +158,8 @@ export default function LockScreen() {
         <SettingsButton />
         <SettingsPanel />
       </div>
+
+      <SentiAssistant />
     </motion.div>
   )
 }

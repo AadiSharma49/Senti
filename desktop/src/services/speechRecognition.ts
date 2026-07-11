@@ -45,6 +45,18 @@ export async function transcribe(utterance: Utterance): Promise<string> {
   return normalizePhrase(typeof out?.text === 'string' ? out.text : '')
 }
 
+/**
+ * Transcribe an utterance to its RAW text (original casing, punctuation, and
+ * script preserved) — used by the conversational assistant so questions in any
+ * language survive intact. Auto-detects the spoken language.
+ */
+export async function transcribeRaw(utterance: Utterance): Promise<string> {
+  const p = await loadSpeechRecognition()
+  const audio = resampleTo(utterance.samples, utterance.sampleRate, ASR_SAMPLE_RATE)
+  const out = await p(audio)
+  return typeof out?.text === 'string' ? out.text.trim() : ''
+}
+
 /** Lowercase, strip punctuation, collapse whitespace. */
 export function normalizePhrase(text: string): string {
   return text
