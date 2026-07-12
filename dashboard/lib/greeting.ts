@@ -1,13 +1,14 @@
-import { geminiGenerate, geminiEnabled } from './gemini'
+import { llmChat, llmEnabled } from './llm'
 
 /**
- * AI greeting generator (Google Gemini). When a key is configured, Senti's
- * assistant composes a fresh spoken greeting on each unlock. Without a key it
- * falls back to a varied local greeting so the feature still works.
+ * AI greeting generator. When a brain is configured (Groq / Grok / OpenAI /
+ * Gemini — see lib/llm.ts), Senti composes a fresh spoken greeting on each
+ * unlock. Without one it falls back to a varied local greeting so the feature
+ * still works.
  *
  * Runs server-side only — the key never reaches the desktop.
  */
-export const aiGreetingEnabled = geminiEnabled
+export const aiGreetingEnabled = llmEnabled
 
 function timeOfDay(): string {
   const h = new Date().getHours()
@@ -33,7 +34,7 @@ export async function generateGreeting(opts: {
   language?: string | null
 }): Promise<string> {
   const language = opts.language || 'en-US'
-  const text = await geminiGenerate({
+  const text = await llmChat({
     system:
       'You are Senti, an AI security assistant — think Jarvis from Iron Man: calm, sharp, quietly confident. ' +
       'You greet your owner the moment their computer unlocks by voice. ' +

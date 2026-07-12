@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { dbEnabled, prisma } from '@/lib/prisma'
 import { getDeviceByToken } from '@/lib/db'
-import { geminiGenerate, type ChatMsg } from '@/lib/gemini'
+import { llmChat, type ChatMsg } from '@/lib/llm'
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
   const language = body.language || 'en-US'
 
   const reply =
-    (await geminiGenerate({
+    (await llmChat({
       system: persona(name, language),
       messages,
       search: true,
