@@ -6,8 +6,32 @@ import { voiceEmbeddingEngine, averageEmbeddings } from '../../services/voiceEmb
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useVoiceAuthStore } from '../../state/voiceAuthStore'
 import { uploadVoiceprint } from '../../services/voiceprintSync'
+import type { Utterance } from '../../types/audio'
 
-const ENROLL_SAMPLES = 3
+/**
+ * Guided voice enrollment (voice-only).
+ *
+ * Senti must learn your VOICE, not a phrase. If every enrollment sample is the
+ * same sentence, the averaged embedding drifts toward that sentence's sounds
+ * and unlock only works when you repeat it. So we walk the user through
+ * several DIFFERENT lines, and reject samples that are too short to carry a
+ * reliable voiceprint. The result is text-independent: afterwards you can say
+ * absolutely anything to unlock.
+ */
+
+/** Different lines on purpose — a varied voiceprint works with any words. */
+const PROMPTS = [
+  'Hey Senti, unlock my computer.',
+  'The weather looks pretty good outside today.',
+  'Let me get started with my work now.',
+  'My voice is the only key I need.',
+  'Play some music and tell me the news.',
+]
+
+const ENROLL_SAMPLES = PROMPTS.length
+
+/** Anything shorter than this is too little audio for a reliable voiceprint. */
+const MIN_ENROLL_SEC = 1.2
 
 type Phase = 'intro' | 'preparing' | 'capturing' | 'done' | 'error'
 
@@ -16,11 +40,6 @@ interface VoiceEnrollmentProps {
   onComplete?: () => void
 }
 
-/**
- * Guided voice enrollment (voice-only). The user says a few natural
- * sentences; Senti learns their voiceprint. Unlock later just needs their
- * voice — no passphrase, no speech recognition.
- */
 export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
   const recorderRef = useRef<UtteranceRecorder | null>(null)
   const embeddingsRef = useRef<Float32Array[]>([])
@@ -30,6 +49,7 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
   const [samplesDone, setSamplesDone] = useState(0)
   const [recorderState, setRecorderState] = useState<UtteranceRecorderState>('idle')
   const [computing, setComputing] = useState(false)
+  const [tooShort, setTooShort] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const setProfile = useVoiceProfileStore((s) => s.setProfile)
@@ -45,8 +65,16 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
 
   useEffect(() => cleanup, [])
 
-  const handleUtterance = async (utterance: Parameters<Parameters<UtteranceRecorder['onUtterance']>[0]>[0]) => {
+  const handleUtterance = async (utterance: Utterance) => {
     if (embeddingsRef.current.length >= ENROLL_SAMPLES) return
+
+    // Too brief to model a voice — ask for that line again.
+    if (utterance.duration < MIN_ENROLL_SEC) {
+      setTooShort(true)
+      return
+    }
+    setTooShort(false)
+
     setComputing(true)
     try {
       const embedding = await voiceEmbeddingEngine.computeEmbedding(utterance)
@@ -77,6 +105,7 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
 
   const beginCapture = async () => {
     setError(null)
+    setTooShort(false)
     setPhase('preparing')
     embeddingsRef.current = []
     setSamplesDone(0)
@@ -101,22 +130,20 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
     setPhase('capturing')
   }
 
-  const statusText =
-    phase === 'capturing'
-      ? computing
-        ? 'Listening…'
-        : recorderState === 'recording'
-        ? 'Recording — keep speaking…'
-        : `Speak naturally (${samplesDone}/${ENROLL_SAMPLES})`
-      : ''
+  const statusText = computing
+    ? 'Learning your voice…'
+    : recorderState === 'recording'
+    ? 'Recording — keep going…'
+    : `Read line ${Math.min(samplesDone + 1, ENROLL_SAMPLES)} of ${ENROLL_SAMPLES}`
 
   return (
     <div className="grid gap-4">
       {phase === 'intro' && (
         <>
           <p className="text-sm text-secondary">
-            Senti will learn your voice. Say a few natural sentences out loud — anything, in
-            any language. After this, your voice unlocks Senti.
+            Senti will learn your voice, not a password. You will read {ENROLL_SAMPLES} short lines
+            out loud — each one different on purpose, so afterwards you can unlock by saying
+            absolutely anything, in any language.
           </p>
           <button
             onClick={beginCapture}
@@ -150,15 +177,32 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
               transition={{ duration: 1.2, repeat: Infinity }}
             />
           </div>
+
+          {/* The line to read right now. */}
+          <div className="rounded-2xl border border-accent/25 bg-accent/5 p-4">
+            <div className="text-xs uppercase tracking-[0.3em] text-accent">Say this</div>
+            <div className="mt-2 text-lg text-white">
+              {PROMPTS[Math.min(samplesDone, ENROLL_SAMPLES - 1)]}
+            </div>
+          </div>
+
           <div className="text-sm text-white/80">{statusText}</div>
-          <div className="text-xs text-secondary">Speak naturally, pause between sentences.</div>
+          {tooShort ? (
+            <div className="text-xs text-amber-300">
+              That was too short — say the whole line, then pause.
+            </div>
+          ) : (
+            <div className="text-xs text-secondary">
+              Speak naturally at your normal pace, then pause.
+            </div>
+          )}
         </div>
       )}
 
       {phase === 'done' && (
         <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
           <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-          Voice enrolled. Speak to unlock.
+          Voice enrolled. Now say anything at all to unlock.
         </div>
       )}
 

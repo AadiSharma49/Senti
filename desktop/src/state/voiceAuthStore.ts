@@ -30,6 +30,13 @@ export type VoiceUnlockState =
 const LISTEN_TIMEOUT_MS = 8000
 const REJECTED_FEEDBACK_MS = 2000
 
+/**
+ * Below this, there isn't enough audio to judge a voice reliably. We keep
+ * listening rather than rejecting, so a cough or a clipped word never counts
+ * as "not your voice".
+ */
+const MIN_VERIFY_SEC = 0.7
+
 let recorder: UtteranceRecorder | null = null
 let busy = false
 let listenTimer: number | null = null
@@ -126,6 +133,10 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
   if (busy) return
   // Single-shot: only the first utterance of a listen is processed.
   if (useVoiceAuthStore.getState().state !== 'listening') return
+
+  // Too little audio to judge — stay listening and wait for a real utterance.
+  if (utterance.duration < MIN_VERIFY_SEC) return
+
   busy = true
   clearTimers()
   // Stop capturing immediately — we only verify this one utterance.
