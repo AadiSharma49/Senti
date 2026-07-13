@@ -1,0 +1,40 @@
+#!/bin/sh
+# Blocks commits that contain real secrets.
+#
+# Senti's keys belong in dashboard/.env (git-ignored) — never in a tracked
+# file. This has almost gone wrong twice by pasting a key dump into
+# .env.example, so the check is enforced rather than remembered.
+
+staged=$(git diff --cached --name-only --diff-filter=ACM)
+[ -z "$staged" ] && exit 0
+
+# Real key shapes: Clerk secret, ElevenLabs, Groq, OpenAI, xAI, Google, Neon/Postgres creds.
+# ERE syntax (grep -E): braces and groups are NOT backslash-escaped.
+pattern='sk_test_[A-Za-z0-9]{16,}|sk_live_[A-Za-z0-9]{16,}|sk_[a-f0-9]{40,}|gsk_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9-]{20,}|sk-proj-[A-Za-z0-9-]{20,}|xai-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,}|postgres(ql)?://[^:/]+:[^@]+@'
+
+found=0
+for f in $staged; do
+  [ -f "$f" ] || continue
+  if git show ":$f" 2>/dev/null | grep -nE "$pattern" >/dev/null 2>&1; then
+    echo "BLOCKED: possible secret in $f"
+    git show ":$f" | grep -nE "$pattern" | cut -c1-90 | sed 's/^/    /'
+    found=1
+  fi
+done
+
+if [ "$found" = "1" ]; then
+  cat <<'MSG'
+
+Commit blocked — a real credential is staged.
+
+Secrets go in dashboard/.env (git-ignored). Tracked files like .env.example
+must contain placeholders only.
+
+  git restore --staged <file>   # unstage it, then remove the value
+
+To override (you had better be sure):  git commit --no-verify
+MSG
+  exit 1
+fi
+
+exit 0

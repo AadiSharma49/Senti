@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { clerkEnabled } from '@/lib/auth'
 import { dbEnabled } from '@/lib/prisma'
 import { createDevice, listDevices, deleteDevice } from '@/lib/db'
+import { ensureUser } from '@/lib/user'
 
 /**
  * Device linking (dashboard, authenticated). POST creates a pairing token
@@ -39,6 +40,9 @@ export async function GET() {
 export async function POST() {
   const u = requireUser()
   if ('error' in u) return NextResponse.json({ error: u.error }, { status: u.status })
+  // A first-time user has no row yet, and Device.userId is a foreign key —
+  // create them (with their real name) before issuing a pairing token.
+  await ensureUser()
   const { token } = await createDevice(u.userId)
   return NextResponse.json({ token })
 }

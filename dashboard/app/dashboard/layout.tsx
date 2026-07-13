@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { SignOutButton } from '@clerk/nextjs'
 import SentiMark from '@/components/SentiMark'
 import { clerkEnabled } from '@/lib/auth'
+import { ensureUser } from '@/lib/user'
 
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: '▚' },
@@ -12,7 +13,12 @@ const nav = [
   { href: '/dashboard/settings', label: 'Settings', icon: '◇' },
 ]
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  // Every dashboard page hangs off this layout, so a new signup gets their DB
+  // row (and their real name, for Senti to greet them by) on first visit —
+  // before they can click anything that writes.
+  await ensureUser()
+
   return (
     <div className="bg-ambient flex min-h-screen">
       {/* Sidebar */}
