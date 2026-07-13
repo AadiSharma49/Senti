@@ -21,35 +21,27 @@ let asr: any = null
 let loadPromise: Promise<any> | null = null
 
 /**
- * Load configs, tried in order. onnxruntime's graph optimizer rewrites the
- * quantized decoder's MatMulNBits weights and fails on this model
- * ("Missing required scale ... DequantizeLinear"), so we turn optimization
- * off first. The plain configs are fallbacks in case a future ORT fixes it.
+ * fp32, NOT quantized. onnxruntime's QDQ optimizer rejects the quantized
+ * Whisper export ("TransposeDQWeightsForMatMulNBits Missing required scale"),
+ * and no session option avoids it — the weights themselves are the problem.
+ * fp32 has nothing to rewrite, so the session always builds. See
+ * scripts/setup-voice-model.mjs.
  */
-const LOAD_CONFIGS: Record<string, unknown>[] = [
-  { dtype: 'q8', session_options: { graphOptimizationLevel: 'disabled' } },
-  { dtype: 'q8', session_options: { graphOptimizationLevel: 'basic' } },
-  { dtype: 'q8' },
-]
+const DTYPE = 'fp32'
 
 /** Load the ASR model (idempotent). */
 export async function loadSpeechRecognition(): Promise<any> {
   if (asr) return asr
   if (!loadPromise) {
-    loadPromise = (async () => {
-      let lastErr: unknown = null
-      for (const config of LOAD_CONFIGS) {
-        try {
-          const p = await pipeline('automatic-speech-recognition', MODEL_ID, config as any)
-          asr = p
-          return p
-        } catch (err) {
-          lastErr = err
-        }
-      }
-      loadPromise = null
-      throw lastErr instanceof Error ? lastErr : new Error('Speech model failed to load')
-    })()
+    loadPromise = pipeline('automatic-speech-recognition', MODEL_ID, { dtype: DTYPE })
+      .then((p) => {
+        asr = p
+        return p
+      })
+      .catch((err) => {
+        loadPromise = null
+        throw err
+      })
   }
   return loadPromise
 }

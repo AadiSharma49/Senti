@@ -47,9 +47,12 @@ const MODELS = [
       'normalizer.json',
       'merges.txt',
       'vocab.json',
-      // q8 (quantized) variants — what transformers.js loads with dtype 'q8'
-      'onnx/encoder_model_quantized.onnx',
-      'onnx/decoder_model_merged_quantized.onnx',
+      // fp32, ~145 MB total. NOT the quantized variants: onnxruntime's QDQ
+      // optimizer rejects that export ("TransposeDQWeightsForMatMulNBits
+      // Missing required scale"). fp32 has no quantized weights to rewrite,
+      // so it loads cleanly.
+      'onnx/encoder_model.onnx',
+      'onnx/decoder_model_merged.onnx',
     ],
   },
 ]
