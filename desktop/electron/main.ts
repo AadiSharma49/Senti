@@ -1,9 +1,9 @@
-import { existsSync } from 'fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -15,6 +15,95 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 const DEV_SERVER_URL = 'http://localhost:5173'
 
 let mainWindow: BrowserWindowType | null = null
+
+// --- Device token vault ---------------------------------------------
+//
+// The device token is a bearer credential for this machine's account. It used
+// to live in localStorage, where any script in the renderer — or anyone who
+// opened DevTools — could read it straight out.
+//
+// Now it lives ONLY in the main process: encrypted at rest with the OS keystore
+// (DPAPI on Windows) and never handed back to the renderer. The renderer can
+// set it, clear it, and ask whether one exists — but it cannot read it. All
+// backend calls are made from here, with the token attached in main.
+
+const tokenFile = () => path.join(app.getPath('userData'), 'device.token')
+
+function saveToken(token: string): boolean {
+  try {
+    mkdirSync(path.dirname(tokenFile()), { recursive: true })
+    // safeStorage is unavailable on a bare Linux without a keyring; refuse to
+    // silently write a credential in the clear.
+    if (!safeStorage.isEncryptionAvailable()) return false
+    writeFileSync(tokenFile(), safeStorage.encryptString(token))
+    return true
+  } catch {
+    return false
+  }
+}
+
+function loadToken(): string | null {
+  try {
+    if (!existsSync(tokenFile())) return null
+    if (!safeStorage.isEncryptionAvailable()) return null
+    return safeStorage.decryptString(readFileSync(tokenFile()))
+  } catch {
+    return null
+  }
+}
+
+function clearToken(): void {
+  try {
+    if (existsSync(tokenFile())) unlinkSync(tokenFile())
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * The ONLY path from Senti to its backend.
+ *
+ * Runs in Node, not a browser context — so these requests carry no Origin
+ * header and are not subject to CORS. That is what lets the server refuse
+ * every browser outright instead of publishing `Access-Control-Allow-Origin: *`.
+ */
+async function apiRequest(opts: {
+  baseUrl: string
+  path: string
+  method?: string
+  body?: unknown
+  auth?: boolean
+}): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const { baseUrl, path: p, method = 'GET', body, auth = true } = opts
+
+  // Only ever talk to the configured backend, and only to the device API.
+  if (!/^https?:\/\//i.test(baseUrl) || !p.startsWith('/api/device/')) {
+    return { ok: false, status: 400, data: { error: 'Blocked request' } }
+  }
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+  if (auth) {
+    const token = loadToken()
+    if (!token) return { ok: false, status: 401, data: { error: 'This device is not linked' } }
+    headers.Authorization = `Bearer ${token}`
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}${p}`, {
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    })
+    const data = await res.json().catch(() => null)
+    return { ok: res.ok, status: res.status, data }
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      data: { error: err instanceof Error ? err.message : 'Network error' },
+    }
+  }
+}
 
 // --- Lock hardening -------------------------------------------------
 // The renderer is the source of truth for auth; it pushes lock state to
@@ -276,6 +365,36 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+})
+
+// --- Device token + backend access (main-process only) ---------------
+// Note there is deliberately NO "get token" handler. The renderer can prove a
+// token exists and can replace or delete it, but it can never read its value.
+
+ipcMain.handle('senti:token-set', (_e: unknown, token: unknown) => {
+  if (typeof token !== 'string' || !token.trim()) return false
+  return saveToken(token.trim())
+})
+
+ipcMain.handle('senti:token-clear', () => {
+  clearToken()
+  return true
+})
+
+ipcMain.handle('senti:token-present', () => !!loadToken())
+
+ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
+  const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }
+  if (typeof r.baseUrl !== 'string' || typeof r.path !== 'string') {
+    return { ok: false, status: 400, data: { error: 'Bad request' } }
+  }
+  return apiRequest({
+    baseUrl: r.baseUrl,
+    path: r.path,
+    method: typeof r.method === 'string' ? r.method : 'GET',
+    body: r.body,
+    auth: r.auth !== false,
+  })
 })
 
 ipcMain.handle('senti:get-platform', () => process.platform)

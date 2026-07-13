@@ -1,62 +1,53 @@
 import { NextResponse } from 'next/server'
-import { dbEnabled } from '@/lib/prisma'
-import { getDeviceByToken, getVoiceprint, upsertVoiceprint, touchDevice } from '@/lib/db'
+import { getVoiceprint, upsertVoiceprint, touchDevice } from '@/lib/db'
+import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 
 /**
- * Device voiceprint sync (token-authed). The desktop uploads the
- * voiceprint it captured on-device (POST) and a newly-linked device
- * downloads the account's voiceprint (GET). Embedding is a JSON array of
- * numbers; audio never touches this.
+ * Device voiceprint sync (token-authed). The desktop uploads the voiceprint it
+ * captured on-device (POST); a newly-linked device downloads the account's
+ * voiceprint (GET). Raw audio never touches this — only the embedding, which
+ * is encrypted at rest (lib/crypto.ts).
+ *
+ * Called from the desktop's Electron main process, never a browser, so there
+ * is no CORS here by design (see lib/deviceAuth.ts).
  */
 export const runtime = 'nodejs'
 
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-}
-
-function bearer(req: Request): string | null {
-  const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)
-  return m ? m[1].trim() : null
-}
-
-async function resolve(req: Request) {
-  if (!dbEnabled) return { error: 'Accounts not configured', status: 503 as const }
-  const token = bearer(req)
-  if (!token) return { error: 'Missing device token', status: 401 as const }
-  const device = await getDeviceByToken(token)
-  if (!device) return { error: 'Invalid device token', status: 401 as const }
-  return { device }
-}
+/** The speaker model emits 256 floats; anything else is not a voiceprint. */
+const MAX_DIMS = 1024
 
 export async function GET(req: Request) {
-  const r = await resolve(req)
-  if ('error' in r) return NextResponse.json({ error: r.error }, { status: r.status, headers: CORS })
-  const vp = await getVoiceprint(r.device.userId)
-  return NextResponse.json({ profile: vp }, { headers: CORS })
+  const auth = await authenticateDevice(req, 'voiceprint')
+  if (!auth.ok) return auth.response
+
+  const vp = await getVoiceprint(auth.device.userId)
+  return NextResponse.json({ profile: vp }, { headers: NO_STORE })
 }
 
 export async function POST(req: Request) {
-  const r = await resolve(req)
-  if ('error' in r) return NextResponse.json({ error: r.error }, { status: r.status, headers: CORS })
+  const auth = await authenticateDevice(req, 'voiceprint')
+  if (!auth.ok) return auth.response
+  const { device } = auth
 
   const body = await req.json().catch(() => null)
-  const embedding = Array.isArray(body?.embedding) ? (body.embedding as number[]) : null
-  if (!embedding || embedding.length === 0) {
-    return NextResponse.json({ error: 'Missing embedding' }, { status: 400, headers: CORS })
+  const raw = Array.isArray(body?.embedding) ? (body.embedding as unknown[]) : null
+
+  // Validate hard: this is what decides who can unlock a machine.
+  const embedding =
+    raw && raw.length > 0 && raw.length <= MAX_DIMS && raw.every((n) => typeof n === 'number' && Number.isFinite(n))
+      ? (raw as number[])
+      : null
+
+  if (!embedding) {
+    return NextResponse.json({ error: 'Invalid embedding' }, { status: 400, headers: NO_STORE })
   }
 
-  await upsertVoiceprint(r.device.userId, {
+  await upsertVoiceprint(device.userId, {
     embedding,
-    sampleCount: Number.isFinite(body.sampleCount) ? body.sampleCount : 0,
-    modelId: typeof body.modelId === 'string' ? body.modelId : 'unknown',
+    sampleCount: Number.isFinite(body.sampleCount) ? Math.min(Number(body.sampleCount), 100) : 0,
+    modelId: typeof body.modelId === 'string' ? body.modelId.slice(0, 80) : 'unknown',
   })
-  await touchDevice(r.device.id, { voiceEnrolled: true, status: 'locked' })
+  await touchDevice(device.id, { voiceEnrolled: true, status: 'locked' })
 
-  return NextResponse.json({ ok: true }, { headers: CORS })
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { headers: CORS })
+  return NextResponse.json({ ok: true }, { headers: NO_STORE })
 }

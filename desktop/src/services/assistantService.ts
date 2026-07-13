@@ -1,11 +1,12 @@
-import { useDeviceStore } from '../state/deviceStore'
-import { apiUrl } from '../config'
+import { api } from './api'
 
 /**
  * assistantService — sends the running conversation to Senti's brain
- * (dashboard /api/device/chat) and gets back a spoken reply. The user's
- * speech is transcribed on-device first; only text leaves the machine.
- * No API keys live on the desktop.
+ * (/api/device/chat) and gets back a spoken reply.
+ *
+ * The user's speech is transcribed on-device first, so only text leaves the
+ * machine. The request itself is made by the Electron main process (see
+ * services/api.ts), so the device token never touches renderer JavaScript.
  */
 const CHAT_PATH = '/api/device/chat'
 
@@ -21,39 +22,25 @@ export interface Reply {
 }
 
 export async function askSenti(messages: ChatTurn[], lang: string): Promise<Reply> {
-  const token = useDeviceStore.getState().token
-  if (!token) {
-    return {
-      text: 'Link this device to your Senti account first — open Settings and paste your device token. Then I can talk with you.',
-      audio: null,
-    }
-  }
-  try {
-    const res = await fetch(apiUrl(CHAT_PATH), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ messages, language: lang }),
-      cache: 'no-store',
-    })
-    if (!res.ok) {
-      const text =
-        res.status === 503
-          ? 'My assistant service is not running. Start the Senti dashboard and try again.'
-          : res.status === 401
-          ? 'This device is not linked to an account, so I cannot answer yet.'
-          : 'I could not reach my brain just now. Give me a moment and try again.'
-      return { text, audio: null }
-    }
-    const data = await res.json()
+  const res = await api<{ reply?: string; audio?: string; error?: string }>(CHAT_PATH, {
+    method: 'POST',
+    body: { messages, language: lang },
+  })
+
+  if (!res.ok) {
     const text =
-      typeof data.reply === 'string' && data.reply.trim() ? data.reply.trim() : 'Sorry, I did not catch that.'
-    const audio =
-      typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
-    return { text, audio }
-  } catch {
-    return {
-      text: 'I could not reach my brain — make sure the Senti dashboard is running on this machine.',
-      audio: null,
-    }
+      res.status === 401
+        ? 'This device is not linked to an account yet. Open Settings and paste your pairing token.'
+        : res.status === 429
+        ? 'You are talking to me faster than I can keep up. Give me a moment.'
+        : res.status === 503
+        ? 'My assistant service is not running. Start the Senti dashboard and try again.'
+        : 'I could not reach my brain just now. Give me a moment and try again.'
+    return { text, audio: null }
   }
+
+  const data = res.data || {}
+  const text = typeof data.reply === 'string' && data.reply.trim() ? data.reply.trim() : 'Sorry, I did not catch that.'
+  const audio = typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
+  return { text, audio }
 }

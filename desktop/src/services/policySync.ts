@@ -1,7 +1,6 @@
 import { useVoiceProfileStore } from '../state/voiceProfileStore'
 import { useSettingsStore } from '../state/settingsStore'
-import { useDeviceStore } from '../state/deviceStore'
-import { apiUrl } from '../config'
+import { api } from './api'
 
 /**
  * policySync - the desktop is a secure endpoint that OBEYS the dashboard.
@@ -50,23 +49,16 @@ async function deviceInfo(): Promise<{ hostname: string; platform: string }> {
  * its local config. Returns true if a policy was applied.
  */
 export async function syncPolicyFromDashboard(): Promise<boolean> {
-  const token = useDeviceStore.getState().token
-  if (!token) return false // unlinked: use local config, don't call the dashboard
+  const info = await deviceInfo()
+  const voiceEnrolled = !!useVoiceProfileStore.getState().profile
 
-  try {
-    const info = await deviceInfo()
-    const voiceEnrolled = !!useVoiceProfileStore.getState().profile
-    const res = await fetch(apiUrl(DEVICE_POLICY_PATH), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' }),
-    })
-    if (!res.ok) return false
-    const data = await res.json()
-    applyPolicy(data.policy ?? {})
-    return true
-  } catch {
-    // Dashboard not reachable — keep the last known local policy.
-    return false
-  }
+  const res = await api<{ policy?: RemotePolicy }>(DEVICE_POLICY_PATH, {
+    method: 'POST',
+    body: { name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' },
+  })
+  // Unlinked, offline, or rejected — keep the last known local policy.
+  if (!res.ok) return false
+
+  applyPolicy(res.data?.policy ?? {})
+  return true
 }

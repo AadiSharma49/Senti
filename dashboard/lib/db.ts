@@ -1,10 +1,13 @@
-import { randomBytes } from 'crypto'
 import { prisma } from './prisma'
 import { normalizePolicy, type Policy } from './policy'
+import { newDeviceToken, hashToken, encryptSecret, decryptSecret } from './crypto'
 
 /**
  * Data-access helpers. The dashboard (Clerk-authed) manages a user's
  * policy and devices; devices authenticate with a per-device token.
+ *
+ * Secrets never land here in the clear: device tokens are stored as hashes,
+ * voiceprints are encrypted (see lib/crypto.ts).
  */
 
 function toPolicy(row: {
@@ -43,11 +46,14 @@ export async function updatePolicy(userId: string, patch: Partial<Policy>): Prom
   return toPolicy(saved)
 }
 
-/** Create a new device + pairing token for an account. */
+/**
+ * Create a device + pairing token. The raw token is returned ONCE, for the
+ * user to paste into the desktop; only its hash is persisted.
+ */
 export async function createDevice(userId: string): Promise<{ id: string; token: string }> {
-  const token = randomBytes(24).toString('hex')
+  const token = newDeviceToken()
   const device = await prisma.device.create({
-    data: { userId, name: 'New device', os: 'unknown', token },
+    data: { userId, name: 'New device', os: 'unknown', tokenHash: hashToken(token) },
   })
   return { id: device.id, token }
 }
@@ -71,8 +77,9 @@ export async function deleteDevice(userId: string, id: string) {
 }
 
 /** Look up a device by its token, with the owner's policy. */
+/** Resolve a device from its raw token by hashing it — the DB holds no raw tokens. */
 export async function getDeviceByToken(token: string) {
-  return prisma.device.findUnique({ where: { token } })
+  return prisma.device.findUnique({ where: { tokenHash: hashToken(token) } })
 }
 
 export interface VoiceprintData {
@@ -81,13 +88,13 @@ export interface VoiceprintData {
   modelId: string
 }
 
-/** The account's voiceprint (embedding parsed back to numbers), or null. */
+/** The account's voiceprint (decrypted, parsed back to numbers), or null. */
 export async function getVoiceprint(userId: string): Promise<(VoiceprintData & { createdAt: Date }) | null> {
   const row = await prisma.voiceProfile.findUnique({ where: { userId } })
   if (!row) return null
   let embedding: number[] = []
   try {
-    embedding = JSON.parse(row.embedding) as number[]
+    embedding = JSON.parse(decryptSecret(row.embedding)) as number[]
   } catch {
     embedding = []
   }
@@ -104,7 +111,8 @@ export async function getVoiceprintStatus(userId: string) {
 }
 
 export async function upsertVoiceprint(userId: string, data: VoiceprintData) {
-  const embedding = JSON.stringify(data.embedding)
+  // Biometric data — encrypted before it ever reaches the database.
+  const embedding = encryptSecret(JSON.stringify(data.embedding))
   await prisma.voiceProfile.upsert({
     where: { userId },
     update: { embedding, sampleCount: data.sampleCount, modelId: data.modelId },

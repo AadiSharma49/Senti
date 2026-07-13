@@ -1,6 +1,5 @@
-import { useDeviceStore } from '../state/deviceStore'
 import { useVoiceProfileStore } from '../state/voiceProfileStore'
-import { apiUrl } from '../config'
+import { api } from './api'
 
 /**
  * greetingService - fetches the AI greeting to play on unlock and speaks it
@@ -44,21 +43,17 @@ export interface Greeting {
 
 /** Get a greeting: from the account (in the device's language) if linked, else local. */
 export async function fetchGreeting(lang: string): Promise<Greeting> {
-  const token = useDeviceStore.getState().token
-  if (!token) return { text: localGreeting(), audio: null }
-  try {
-    const res = await fetch(`${apiUrl(GREETING_PATH)}?lang=${encodeURIComponent(lang)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: 'no-store',
-    })
-    if (!res.ok) return { text: localGreeting(), audio: null }
-    const data = await res.json()
-    const text = typeof data.greeting === 'string' && data.greeting.trim() ? data.greeting.trim() : localGreeting()
-    const audio = typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
-    return { text, audio }
-  } catch {
-    return { text: localGreeting(), audio: null }
-  }
+  const res = await api<{ greeting?: string; audio?: string }>(
+    `${GREETING_PATH}?lang=${encodeURIComponent(lang)}`
+  )
+  // Unlinked, offline, or rate limited — never block an unlock on the network.
+  if (!res.ok) return { text: localGreeting(), audio: null }
+
+  const data = res.data || {}
+  const text =
+    typeof data.greeting === 'string' && data.greeting.trim() ? data.greeting.trim() : localGreeting()
+  const audio = typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
+  return { text, audio }
 }
 
 /** Play pre-generated human-voice audio. Resolves when it ends (or times out). */

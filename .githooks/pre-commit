@@ -12,12 +12,17 @@ staged=$(git diff --cached --name-only --diff-filter=ACM)
 # ERE syntax (grep -E): braces and groups are NOT backslash-escaped.
 pattern='sk_test_[A-Za-z0-9]{16,}|sk_live_[A-Za-z0-9]{16,}|sk_[a-f0-9]{40,}|gsk_[A-Za-z0-9]{20,}|sk-ant-[A-Za-z0-9-]{20,}|sk-proj-[A-Za-z0-9-]{20,}|xai-[A-Za-z0-9]{20,}|AIza[A-Za-z0-9_-]{30,}|postgres(ql)?://[^:/]+:[^@]+@'
 
+# Obvious placeholders in templates are fine — a hook that cries wolf gets
+# disabled, and then it protects nothing.
+placeholder='user:password|username:password|<[A-Za-z_-]+>|your[-_.]?(key|token|password|senti)|xxxx|changeme|placeholder|example\.com|@host/'
+
 found=0
 for f in $staged; do
   [ -f "$f" ] || continue
-  if git show ":$f" 2>/dev/null | grep -nE "$pattern" >/dev/null 2>&1; then
+  hits=$(git show ":$f" 2>/dev/null | grep -nE "$pattern" | grep -vEi "$placeholder")
+  if [ -n "$hits" ]; then
     echo "BLOCKED: possible secret in $f"
-    git show ":$f" | grep -nE "$pattern" | cut -c1-90 | sed 's/^/    /'
+    echo "$hits" | cut -c1-90 | sed 's/^/    /'
     found=1
   fi
 done

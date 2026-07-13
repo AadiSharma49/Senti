@@ -28,7 +28,11 @@ model User {
 }
 
 /// The account's enrolled voiceprint (captured on a device, synced up so
-/// it flows to the user's other devices). Embedding stored as a JSON array.
+/// it flows to the user's other devices).
+///
+/// `embedding` is biometric data — the one credential a user can never
+/// rotate — so it is stored ENCRYPTED (AES-256-GCM, see lib/crypto.ts),
+/// not as a readable JSON array.
 model VoiceProfile {
   id          String   @id @default(cuid())
   userId      String   @unique
@@ -62,8 +66,9 @@ model Device {
   os            String
   status        String   @default("offline")
   voiceEnrolled Boolean  @default(false)
-  /// Secret the desktop uses to authenticate as this device.
-  token         String   @unique
+  /// SHA-256 of the device token. The raw token is shown once, at pairing,
+  /// and never stored — a database leak yields no usable credentials.
+  tokenHash     String   @unique
   linked        Boolean  @default(false)
   lastSeen      DateTime @default(now())
   createdAt     DateTime @default(now())

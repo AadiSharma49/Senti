@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
-import { dbEnabled, prisma } from '@/lib/prisma'
-import { getDeviceByToken } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
+import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 import { llmChat, type ChatMsg } from '@/lib/llm'
 import { generateSpeech } from '@/lib/tts'
 
@@ -8,23 +8,15 @@ import { generateSpeech } from '@/lib/tts'
  * Conversational assistant endpoint — Senti's Jarvis.
  *
  * The desktop transcribes the user's spoken question on-device (Whisper), then
- * POSTs the running conversation here. We answer with Google Gemini (with live
- * Google Search grounding so it knows current facts), then voice the reply with
- * ElevenLabs. Both keys stay server-side; the desktop only ever sends text and
- * receives the reply plus audio.
+ * POSTs the running conversation here. We answer with the configured LLM, then
+ * voice the reply with ElevenLabs. Keys stay server-side; the desktop only ever
+ * sends text and receives the reply plus audio.
+ *
+ * Called from the desktop's Electron MAIN process, never a browser — so there
+ * is no CORS here by design (see lib/deviceAuth.ts). This is also the most
+ * expensive route we have, so it is the most tightly rate limited.
  */
 export const runtime = 'nodejs'
-
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST,OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type,Authorization',
-}
-
-function bearer(req: Request): string | null {
-  const m = (req.headers.get('authorization') || '').match(/^Bearer\s+(.+)$/i)
-  return m ? m[1].trim() : null
-}
 
 function persona(name: string | null, language: string): string {
   const who = name
@@ -47,32 +39,29 @@ function persona(name: string | null, language: string): string {
 }
 
 export async function POST(req: Request) {
-  if (!dbEnabled)
-    return NextResponse.json({ error: 'Accounts not configured' }, { status: 503, headers: CORS })
-  const token = bearer(req)
-  if (!token)
-    return NextResponse.json({ error: 'Missing device token' }, { status: 401, headers: CORS })
-  const device = await getDeviceByToken(token)
-  if (!device)
-    return NextResponse.json({ error: 'Invalid device token' }, { status: 401, headers: CORS })
+  const auth = await authenticateDevice(req, 'chat')
+  if (!auth.ok) return auth.response
+  const { device } = auth
 
   let body: { messages?: ChatMsg[]; language?: string }
   try {
     body = await req.json()
   } catch {
-    return NextResponse.json({ error: 'Bad request' }, { status: 400, headers: CORS })
+    return NextResponse.json({ error: 'Bad request' }, { status: 400, headers: NO_STORE })
   }
 
-  // Keep only the last ~12 turns to bound the prompt, and drop empties.
+  // Keep only the last ~12 turns to bound the prompt, and drop empties. Also
+  // cap each turn: an unbounded message is a way to burn tokens on our bill.
   const messages: ChatMsg[] = (body.messages || [])
     .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (m.content || '').trim())
     .slice(-12)
+    .map((m) => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
   if (!messages.length || messages[messages.length - 1].role !== 'user')
-    return NextResponse.json({ error: 'No question' }, { status: 400, headers: CORS })
+    return NextResponse.json({ error: 'No question' }, { status: 400, headers: NO_STORE })
 
   const user = await prisma.user.findUnique({ where: { id: device.userId } })
   const name = user?.name || user?.email?.split('@')[0] || null
-  const language = body.language || 'en-US'
+  const language = (body.language || 'en-US').slice(0, 20)
 
   const reply =
     (await llmChat({
@@ -85,9 +74,5 @@ export async function POST(req: Request) {
 
   const audio = await generateSpeech(reply)
 
-  return NextResponse.json({ reply, audio }, { headers: CORS })
-}
-
-export async function OPTIONS() {
-  return new NextResponse(null, { headers: CORS })
+  return NextResponse.json({ reply, audio }, { headers: NO_STORE })
 }

@@ -22,9 +22,12 @@ export default function SettingsPanel() {
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
   const [enrolling, setEnrolling] = useState(false)
 
-  const deviceToken = useDeviceStore((s) => s.token)
-  const setToken = useDeviceStore((s) => s.setToken)
-  const clearToken = useDeviceStore((s) => s.clearToken)
+  // Note: we only ever know WHETHER this device is linked. The pairing token
+  // lives in the Electron main process, encrypted by the OS keystore, and is
+  // never readable from here.
+  const deviceLinked = useDeviceStore((s) => s.linked)
+  const link = useDeviceStore((s) => s.link)
+  const unlinkDevice = useDeviceStore((s) => s.unlink)
   const [tokenInput, setTokenInput] = useState('')
   const [linkMsg, setLinkMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
@@ -38,24 +41,33 @@ export default function SettingsPanel() {
 
   const linkDevice = async () => {
     if (!tokenInput.trim()) return
-    setToken(tokenInput)
+    const stored = await link(tokenInput)
     setTokenInput('')
+    if (!stored) {
+      setLinkMsg({ ok: false, text: 'This system refused to store the token securely. Cannot link.' })
+      return
+    }
+
     const ok = await syncPolicyFromDashboard()
     if (ok) {
       // Push a local voiceprint up, or pull the account's down if this
       // device doesn't have one yet.
       if (useVoiceProfileStore.getState().profile) await uploadVoiceprint()
       else await ensureVoiceprint()
+    } else {
+      // A bad token is worse than none — don't leave it sitting there.
+      await unlinkDevice()
     }
+
     setLinkMsg(
       ok
         ? { ok: true, text: 'Linked. Synced with your account.' }
-        : { ok: false, text: 'Could not reach the dashboard. Check the token and that the dashboard is running.' }
+        : { ok: false, text: 'Could not link. Check the token, and that the Senti server is reachable.' }
     )
   }
 
-  const unlink = () => {
-    clearToken()
+  const unlink = async () => {
+    await unlinkDevice()
     setLinkMsg(null)
   }
 
@@ -147,7 +159,7 @@ export default function SettingsPanel() {
           <p className="section-sub mb-3">
             Link this device to your Senti account so it follows your dashboard settings.
           </p>
-          {deviceToken ? (
+          {deviceLinked ? (
             <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4">
               <div className="flex items-center gap-2 text-sm text-green-300">
                 <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
