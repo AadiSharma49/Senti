@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "next lint",
     "db:migrate": "prisma migrate deploy",
+    "db:studio": "prisma studio",
     "postinstall": "prisma generate"
   },
   "dependencies": {

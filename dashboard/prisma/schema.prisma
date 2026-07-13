@@ -11,7 +11,12 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Runtime: Neon's POOLED endpoint (PgBouncer). Needs ?pgbouncer=true, or
+  // Prisma's prepared statements break the pooler and connections get dropped
+  // ("Error in PostgreSQL connection: kind: Closed").
+  url = env("DATABASE_URL")
+  // Migrations: a DIRECT connection. DDL cannot run through the pooler.
+  directUrl = env("DIRECT_URL")
 }
 
 /// One row per account. `id` is the Clerk user id.
