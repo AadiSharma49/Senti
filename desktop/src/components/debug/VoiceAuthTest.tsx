@@ -96,7 +96,6 @@ export default function VoiceAuthTest() {
           const averaged = averageEmbeddings(enrollBufferRef.current)
           useVoiceProfileStore.getState().setProfile({
             embedding: Array.from(averaged),
-            phrase: '', // debug panel: voice-only, no phrase gate
             sampleCount: enrollBufferRef.current.length,
             modelId: 'wespeaker-voxceleb-resnet34-LM',
             createdAt: new Date().toISOString(),
@@ -240,9 +239,9 @@ export default function VoiceAuthTest() {
         {enrolling && (
           <div className="mb-4 rounded border border-accent/40 bg-accent/10 p-3 text-xs">
             <div className="font-semibold text-accent mb-1">
-              Enrolling — speak your passphrase ({enrollProgress}/{ENROLL_SAMPLES})
+              Enrolling — just speak ({enrollProgress}/{ENROLL_SAMPLES})
             </div>
-            <div>Say the same phrase naturally, {ENROLL_SAMPLES} times, pausing between each.</div>
+            <div>Say anything naturally, {ENROLL_SAMPLES} times, pausing between each.</div>
           </div>
         )}
 

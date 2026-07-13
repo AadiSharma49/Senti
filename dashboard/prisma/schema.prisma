@@ -34,20 +34,18 @@ model VoiceProfile {
   userId      String   @unique
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   embedding   String
-  phrase      String   @default("")
   sampleCount Int      @default(0)
   modelId     String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
 
-/// The account security policy the devices obey.
-/// securityMode: "voice_only" | "phrase_and_voice"
+/// The account security policy the devices obey. Unlock is voice-only:
+/// the user says anything and the voiceprint decides. No wake phrase.
 model Policy {
   id              String   @id @default(cuid())
   userId          String   @unique
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  securityMode    String   @default("phrase_and_voice")
   voiceThreshold  Float    @default(0.5)
   maxAttempts     Int      @default(3)
   lockoutDuration Int      @default(30)

@@ -1,4 +1,4 @@
-import { useVoiceProfileStore, type SecurityMode } from '../state/voiceProfileStore'
+import { useVoiceProfileStore } from '../state/voiceProfileStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { useDeviceStore } from '../state/deviceStore'
 
@@ -14,8 +14,8 @@ import { useDeviceStore } from '../state/deviceStore'
 const BASE = 'http://localhost:3000'
 const DEVICE_POLICY_URL = `${BASE}/api/device/policy`
 
+// Unlock is voice-only; the dashboard no longer sends a security mode.
 interface RemotePolicy {
-  securityMode?: SecurityMode
   voiceThreshold?: number
   maxAttempts?: number
   lockoutDuration?: number
@@ -23,9 +23,6 @@ interface RemotePolicy {
 
 function applyPolicy(p: RemotePolicy): void {
   const voice = useVoiceProfileStore.getState()
-  if (p.securityMode === 'voice_only' || p.securityMode === 'phrase_and_voice') {
-    voice.setSecurityMode(p.securityMode)
-  }
   if (typeof p.voiceThreshold === 'number') voice.setThreshold(p.voiceThreshold)
 
   const sec: { maxAttempts?: number; lockoutDuration?: number } = {}

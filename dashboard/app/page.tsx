@@ -7,7 +7,7 @@ import WaitlistForm from '@/components/WaitlistForm'
 const features = [
   {
     title: 'Voice unlock',
-    body: 'Walk up and speak your passphrase. Senti recognizes your voice — not just the words — and unlocks instantly.',
+    body: 'Walk up and say anything at all. There is no passphrase to remember — Senti recognizes your voice itself, and unlocks instantly.',
   },
   {
     title: 'Fully on-device',
@@ -26,7 +26,7 @@ const features = [
 const steps = [
   { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices and voice profile.' },
   { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and sign in.' },
-  { n: '03', title: 'Enroll your voice', body: 'Say your passphrase a few times. Your voiceprint is learned on-device.' },
+  { n: '03', title: 'Enroll your voice', body: 'Speak naturally a few times — any words. Your voiceprint is learned on-device.' },
   { n: '04', title: 'Unlock by speaking', body: 'Lock down, walk up, and talk to your computer. Your voice is the key.' },
 ]
 

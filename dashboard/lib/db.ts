@@ -8,7 +8,6 @@ import { normalizePolicy, type Policy } from './policy'
  */
 
 function toPolicy(row: {
-  securityMode: string
   voiceThreshold: number
   maxAttempts: number
   lockoutDuration: number
@@ -78,7 +77,6 @@ export async function getDeviceByToken(token: string) {
 
 export interface VoiceprintData {
   embedding: number[]
-  phrase: string
   sampleCount: number
   modelId: string
 }
@@ -93,14 +91,14 @@ export async function getVoiceprint(userId: string): Promise<(VoiceprintData & {
   } catch {
     embedding = []
   }
-  return { embedding, phrase: row.phrase, sampleCount: row.sampleCount, modelId: row.modelId, createdAt: row.createdAt }
+  return { embedding, sampleCount: row.sampleCount, modelId: row.modelId, createdAt: row.createdAt }
 }
 
 /** Whether the account has a voiceprint, plus lightweight metadata (no embedding). */
 export async function getVoiceprintStatus(userId: string) {
   const row = await prisma.voiceProfile.findUnique({
     where: { userId },
-    select: { phrase: true, sampleCount: true, modelId: true, createdAt: true },
+    select: { sampleCount: true, modelId: true, createdAt: true },
   })
   return row
 }
@@ -109,8 +107,8 @@ export async function upsertVoiceprint(userId: string, data: VoiceprintData) {
   const embedding = JSON.stringify(data.embedding)
   await prisma.voiceProfile.upsert({
     where: { userId },
-    update: { embedding, phrase: data.phrase, sampleCount: data.sampleCount, modelId: data.modelId },
-    create: { userId, embedding, phrase: data.phrase, sampleCount: data.sampleCount, modelId: data.modelId },
+    update: { embedding, sampleCount: data.sampleCount, modelId: data.modelId },
+    create: { userId, embedding, sampleCount: data.sampleCount, modelId: data.modelId },
   })
 }
 

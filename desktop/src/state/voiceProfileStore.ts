@@ -3,34 +3,22 @@ import { create } from 'zustand'
 /**
  * voiceProfileStore - persisted voice enrollment profile + security policy.
  *
- * The profile is plain data (a speaker embedding + metadata), so its
- * source can later move from localStorage to the dashboard API without
- * touching the verification engine.
+ * Unlock is VOICE ONLY: the user can say anything at all, and Senti unlocks
+ * if the voiceprint matches. There is no wake phrase, keyword, or passphrase
+ * anywhere in the system — identity is proven by WHO is speaking, not WHAT
+ * they say.
  *
- * No inference logic here - embeddings are computed by
- * voiceEmbeddingEngine and only stored/compared via this store's data.
+ * The profile is plain data (a speaker embedding + metadata), so its source
+ * can later move from localStorage to the dashboard API without touching the
+ * verification engine.
  */
 
-/** Minimum similarity for a voice match. Tunable; will become a dashboard-synced policy. */
+/** Minimum similarity for a voice match. Tunable; synced from dashboard policy. */
 export const DEFAULT_VOICE_THRESHOLD = 0.5
-
-/** Minimum word-level similarity for the spoken phrase to count as a match. */
-export const DEFAULT_PHRASE_THRESHOLD = 0.6
-
-/**
- * How strict voice unlock is:
- *  - 'voice_only'       → any words unlock, as long as it's the right voice
- *  - 'phrase_and_voice' → needs the right wake phrase AND the right voice
- */
-export type SecurityMode = 'voice_only' | 'phrase_and_voice'
-
-export const DEFAULT_SECURITY_MODE: SecurityMode = 'phrase_and_voice'
 
 export interface VoiceProfile {
   /** Averaged, L2-normalized speaker embedding */
   embedding: number[]
-  /** The wake phrase the user must speak (normalized). Empty = voice-only. */
-  phrase: string
   /** How many enrollment utterances were averaged */
   sampleCount: number
   /** Embedding model the profile was created with */
@@ -42,17 +30,19 @@ export interface VoiceProfile {
 export interface VoiceProfileState {
   profile: VoiceProfile | null
   threshold: number
-  securityMode: SecurityMode
 
   setProfile: (profile: VoiceProfile) => void
   clearProfile: () => void
   setThreshold: (threshold: number) => void
-  setSecurityMode: (mode: SecurityMode) => void
 }
 
 const STORAGE_KEY = 'senti:voiceProfile'
 const THRESHOLD_KEY = 'senti:voiceThreshold'
-const MODE_KEY = 'senti:securityMode'
+
+// Drop the retired wake-phrase mode so old installs can't resurrect it.
+try {
+  localStorage.removeItem('senti:securityMode')
+} catch {}
 
 const safeLoad = <T,>(key: string, fallback: T): T => {
   try {
@@ -73,7 +63,6 @@ const persist = (key: string, value: unknown) => {
 export const useVoiceProfileStore = create<VoiceProfileState>((set) => ({
   profile: safeLoad<VoiceProfile | null>(STORAGE_KEY, null),
   threshold: safeLoad<number>(THRESHOLD_KEY, DEFAULT_VOICE_THRESHOLD),
-  securityMode: safeLoad<SecurityMode>(MODE_KEY, DEFAULT_SECURITY_MODE),
 
   setProfile: (profile) => {
     persist(STORAGE_KEY, profile)
@@ -90,10 +79,5 @@ export const useVoiceProfileStore = create<VoiceProfileState>((set) => ({
   setThreshold: (threshold) => {
     persist(THRESHOLD_KEY, threshold)
     set({ threshold })
-  },
-
-  setSecurityMode: (mode) => {
-    persist(MODE_KEY, mode)
-    set({ securityMode: mode })
   },
 }))

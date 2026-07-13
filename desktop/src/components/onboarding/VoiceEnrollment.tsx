@@ -33,7 +33,6 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
   const [error, setError] = useState<string | null>(null)
 
   const setProfile = useVoiceProfileStore((s) => s.setProfile)
-  const setSecurityMode = useVoiceProfileStore((s) => s.setSecurityMode)
 
   const cleanup = () => {
     recorderRef.current?.stop()
@@ -58,12 +57,10 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
         const averaged = averageEmbeddings(embeddingsRef.current)
         setProfile({
           embedding: Array.from(averaged),
-          phrase: '',
           sampleCount: embeddingsRef.current.length,
           modelId: 'wespeaker-voxceleb-resnet34-LM',
           createdAt: new Date().toISOString(),
         })
-        setSecurityMode('voice_only')
         cleanup()
         setPhase('done')
         void uploadVoiceprint()

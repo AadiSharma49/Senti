@@ -1,7 +1,7 @@
 /**
- * Human text-to-speech via ElevenLabs. When ELEVENLABS_API_KEY is set,
- * the unlock greeting is spoken in a real, natural human voice (multilingual).
- * Without a key, the desktop falls back to the browser's built-in voice.
+ * Human text-to-speech via ElevenLabs. When ELEVENLABS_API_KEY is set, Senti
+ * speaks in a real, natural human voice (multilingual). Without a key, the
+ * desktop falls back to the browser's built-in voice.
  *
  * Runs server-side only — the key never reaches the desktop; the desktop
  * receives finished audio.
@@ -9,8 +9,20 @@
 const KEY = process.env.ELEVENLABS_API_KEY
 export const humanVoiceEnabled = !!KEY
 
-// Default: "Adam" — a calm, deep male voice. Override with ELEVENLABS_VOICE_ID.
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'pNInz6obpgDQGcFmaJgB'
+/**
+ * Default: "Brian" — a natural, conversational male voice that sounds light
+ * and human rather than deep and synthetic. Other voices that work on the
+ * free plan: Chris iP95p4xoKVk53GoZ742B, Will bIHbv24MWmeRgasZH58o,
+ * Eric cjVigY5qzO86Huf0OWal, Adam pNInz6obpgDQGcFmaJgB (deep).
+ * Note: Voice Library voices need a paid ElevenLabs plan; premade ones are free.
+ */
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb'
+
+/**
+ * Turbo v2.5 — multilingual, and much lower latency than multilingual_v2,
+ * which matters for back-and-forth conversation.
+ */
+const MODEL_ID = process.env.ELEVENLABS_MODEL || 'eleven_turbo_v2_5'
 
 /** Generate speech audio for text. Returns a data: URI (audio/mpeg) or null. */
 export async function generateSpeech(text: string): Promise<string | null> {
@@ -25,9 +37,15 @@ export async function generateSpeech(text: string): Promise<string | null> {
       },
       body: JSON.stringify({
         text,
-        // Multilingual model so any language sounds natural.
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.25, use_speaker_boost: true },
+        model_id: MODEL_ID,
+        // Tuned for a natural, human delivery: some variation (lower stability)
+        // and no style exaggeration, which is what makes TTS sound synthetic.
+        voice_settings: {
+          stability: 0.4,
+          similarity_boost: 0.75,
+          style: 0,
+          use_speaker_boost: true,
+        },
       }),
     })
     if (!res.ok) return null

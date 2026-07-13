@@ -49,7 +49,6 @@ export async function POST(req: Request) {
 
   await upsertVoiceprint(r.device.userId, {
     embedding,
-    phrase: typeof body.phrase === 'string' ? body.phrase : '',
     sampleCount: Number.isFinite(body.sampleCount) ? body.sampleCount : 0,
     modelId: typeof body.modelId === 'string' ? body.modelId : 'unknown',
   })

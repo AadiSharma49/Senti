@@ -22,7 +22,6 @@ export async function uploadVoiceprint(): Promise<boolean> {
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
         embedding: profile.embedding,
-        phrase: profile.phrase,
         sampleCount: profile.sampleCount,
         modelId: profile.modelId,
       }),
@@ -49,7 +48,6 @@ export async function ensureVoiceprint(): Promise<boolean> {
     if (!p || !Array.isArray(p.embedding) || p.embedding.length === 0) return false
     useVoiceProfileStore.getState().setProfile({
       embedding: p.embedding as number[],
-      phrase: typeof p.phrase === 'string' ? p.phrase : '',
       sampleCount: typeof p.sampleCount === 'number' ? p.sampleCount : 0,
       modelId: typeof p.modelId === 'string' ? p.modelId : 'unknown',
       createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date().toISOString(),

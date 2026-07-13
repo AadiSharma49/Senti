@@ -33,7 +33,7 @@ const MODELS = [
     ],
   },
   {
-    // Multilingual Whisper (99 languages) so wake phrases work in any language.
+    // Multilingual Whisper (99 languages) so the assistant understands any language.
     localId: 'whisper-tiny',
     base: 'https://huggingface.co/Xenova/whisper-tiny/resolve/main',
     files: [

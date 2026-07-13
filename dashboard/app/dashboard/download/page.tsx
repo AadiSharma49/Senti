@@ -30,7 +30,7 @@ export default function DownloadPage() {
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         <Step n="01" title="Install" body="Run the installer and launch Senti." />
         <Step n="02" title="Sign in" body="Use this same account inside the app." />
-        <Step n="03" title="Enroll your voice" body="Say your passphrase a few times. Your voiceprint stays on-device." />
+        <Step n="03" title="Enroll your voice" body="Speak naturally a few times — any words. Your voiceprint stays on-device." />
       </div>
     </div>
   )
