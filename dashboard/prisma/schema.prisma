@@ -1,16 +1,16 @@
 // Senti platform data model.
 // The dashboard owns this data; devices are secure endpoints that read it.
 //
-// Local dev uses SQLite (a single file — no server, no Docker). For
-// production you can switch `provider` to "postgresql" and point
-// DATABASE_URL at Neon; the models stay the same.
+// Postgres (Neon). The same database serves local dev and the deployed
+// dashboard, so a device sees identical data either way. DATABASE_URL lives
+// in .env — the single env file both Next.js and the Prisma CLI read.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

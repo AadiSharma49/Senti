@@ -5,12 +5,13 @@
   "description": "Senti — security platform dashboard",
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "db:migrate": "prisma migrate deploy",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.110.0",
     "@clerk/nextjs": "^5.7.6",
     "@prisma/client": "^6.19.3",
     "next": "14.2.5",
