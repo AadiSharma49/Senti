@@ -1,8 +1,9 @@
 import Link from 'next/link'
+import { auth, currentUser } from '@clerk/nextjs/server'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
 import SentiMark from '@/components/SentiMark'
-import WaitlistForm from '@/components/WaitlistForm'
+import { clerkEnabled } from '@/lib/auth'
 
 const features = [
   {
@@ -14,8 +15,8 @@ const features = [
     body: 'Your voiceprint never leaves your machine. A neural network verifies you locally — no cloud, no servers, no internet required.',
   },
   {
-    title: 'PIN fallback',
-    body: 'Voice is primary; a PIN is always there as the emergency fallback. Three failed voice attempts hand off to PIN automatically.',
+    title: 'An assistant that talks back',
+    body: 'Once you are in, just talk to Senti. It answers out loud in a real human voice, in any language, and it knows who it is speaking to.',
   },
   {
     title: 'One account, every device',
@@ -25,35 +26,79 @@ const features = [
 
 const steps = [
   { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices and voice profile.' },
-  { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and sign in.' },
+  { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and link it to your account.' },
   { n: '03', title: 'Enroll your voice', body: 'Speak naturally a few times — any words. Your voiceprint is learned on-device.' },
   { n: '04', title: 'Unlock by speaking', body: 'Lock down, walk up, and talk to your computer. Your voice is the key.' },
 ]
 
-export default function Home() {
+export default async function Home() {
+  const signedIn = clerkEnabled ? !!auth().userId : false
+  const user = signedIn ? await currentUser() : null
+  const name = user?.firstName || null
+
+  /** Signed-in visitors have already "signed up" — send them where they're going. */
+  const Cta = () =>
+    signedIn ? (
+      <div className="flex flex-col items-center gap-3">
+        <Link
+          href="/dashboard"
+          className="rounded-full bg-accent px-7 py-3 text-sm font-semibold text-black transition hover:bg-accent-glow"
+        >
+          Open your dashboard
+        </Link>
+        <Link href="/dashboard/download" className="text-xs text-white/45 transition hover:text-white">
+          or download the desktop app
+        </Link>
+      </div>
+    ) : (
+      <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link
+            href="/signup"
+            className="rounded-full bg-accent px-7 py-3 text-sm font-semibold text-black transition hover:bg-accent-glow"
+          >
+            Get started free
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-full border border-white/15 px-7 py-3 text-sm font-semibold text-white transition hover:bg-white/5"
+          >
+            Sign in
+          </Link>
+        </div>
+        <div className="text-xs text-white/35">Free to start. No credit card.</div>
+      </div>
+    )
+
   return (
     <div className="bg-ambient">
       <SiteHeader />
 
-      {/* Hero + waitlist */}
+      {/* Hero */}
       <section className="relative mx-auto flex max-w-4xl flex-col items-center px-6 pb-24 pt-40 text-center">
         <div className="mb-8">
           <SentiMark size={96} />
         </div>
-        <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-4 py-1.5 text-xs uppercase tracking-[0.25em] text-accent">
-          Early access · Building in public
-        </div>
+
+        {name && (
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent/5 px-4 py-1.5 text-xs uppercase tracking-[0.25em] text-accent">
+            Welcome back, {name}
+          </div>
+        )}
+
         <h1 className="max-w-3xl text-5xl font-bold leading-tight text-white md:text-6xl">
           Your voice is <span className="text-accent text-glow">the key.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-white/60">
-          Senti locks your computer and unlocks it when it hears you. Speaker verification
-          runs entirely on your device — private, fast, and yours alone.
+          Senti locks your computer and unlocks it when it hears you — then talks with you like
+          an assistant that actually knows you. Speaker verification runs entirely on your device.
         </p>
-        <div className="mt-10 w-full">
-          <WaitlistForm source="hero" />
+
+        <div className="mt-10">
+          <Cta />
         </div>
-        <div className="mt-6 text-xs text-white/35">On-device • No voice data ever leaves your machine</div>
+
+        <div className="mt-8 text-xs text-white/35">On-device • No voice data ever leaves your machine</div>
       </section>
 
       {/* Features */}
@@ -89,24 +134,24 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Closing waitlist */}
-      <section id="waitlist" className="mx-auto max-w-6xl px-6 py-20">
+      {/* Closing */}
+      <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="glass-strong relative overflow-hidden rounded-[36px] p-10 text-center md:p-16">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,212,255,0.15),transparent_60%)]" />
           <div className="relative">
             <div className="mb-6 flex justify-center">
               <SentiMark size={56} />
             </div>
-            <h2 className="text-3xl font-bold text-white md:text-4xl">Be the first to unlock with your voice</h2>
+            <h2 className="text-3xl font-bold text-white md:text-4xl">
+              {signedIn ? 'Your machine is waiting.' : 'Unlock with your voice.'}
+            </h2>
             <p className="mx-auto mt-4 max-w-xl text-white/60">
-              Senti is in early access. Join the waitlist and we&apos;ll let you in as soon as it&apos;s ready.
+              {signedIn
+                ? 'Install Senti on this computer, link it to your account, and enroll your voice.'
+                : 'Create an account, install Senti, and speak. That is the whole setup.'}
             </p>
-            <div className="mt-8">
-              <WaitlistForm source="footer" />
-            </div>
-            <div className="mt-6 text-xs text-white/35">
-              Already have access?{' '}
-              <Link href="/login" className="text-accent hover:underline">Sign in</Link>
+            <div className="mt-8 flex justify-center">
+              <Cta />
             </div>
           </div>
         </div>
