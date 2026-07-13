@@ -1,12 +1,13 @@
 import { useDeviceStore } from '../state/deviceStore'
+import { apiUrl } from '../config'
 
 /**
  * assistantService — sends the running conversation to Senti's brain
- * (dashboard /api/device/chat, powered by Google Gemini) and gets back a
- * spoken reply. The user's speech is transcribed on-device first; only text
- * leaves the machine. No API keys live on the desktop.
+ * (dashboard /api/device/chat) and gets back a spoken reply. The user's
+ * speech is transcribed on-device first; only text leaves the machine.
+ * No API keys live on the desktop.
  */
-const CHAT_URL = 'http://localhost:3000/api/device/chat'
+const CHAT_PATH = '/api/device/chat'
 
 export interface ChatTurn {
   role: 'user' | 'assistant'
@@ -28,7 +29,7 @@ export async function askSenti(messages: ChatTurn[], lang: string): Promise<Repl
     }
   }
   try {
-    const res = await fetch(CHAT_URL, {
+    const res = await fetch(apiUrl(CHAT_PATH), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ messages, language: lang }),

@@ -2,6 +2,7 @@
   "name": "senti",
   "version": "0.1.0",
   "description": "Senti — AI-powered desktop guardian and assistant",
+  "author": "Senti",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -9,23 +10,45 @@
     "build": "tsc && vite build && electron-builder --dir",
     "preview": "vite preview",
     "electron:dev": "npm run dev",
+    "dist": "tsc && vite build && electron-builder --win nsis",
     "electron:build": "vite build && electron-builder",
-    "setup:voice": "node scripts/setup-voice-model.mjs"
+    "setup:voice": "node scripts/setup-voice-model.mjs",
+    "make:icon": "node scripts/make-icon.mjs"
   },
   "build": {
-    "win": {
-      "sign": false,
-      "certificateFile": null,
-      "certificatePassword": null,
-      "verifyUpdateCodeSignature": false
-    },
+    "appId": "com.senti.desktop",
+    "productName": "Senti",
     "directories": {
-      "output": "dist"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist-electron/**/*",
-      "dist/**/*"
-    ]
+      "dist/**/*",
+      "!**/*.map"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Senti",
+      "artifactName": "Senti-Setup-${version}.exe",
+      "uninstallDisplayName": "Senti"
+    }
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

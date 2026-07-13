@@ -1,6 +1,7 @@
 import { useVoiceProfileStore } from '../state/voiceProfileStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { useDeviceStore } from '../state/deviceStore'
+import { apiUrl } from '../config'
 
 /**
  * policySync - the desktop is a secure endpoint that OBEYS the dashboard.
@@ -8,11 +9,10 @@ import { useDeviceStore } from '../state/deviceStore'
  * that account's policy and reports its own status. Otherwise it falls
  * back to the shared local policy.
  *
- * Local dev uses localhost:3000. Later this becomes the account API over
- * HTTPS.
+ * The backend URL comes from config.ts (build-time env, or a URL saved in
+ * Settings) — never hardcoded here.
  */
-const BASE = 'http://localhost:3000'
-const DEVICE_POLICY_URL = `${BASE}/api/device/policy`
+const DEVICE_POLICY_PATH = '/api/device/policy'
 
 // Unlock is voice-only; the dashboard no longer sends a security mode.
 interface RemotePolicy {
@@ -56,7 +56,7 @@ export async function syncPolicyFromDashboard(): Promise<boolean> {
   try {
     const info = await deviceInfo()
     const voiceEnrolled = !!useVoiceProfileStore.getState().profile
-    const res = await fetch(DEVICE_POLICY_URL, {
+    const res = await fetch(apiUrl(DEVICE_POLICY_PATH), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ name: info.hostname, os: prettyOs(info.platform), voiceEnrolled, status: 'locked' }),

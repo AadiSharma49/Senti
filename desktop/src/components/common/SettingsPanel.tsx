@@ -6,6 +6,7 @@ import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useDeviceStore } from '../../state/deviceStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
 import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
+import { apiBase, apiOverride, setApiBase } from '../../config'
 import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 
 /**
@@ -26,6 +27,14 @@ export default function SettingsPanel() {
   const clearToken = useDeviceStore((s) => s.clearToken)
   const [tokenInput, setTokenInput] = useState('')
   const [linkMsg, setLinkMsg] = useState<{ ok: boolean; text: string } | null>(null)
+
+  const [serverInput, setServerInput] = useState(apiOverride())
+  const [serverMsg, setServerMsg] = useState<string | null>(null)
+
+  const saveServer = () => {
+    setApiBase(serverInput)
+    setServerMsg(`Now talking to ${apiBase()}`)
+  }
 
   const linkDevice = async () => {
     if (!tokenInput.trim()) return
@@ -171,6 +180,28 @@ export default function SettingsPanel() {
           {linkMsg && (
             <div className={`mt-2 text-xs ${linkMsg.ok ? 'text-green-400' : 'text-red-400'}`}>{linkMsg.text}</div>
           )}
+
+          <div className="mt-5 border-t border-white/10 pt-4">
+            <div className="text-xs uppercase tracking-[0.2em] text-secondary">Senti server</div>
+            <p className="section-sub mb-2 mt-1">
+              Where this device talks to. Leave blank to use the default ({apiBase()}).
+            </p>
+            <div className="grid gap-2">
+              <input
+                value={serverInput}
+                onChange={(e) => setServerInput(e.target.value)}
+                placeholder="https://your-senti.vercel.app"
+                className="input-glass"
+              />
+              <button
+                onClick={saveServer}
+                className="px-3 py-2 rounded-md border border-white/10 text-xs text-white/80 hover:bg-white/5"
+              >
+                Save server
+              </button>
+            </div>
+            {serverMsg && <div className="mt-2 text-xs text-green-400">{serverMsg}</div>}
+          </div>
         </motion.section>
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">

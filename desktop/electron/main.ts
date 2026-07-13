@@ -208,6 +208,18 @@ function enforceFocus(): void {
   }, 500)
 }
 
+// A second Senti would fight the first for focus and the lock state. Keep one.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
+
 app.whenReady().then(async () => {
   if (VITE_DEV_SERVER_URL) {
     try {
@@ -236,8 +248,10 @@ app.whenReady().then(async () => {
     // ignore if not registrable
   }
 
-  if (process.platform === 'win32') {
-    app.setLoginItemSettings({ openAtLogin: true })
+  // Start with Windows — but only for a real install. In development this
+  // would register the Electron dev binary in the user's startup list.
+  if (process.platform === 'win32' && app.isPackaged) {
+    app.setLoginItemSettings({ openAtLogin: true, args: [] })
   }
 })
 

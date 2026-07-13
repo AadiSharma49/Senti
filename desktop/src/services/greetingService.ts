@@ -1,5 +1,6 @@
 import { useDeviceStore } from '../state/deviceStore'
 import { useVoiceProfileStore } from '../state/voiceProfileStore'
+import { apiUrl } from '../config'
 
 /**
  * greetingService - fetches the AI greeting to play on unlock and speaks it
@@ -8,7 +9,7 @@ import { useVoiceProfileStore } from '../state/voiceProfileStore'
  * greeting is composed server-side (dashboard) in the device's language when
  * linked; otherwise a varied local greeting is used. No API key on the device.
  */
-const GREETING_URL = 'http://localhost:3000/api/device/greeting'
+const GREETING_PATH = '/api/device/greeting'
 
 export function deviceLang(): string {
   try {
@@ -46,7 +47,7 @@ export async function fetchGreeting(lang: string): Promise<Greeting> {
   const token = useDeviceStore.getState().token
   if (!token) return { text: localGreeting(), audio: null }
   try {
-    const res = await fetch(`${GREETING_URL}?lang=${encodeURIComponent(lang)}`, {
+    const res = await fetch(`${apiUrl(GREETING_PATH)}?lang=${encodeURIComponent(lang)}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: 'no-store',
     })

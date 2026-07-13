@@ -1,5 +1,6 @@
 import { useDeviceStore } from '../state/deviceStore'
 import { useVoiceProfileStore } from '../state/voiceProfileStore'
+import { apiUrl } from '../config'
 
 /**
  * voiceprintSync - keeps the on-device voiceprint in step with the
@@ -9,7 +10,7 @@ import { useVoiceProfileStore } from '../state/voiceProfileStore'
  *
  * Only active when the device is linked (has a pairing token).
  */
-const URL = 'http://localhost:3000/api/device/voiceprint'
+const VOICEPRINT_PATH = '/api/device/voiceprint'
 
 /** Upload this device's voiceprint to the account. */
 export async function uploadVoiceprint(): Promise<boolean> {
@@ -17,7 +18,7 @@ export async function uploadVoiceprint(): Promise<boolean> {
   const profile = useVoiceProfileStore.getState().profile
   if (!token || !profile) return false
   try {
-    const res = await fetch(URL, {
+    const res = await fetch(apiUrl(VOICEPRINT_PATH), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
@@ -41,7 +42,7 @@ export async function ensureVoiceprint(): Promise<boolean> {
   if (!token) return false
   if (useVoiceProfileStore.getState().profile) return false // already have one locally
   try {
-    const res = await fetch(URL, { headers: { Authorization: `Bearer ${token}` } })
+    const res = await fetch(apiUrl(VOICEPRINT_PATH), { headers: { Authorization: `Bearer ${token}` } })
     if (!res.ok) return false
     const data = await res.json()
     const p = data.profile
