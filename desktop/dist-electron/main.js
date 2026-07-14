@@ -1,70 +1,59 @@
-import { existsSync, mkdirSync, writeFileSync, unlinkSync, readFileSync } from "fs";
-import http from "http";
-import os from "os";
-import electron from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage } = electron;
-const __filename$1 = fileURLToPath(import.meta.url);
-const __dirname$1 = path.dirname(__filename$1);
-const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-const DEV_SERVER_URL = "http://localhost:5173";
-let mainWindow = null;
-const tokenFile = () => path.join(app.getPath("userData"), "device.token");
-function saveToken(token) {
+import { existsSync as b, mkdirSync as _, writeFileSync as T, unlinkSync as F, readFileSync as V } from "fs";
+import D from "http";
+import L from "os";
+import O from "electron";
+import d from "path";
+import { fileURLToPath as q } from "url";
+const { app: n, BrowserWindow: S, screen: A, ipcMain: c, globalShortcut: h, safeStorage: p } = O, U = q(import.meta.url), E = d.dirname(U), g = process.env.VITE_DEV_SERVER_URL, v = "http://localhost:5173";
+let e = null;
+const u = () => d.join(n.getPath("userData"), "device.token");
+function P(t) {
   try {
-    mkdirSync(path.dirname(tokenFile()), { recursive: true });
-    if (!safeStorage.isEncryptionAvailable()) return false;
-    writeFileSync(tokenFile(), safeStorage.encryptString(token));
-    return true;
+    return _(d.dirname(u()), { recursive: !0 }), p.isEncryptionAvailable() ? (T(u(), p.encryptString(t)), !0) : !1;
   } catch {
-    return false;
+    return !1;
   }
 }
-function loadToken() {
+function R() {
   try {
-    if (!existsSync(tokenFile())) return null;
-    if (!safeStorage.isEncryptionAvailable()) return null;
-    return safeStorage.decryptString(readFileSync(tokenFile()));
+    return !b(u()) || !p.isEncryptionAvailable() ? null : p.decryptString(V(u()));
   } catch {
     return null;
   }
 }
-function clearToken() {
+function I() {
   try {
-    if (existsSync(tokenFile())) unlinkSync(tokenFile());
+    b(u()) && F(u());
   } catch {
   }
 }
-async function apiRequest(opts) {
-  const { baseUrl, path: p, method = "GET", body, auth = true } = opts;
-  if (!/^https?:\/\//i.test(baseUrl) || !p.startsWith("/api/device/")) {
-    return { ok: false, status: 400, data: { error: "Blocked request" } };
-  }
-  const headers = { "Content-Type": "application/json" };
-  if (auth) {
-    const token = loadToken();
-    if (!token) return { ok: false, status: 401, data: { error: "This device is not linked" } };
-    headers.Authorization = `Bearer ${token}`;
+async function $(t) {
+  const { baseUrl: a, path: o, method: r = "GET", body: s, auth: f = !0 } = t;
+  if (!/^https?:\/\//i.test(a) || !o.startsWith("/api/device/"))
+    return { ok: !1, status: 400, data: { error: "Blocked request" } };
+  const i = { "Content-Type": "application/json" };
+  if (f) {
+    const l = R();
+    if (!l) return { ok: !1, status: 401, data: { error: "This device is not linked" } };
+    i.Authorization = `Bearer ${l}`;
   }
   try {
-    const res = await fetch(`${baseUrl}${p}`, {
-      method,
-      headers,
-      body: body === void 0 ? void 0 : JSON.stringify(body)
-    });
-    const data = await res.json().catch(() => null);
-    return { ok: res.ok, status: res.status, data };
-  } catch (err) {
+    const l = await fetch(`${a}${o}`, {
+      method: r,
+      headers: i,
+      body: s === void 0 ? void 0 : JSON.stringify(s)
+    }), y = await l.json().catch(() => null);
+    return { ok: l.ok, status: l.status, data: y };
+  } catch (l) {
     return {
-      ok: false,
+      ok: !1,
       status: 0,
-      data: { error: err instanceof Error ? err.message : "Network error" }
+      data: { error: l instanceof Error ? l.message : "Network error" }
     };
   }
 }
-let isLocked = true;
-const LOCK_SHORTCUTS = [
+let m = !0;
+const C = [
   "Alt+Tab",
   "Alt+F4",
   "Alt+Escape",
@@ -74,241 +63,150 @@ const LOCK_SHORTCUTS = [
   // Task Manager (best-effort; OS may still win)
   "Super"
   // Win key (best-effort)
-];
-const RECOVERY_SHORTCUT = "CommandOrControl+Alt+Shift+Q";
-function registerLockShortcuts() {
-  for (const accel of LOCK_SHORTCUTS) {
+], x = "CommandOrControl+Alt+Shift+Q";
+function j() {
+  for (const t of C)
     try {
-      globalShortcut.register(accel, () => {
+      h.register(t, () => {
       });
     } catch {
     }
-  }
 }
-function unregisterLockShortcuts() {
-  for (const accel of LOCK_SHORTCUTS) {
+function z() {
+  for (const t of C)
     try {
-      if (globalShortcut.isRegistered(accel)) globalShortcut.unregister(accel);
+      h.isRegistered(t) && h.unregister(t);
     } catch {
     }
-  }
 }
-function setLocked(locked) {
-  isLocked = locked;
-  if (locked) registerLockShortcuts();
-  else unregisterLockShortcuts();
+function k(t) {
+  m = t, t ? j() : z();
 }
-function waitForVite(url, timeout = 15e3) {
-  return new Promise((resolve, reject) => {
-    const start = Date.now();
-    const tryConnect = () => {
-      const req = http.get(url, (res) => {
-        if (res.statusCode === 200) {
-          resolve();
-        } else {
-          retry();
-        }
-      });
-      req.on("error", retry);
+function B(t, a = 15e3) {
+  return new Promise((o, r) => {
+    const s = Date.now(), f = () => {
+      D.get(t, (y) => {
+        y.statusCode === 200 ? o() : i();
+      }).on("error", i);
+    }, i = () => {
+      Date.now() - s > a ? r(new Error(`Vite dev server not reachable at ${t}`)) : setTimeout(f, 300);
     };
-    const retry = () => {
-      if (Date.now() - start > timeout) {
-        reject(new Error(`Vite dev server not reachable at ${url}`));
-      } else {
-        setTimeout(tryConnect, 300);
-      }
-    };
-    tryConnect();
+    f();
   });
 }
-function createWindow() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  const preloadPath = path.join(__dirname$1, "preload.cjs");
-  mainWindow = new BrowserWindow({
-    width,
-    height,
-    fullscreen: true,
-    frame: false,
-    transparent: false,
-    resizable: false,
-    maximizable: false,
-    minimizable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    hasShadow: false,
-    thickFrame: false,
-    show: false,
+function w() {
+  const { width: t, height: a } = A.getPrimaryDisplay().workAreaSize, o = d.join(E, "preload.cjs");
+  if (e = new S({
+    width: t,
+    height: a,
+    fullscreen: !0,
+    frame: !1,
+    transparent: !1,
+    resizable: !1,
+    maximizable: !1,
+    minimizable: !1,
+    alwaysOnTop: !0,
+    skipTaskbar: !0,
+    hasShadow: !1,
+    thickFrame: !1,
+    show: !1,
     webPreferences: {
-      preload: preloadPath,
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
+      preload: o,
+      contextIsolation: !0,
+      nodeIntegration: !1,
+      sandbox: !1
     }
-  });
-  mainWindow.setVisibleOnAllWorkspaces(true);
-  mainWindow.setMenuBarVisibility(false);
-  if (VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(DEV_SERVER_URL).catch((err) => {
-      console.error("[Electron] Failed to load dev server:", err.message);
+  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), g)
+    e.loadURL(v).catch((r) => {
+      console.error("[Electron] Failed to load dev server:", r.message);
     });
-  } else {
-    const prodPath = path.join(__dirname$1, "../dist/index.html");
-    if (existsSync(prodPath)) {
-      mainWindow.loadFile(prodPath).catch((err) => {
-        console.error("[Electron] Failed to load production file:", err.message);
-      });
-    } else {
-      console.error("[Electron] Production build not found at:", prodPath);
-    }
+  else {
+    const r = d.join(E, "../dist/index.html");
+    b(r) ? e.loadFile(r).catch((s) => {
+      console.error("[Electron] Failed to load production file:", s.message);
+    }) : console.error("[Electron] Production build not found at:", r);
   }
-  mainWindow.webContents.on("did-finish-load", () => {
-    var _a, _b;
-    mainWindow == null ? void 0 : mainWindow.show();
-    mainWindow == null ? void 0 : mainWindow.focus();
-    if (VITE_DEV_SERVER_URL) {
-      (_b = (_a = mainWindow == null ? void 0 : mainWindow.webContents) == null ? void 0 : _a.openDevTools) == null ? void 0 : _b.call(_a);
-    }
-  });
-  mainWindow.webContents.on("did-fail-load", (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
-    console.error("[Electron] Renderer load failed:", { errorCode, errorDescription, validatedURL, isMainFrame });
-  });
-  mainWindow.webContents.on("console-message", (_event, level, message) => {
-    const prefix = ["INFO", "WARN", "ERROR", "DEBUG"][level] || "LOG";
-    console.log(`[Renderer:${prefix}] ${message}`);
-  });
-  mainWindow.webContents.on("render-process-gone", (_event, details) => {
-    console.error("[Electron] Renderer process gone:", details);
-  });
-  mainWindow.webContents.on("unresponsive", () => {
+  e.webContents.on("did-finish-load", () => {
+    var r, s;
+    e == null || e.show(), e == null || e.focus(), g && ((s = (r = e == null ? void 0 : e.webContents) == null ? void 0 : r.openDevTools) == null || s.call(r));
+  }), e.webContents.on("did-fail-load", (r, s, f, i, l) => {
+    console.error("[Electron] Renderer load failed:", { errorCode: s, errorDescription: f, validatedURL: i, isMainFrame: l });
+  }), e.webContents.on("console-message", (r, s, f) => {
+    const i = ["INFO", "WARN", "ERROR", "DEBUG"][s] || "LOG";
+    console.log(`[Renderer:${i}] ${f}`);
+  }), e.webContents.on("render-process-gone", (r, s) => {
+    console.error("[Electron] Renderer process gone:", s);
+  }), e.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
-  });
-  mainWindow.on("blur", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus();
-    }
-  });
-  mainWindow.on("minimize", (event) => {
-    event.preventDefault();
-    if (mainWindow) {
-      mainWindow.restore();
-      mainWindow.focus();
-    }
-  });
-  mainWindow.on("close", (event) => {
-    if (isLocked) {
-      event.preventDefault();
-      mainWindow == null ? void 0 : mainWindow.focus();
-    }
-  });
-  mainWindow.on("leave-full-screen", () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(true);
-    }
+  }), e.on("blur", () => {
+    e && !e.isDestroyed() && e.focus();
+  }), e.on("minimize", (r) => {
+    r.preventDefault(), e && (e.restore(), e.focus());
+  }), e.on("close", (r) => {
+    m && (r.preventDefault(), e == null || e.focus());
+  }), e.on("leave-full-screen", () => {
+    e && e.setFullScreen(!0);
   });
 }
-function enforceFocus() {
+function G() {
   setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (!mainWindow.isFocused() && mainWindow.isVisible()) {
-        mainWindow.focus();
-      }
-      if (!mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(true);
-      }
-    }
+    e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
   }, 500);
 }
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
-  app.on("second-instance", () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show();
-      mainWindow.focus();
-    }
-  });
-}
-app.whenReady().then(async () => {
-  if (VITE_DEV_SERVER_URL) {
+n.requestSingleInstanceLock() ? n.on("second-instance", () => {
+  e && !e.isDestroyed() && (e.show(), e.focus());
+}) : n.quit();
+n.whenReady().then(async () => {
+  if (g)
     try {
-      await waitForVite(DEV_SERVER_URL);
-    } catch (e) {
-      console.error("[Electron] Vite dev server failed to start:", e);
-      app.quit();
+      await B(v);
+    } catch (t) {
+      console.error("[Electron] Vite dev server failed to start:", t), n.quit();
       return;
     }
-  }
-  createWindow();
-  enforceFocus();
-  setLocked(true);
+  w(), G(), k(!0);
   try {
-    globalShortcut.register(RECOVERY_SHORTCUT, () => {
-      isLocked = false;
-      app.exit(0);
+    h.register(x, () => {
+      m = !1, n.exit(0);
     });
   } catch {
   }
-  if (process.platform === "win32" && app.isPackaged) {
-    app.setLoginItemSettings({ openAtLogin: true, args: [] });
-  }
+  process.platform === "win32" && n.isPackaged && n.setLoginItemSettings({ openAtLogin: !0, args: [] });
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  } else {
-    mainWindow == null ? void 0 : mainWindow.show();
-    mainWindow == null ? void 0 : mainWindow.focus();
-  }
+n.on("activate", () => {
+  S.getAllWindows().length === 0 ? w() : (e == null || e.show(), e == null || e.focus());
 });
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-  }
+n.on("window-all-closed", () => {
+  process.platform !== "darwin" && n.quit();
 });
-app.on("before-quit", () => {
-  mainWindow = null;
+n.on("before-quit", () => {
+  e = null;
 });
-app.on("will-quit", () => {
-  globalShortcut.unregisterAll();
+n.on("will-quit", () => {
+  h.unregisterAll();
 });
-ipcMain.handle("senti:token-set", (_e, token) => {
-  if (typeof token !== "string" || !token.trim()) return false;
-  return saveToken(token.trim());
-});
-ipcMain.handle("senti:token-clear", () => {
-  clearToken();
-  return true;
-});
-ipcMain.handle("senti:token-present", () => !!loadToken());
-ipcMain.handle("senti:api", (_e, req) => {
-  const r = req ?? {};
-  if (typeof r.baseUrl !== "string" || typeof r.path !== "string") {
-    return { ok: false, status: 400, data: { error: "Bad request" } };
-  }
-  return apiRequest({
-    baseUrl: r.baseUrl,
-    path: r.path,
-    method: typeof r.method === "string" ? r.method : "GET",
-    body: r.body,
-    auth: r.auth !== false
+c.handle("senti:token-set", (t, a) => typeof a != "string" || !a.trim() ? !1 : P(a.trim()));
+c.handle("senti:token-clear", () => (I(), !0));
+c.handle("senti:token-present", () => !!R());
+c.handle("senti:api", (t, a) => {
+  const o = a ?? {};
+  return typeof o.baseUrl != "string" || typeof o.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : $({
+    baseUrl: o.baseUrl,
+    path: o.path,
+    method: typeof o.method == "string" ? o.method : "GET",
+    body: o.body,
+    auth: o.auth !== !1
   });
 });
-ipcMain.handle("senti:get-platform", () => process.platform);
-ipcMain.handle("senti:device-info", () => ({
-  hostname: os.hostname(),
+c.handle("senti:get-platform", () => process.platform);
+c.handle("senti:device-info", () => ({
+  hostname: L.hostname(),
   platform: process.platform
 }));
-ipcMain.handle("senti:set-lock-state", (_event, locked) => {
-  setLocked(!!locked);
+c.handle("senti:set-lock-state", (t, a) => {
+  k(!!a);
 });
-ipcMain.handle("senti:lock", () => {
-  setLocked(true);
-  mainWindow == null ? void 0 : mainWindow.show();
-  mainWindow == null ? void 0 : mainWindow.focus();
-  mainWindow == null ? void 0 : mainWindow.setFullScreen(true);
+c.handle("senti:lock", () => {
+  k(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
 });
-ipcMain.handle("senti:quit", () => {
-  if (isLocked) return false;
-  app.quit();
-  return true;
-});
+c.handle("senti:quit", () => m ? !1 : (n.quit(), !0));
