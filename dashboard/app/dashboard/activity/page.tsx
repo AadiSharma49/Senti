@@ -4,6 +4,10 @@ import { clerkEnabled } from '@/lib/auth'
 import { dbEnabled } from '@/lib/prisma'
 import { listEvents } from '@/lib/db'
 
+
+// Per-user, live data — never serve a cached copy of somebody's devices,
+// voiceprint status or security timeline.
+export const dynamic = 'force-dynamic'
 const eventMeta: Record<string, { label: string; tone: 'good' | 'bad' | 'neutral' }> = {
   voice_unlock: { label: 'Voice unlock', tone: 'good' },
   pin_unlock: { label: 'PIN unlock', tone: 'neutral' },

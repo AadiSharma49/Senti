@@ -13,6 +13,7 @@ import { useAssistantStore } from '../../state/assistantStore'
 import { useUiStore } from '../../state/uiStore'
 import { useGreetingStore } from '../../state/greetingStore'
 import { audioManager } from '../../services/audioManager'
+import { warmModels } from '../../services/warmup'
 
 export default function LockScreen() {
   const { state, lock } = useLockStore()
@@ -28,6 +29,9 @@ export default function LockScreen() {
   useEffect(() => {
     // Boot sequence: brief boot -> preload sounds -> lock
     useLockStore.getState().startBoot()
+    // Load the ML models now, while the user is still reading the lock screen,
+    // so the first unlock and the first question don't pay a cold start.
+    warmModels()
     const t = setTimeout(() => {
       audioManager.preload()
       lock()

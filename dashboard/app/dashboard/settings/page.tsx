@@ -3,6 +3,10 @@ import { PageHeader, Card } from '@/components/ui'
 import SecurityPolicyEditor from '@/components/SecurityPolicyEditor'
 import { clerkEnabled } from '@/lib/auth'
 
+
+// Per-user, live data — never serve a cached copy of somebody's devices,
+// voiceprint status or security timeline.
+export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   const user = clerkEnabled ? await currentUser() : null
   const name = user?.fullName || user?.firstName || user?.username || 'Your account'

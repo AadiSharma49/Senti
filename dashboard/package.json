@@ -10,7 +10,8 @@
     "lint": "next lint",
     "db:migrate": "prisma migrate deploy",
     "db:studio": "prisma studio",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "check:env": "node scripts/check-env.mjs"
   },
   "dependencies": {
     "@clerk/nextjs": "^5.7.6",

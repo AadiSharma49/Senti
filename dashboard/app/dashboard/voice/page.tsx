@@ -7,6 +7,10 @@ import { clerkEnabled } from '@/lib/auth'
 import { dbEnabled } from '@/lib/prisma'
 import { getVoiceprintStatus, listDevices } from '@/lib/db'
 
+
+// Per-user, live data — never serve a cached copy of somebody's devices,
+// voiceprint status or security timeline.
+export const dynamic = 'force-dynamic'
 export default async function VoiceProfilePage() {
   const accounts = clerkEnabled && dbEnabled
   const userId = accounts ? auth().userId : null
