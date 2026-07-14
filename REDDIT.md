@@ -1,77 +1,99 @@
-# Reddit post
+# Reddit post — ready to publish
 
-Best fits: r/SideProject, r/coding, r/windows, r/programming (building-in-public
-tone). Reddit punishes overclaiming hard, so this leads with what works and
-names the limits out loud. That honesty is the strategy, not a disclaimer.
+Primary: **r/SideProject** (supportive, building-in-public). Also good:
+r/coding, r/programming, r/windows. Post the demo video FIRST — it does more
+than any paragraph.
+
+Reddit punishes hype and rewards honesty, so this leads with what works, names
+every limit, and names the competitors before anyone else can. That's the
+strategy, not a disclaimer.
 
 ---
 
-## Title options
+## Title (pick one)
 
-- I'm building a voice-unlock + AI assistant layer for Windows — and I just
-  started on the hard part: a real credential provider so it replaces the lock
-  screen. Progress + architecture inside.
-- My PC unlocks when it hears *my* voice (not a passphrase), then I can talk to
-  it. Now writing the C++ to make it the actual Windows login, not a window on
-  top. Building in public.
-- Voice is the key: on-device speaker verification to unlock Windows, plus a
-  talking assistant. Here's how it works, and the part I'm honest it can't do
-  yet.
+- I'm building a private, voice-controlled AI layer for Windows — it unlocks
+  when it hears *my* voice, then I talk to it. Here's what actually works and
+  what doesn't (building in public).
+- My PC unlocks when it recognizes my voice (no passphrase), then I just talk to
+  it. It's private and on-device. Honest progress + the hard part I just
+  started.
 
 ---
 
 ## Body
 
-**What it is:** Senti is an AI layer for your PC. It learns your voice, so your
-computer unlocks when it hears *you* — and no one else — and then you can just
-talk to it and it answers out loud.
+For the last few weeks I've been building the computer I actually wanted: one I
+run with my voice, that's **mine and private** — not Microsoft's, not the
+cloud's. It's called Senti. Two things it does:
 
-The part I'm proud of: **it verifies who is speaking, not what was said.** There
-is no passphrase. Say anything — "hey", "open up", a sentence in another
-language — and it unlocks on your voiceprint. A friend saying the exact same
-words gets rejected.
+**1. It learns your voice and unlocks your PC when it hears you.** No passphrase.
+It recognizes *who* is speaking, not *what* you say — so say anything at all, in
+any language, and it unlocks. A friend saying the exact same words gets
+rejected.
 
-**How it actually works:**
-- Your voice → a neural net (WeSpeaker, ONNX) turns it into 256 numbers on your
-  machine. That voiceprint, and your audio, never leave the device.
-- Talk to it → Whisper transcribes locally, the text goes to an LLM (Llama on
-  Groq by default, swappable to Grok/GPT/Gemini), the reply is spoken back in a
-  real voice (ElevenLabs). ~0.5s to speak.
-- A web dashboard is the source of truth; the desktop app obeys it. Device
-  tokens are stored hashed, voiceprints encrypted at rest (they're biometrics —
-  the one thing you can never rotate).
+**2. Once you're in, you just talk to it.** It answers out loud in a real voice,
+in any language, and it knows who it's talking to.
 
-**Where I'm being honest — what it can't do yet:**
-- Right now it's a full-screen lock that runs *after* Windows login, so
-  **Ctrl+Alt+Del / Task Manager still get past it.** It's not the real lock
+**How it works (for the technical folks):**
+- Your voice → a neural net (WeSpeaker, ONNX) turns it into 256 numbers, on your
+  machine. That voiceprint and your audio **never leave the device**.
+- Talk to it → Whisper transcribes locally, only the *text* goes to an LLM
+  (Llama on Groq by default — but you can swap to GPT / Gemini / Grok), and the
+  reply is spoken back with ElevenLabs.
+- Voiceprints are encrypted at rest, device tokens are stored hashed, and the
+  backend rejects anything coming from a browser. I attacked my own API before I
+  trusted it.
+
+**What it CAN'T do yet — because I'm not going to sell anyone a lie:**
+- Right now it's a full-screen lock that runs *after* Windows logs in, so
+  **Ctrl+Alt+Del / Task Manager can still get past it.** It is not a real lock
   screen yet.
-- So this week I started the actual fix: a **C++ Windows credential provider**
-  that runs at the real login screen, before you're in a session — where Task
-  Manager can't touch it. The scaffold is up (ICredentialProvider +
-  ICredentialProviderCredential, registers a Senti tile next to the password
-  tile). Still stubbed: the KERB credential packing and the DPAPI-sealed vault.
-  Building and testing it in a VM, because a bug there literally locks you out
-  of your own machine.
-- No liveness detection yet — a recording of your voice would currently pass.
-- Installer isn't code-signed, so Windows shows "unknown publisher."
+- I just started the actual fix: a C++ Windows **credential provider** that runs
+  at the real login screen, where Task Manager can't touch it. Scaffold's done;
+  the hard parts (and VM testing — a bug there locks you out of your own PC)
+  aren't.
+- No liveness detection — a recording of your voice would currently pass.
+- Installer isn't code-signed yet, so Windows shows "unknown publisher."
+
+**"Isn't this just ___?" — the honest answer:**
+- **Windows Hello** does biometric unlock, but not voice, and it can't talk to
+  you or run your machine.
+- **Copilot** is in Windows now, but it's Microsoft's, cloud, tracks you, and
+  you can't swap the model or make it verify it's really you.
+- **Talon Voice** controls your PC by voice (great, command-driven, accessibility
+  focus).
+- The gap I'm going for: a private, on-device Jarvis that **you own**, where
+  **you pick the AI model**, and **your voice is the key**.
+
+**What I'm building next:** choose your own AI model in the app → control the
+machine by voice (open apps, run tasks) → memory so it learns your context →
+control it from your phone + "someone tried to unlock your PC" alerts → the real
+credential-provider lock → liveness.
 
 **The one thing I refuse to build:** silent always-on screen capture. Autostart
-+ unbypassable lock + always-on capture + remote control + upload is the exact
-fingerprint antivirus flags as malware — and I'm not putting other people's
-screens on a database. Capture happens only on a *security event you can see*
-(repeated failed unlocks), local-first.
++ unbypassable lock + always-on recording + upload is literally the fingerprint
+antivirus flags as malware, and I'm not putting anyone's screen on a server.
+Capture only ever happens on a security event you can see.
 
-**Roadmap:** choose your own AI model in the UI → control the machine by voice
-(open apps, run tasks) → memory so it learns your context → phone/Telegram
-remote control + "someone tried to unlock your PC" alerts → the credential
-provider as the flagship → liveness.
+It's early and rough, and I'm building it in the open. Repo + demo + site below.
+I'd genuinely love brutal feedback — especially:
+- Would you actually use this? The lock, the assistant, or both?
+- Anyone here shipped a Windows credential provider? That's the piece I most
+  want to get right.
 
-Building in public. Repo, live demo, and the architecture write-up are linked
-below. Brutal feedback welcome — especially from anyone who's shipped a
-credential provider, because that's the part I most want to get right.
+[30-sec demo video] · [repo] · [site: senti-kappa.vercel.app]
 
 ---
 
-*Fill in before posting: repo link, the site (senti-kappa.vercel.app), and a
-15–30s screen recording of a real voice unlock. The video does more than any
-paragraph here — lead the comments with it.*
+## The 30-second demo to record (do this first)
+
+1. Locked Senti screen. You lean in, say something ordinary — "alright, let's
+   get to work." It unlocks and greets you by name. (~8s)
+2. "That wasn't a password — watch." Say something totally different. Unlocks
+   again. (~7s)
+3. Ask it something real out loud; let the voice answer. (~10s)
+4. End on the tagline or the orb. (~5s)
+
+No narration needed — let it speak for itself. This clip is the post; the text
+is the caption.
