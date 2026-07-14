@@ -1,0 +1,23 @@
+Windows Registry Editor Version 5.00
+
+; Registers the Senti credential provider with Windows.
+;
+; Two keys: the COM server (points Windows at the DLL) and the credential-
+; provider registration (tells LogonUI to show our tile).
+;
+; SAFETY: this ADDS the Senti tile. It does NOT filter out or replace the
+; built-in password provider, so the normal Windows password tile is always
+; still there. You cannot lock yourself out by registering this — worst case,
+; pick the password tile. Only ever test in a VM until you have verified login.
+;
+; The GUID here must match CLSID_SentiProvider in src/Guid.h.
+
+[HKEY_CLASSES_ROOT\CLSID\{8F9A6C10-3E4B-4D2A-9F71-5B2C7E1A9D30}]
+@="Senti Credential Provider"
+
+[HKEY_CLASSES_ROOT\CLSID\{8F9A6C10-3E4B-4D2A-9F71-5B2C7E1A9D30}\InprocServer32]
+@="C:\\Program Files\\Senti\\SentiCredentialProvider.dll"
+"ThreadingModel"="Apartment"
+
+[HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows\CurrentVersion\Authentication\Credential Providers\{8F9A6C10-3E4B-4D2A-9F71-5B2C7E1A9D30}]
+@="Senti Credential Provider"
