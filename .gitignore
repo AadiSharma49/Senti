@@ -55,3 +55,6 @@ desktop/release/
 
 # Stray Next.js output (desktop is not a Next app)
 desktop/.next/
+
+# Voice audition samples (generated, not source)
+voice-samples/
