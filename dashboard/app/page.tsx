@@ -31,6 +31,58 @@ const steps = [
   { n: '04', title: 'Unlock by speaking', body: 'Lock down, walk up, and talk to your computer. Your voice is the key.' },
 ]
 
+// The vision, told honestly. Each item is labelled by where it really is, so
+// "building in public" means what it says.
+type Stage = 'Live' | 'Building' | 'Planned'
+const vision: { title: string; body: string; stage: Stage }[] = [
+  {
+    title: 'A voice that is only yours',
+    body: 'Senti verifies who is speaking, not what was said. It listens for you and no one else — the check runs on your device.',
+    stage: 'Live',
+  },
+  {
+    title: 'Talk to it, and it answers',
+    body: 'Ask anything. Senti replies out loud in a real human voice, in any language, and knows who it is talking to.',
+    stage: 'Live',
+  },
+  {
+    title: 'Any AI model you want',
+    body: 'The brain is yours to choose — Llama, Grok, GPT, Gemini. Pick the mind that fits how you work.',
+    stage: 'Building',
+  },
+  {
+    title: 'It runs your machine',
+    body: 'Open apps, run tasks, control your editor — by voice. An assistant that does things, not just talks about them.',
+    stage: 'Planned',
+  },
+  {
+    title: 'It remembers you',
+    body: 'Senti learns your context and your taste, and gets more useful the more you use it. A weekly brief of what mattered.',
+    stage: 'Planned',
+  },
+  {
+    title: 'Reach it from anywhere',
+    body: 'Lock, check, and control your PC from your phone. And when something needs you, Senti reaches out first.',
+    stage: 'Planned',
+  },
+  {
+    title: 'The real lock screen',
+    body: 'A Windows credential provider so Senti becomes the login gate itself — the version nothing walks past.',
+    stage: 'Planned',
+  },
+  {
+    title: 'Private by default',
+    body: 'Your voice is verified on-device and never uploaded. Voiceprints are encrypted; your keys stay on your server.',
+    stage: 'Live',
+  },
+]
+
+const stageStyle: Record<Stage, string> = {
+  Live: 'border-green-400/30 bg-green-500/10 text-green-300',
+  Building: 'border-accent/30 bg-accent/10 text-accent',
+  Planned: 'border-white/15 bg-white/5 text-white/50',
+}
+
 export default async function Home() {
   const signedIn = clerkEnabled ? !!auth().userId : false
   const user = signedIn ? await currentUser() : null
@@ -87,11 +139,12 @@ export default async function Home() {
         )}
 
         <h1 className="max-w-3xl text-5xl font-bold leading-tight text-white md:text-6xl">
-          Your voice is <span className="text-accent text-glow">the key.</span>
+          Run your computer <span className="text-accent text-glow">with your voice.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-white/60">
-          Senti locks your computer and unlocks it when it hears you — then talks with you like
-          an assistant that actually knows you. Speaker verification runs entirely on your device.
+          Senti is an AI layer for your PC. It knows your voice — so it unlocks for you and no
+          one else — and it is becoming the assistant that runs your machine, remembers you, and
+          answers from anywhere. Your voice verification runs entirely on your own device.
         </p>
 
         <div className="mt-10">
@@ -132,6 +185,38 @@ export default async function Home() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* Vision / roadmap */}
+      <section id="vision" className="mx-auto max-w-6xl px-6 py-20">
+        <div className="mb-4 text-center">
+          <div className="text-xs uppercase tracking-[0.3em] text-accent">Where it is going</div>
+          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">An AI layer for your computer</h2>
+          <p className="mx-auto mt-4 max-w-2xl text-white/55">
+            Senti starts as the lock that knows your voice. It is becoming the assistant that runs
+            your machine, remembers you, and reaches you anywhere. Built in public — here is exactly
+            where each piece stands, honestly.
+          </p>
+        </div>
+
+        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {vision.map((v) => (
+            <div key={v.title} className="glass flex flex-col rounded-3xl p-5 transition hover:border-accent/30">
+              <span
+                className={`mb-3 inline-flex w-fit items-center rounded-full border px-2.5 py-0.5 text-[0.65rem] font-semibold uppercase tracking-[0.15em] ${stageStyle[v.stage]}`}
+              >
+                {v.stage}
+              </span>
+              <h3 className="text-base font-semibold text-white">{v.title}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-white/55">{v.body}</p>
+            </div>
+          ))}
+        </div>
+
+        <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-white/35">
+          One thing we will not do: silently capture your screen or your life. Senti records only
+          on a security event you can see, and nothing leaves your machine unless you choose to sync it.
+        </p>
       </section>
 
       {/* Closing */}
