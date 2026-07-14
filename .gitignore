@@ -52,3 +52,6 @@ project_full.zip
 *.zip
 # Desktop build output
 desktop/release/
+
+# Stray Next.js output (desktop is not a Next app)
+desktop/.next/
