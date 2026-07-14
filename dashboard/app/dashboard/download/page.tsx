@@ -6,14 +6,19 @@ export const dynamic = 'force-dynamic'
 
 /**
  * The installer is ~250 MB (it ships the speech and speaker models so Senti
- * works fully offline). That is far past Vercel's and GitHub's file limits, so
- * it is served from GitHub Releases rather than bundled with the site.
+ * works fully offline). That is past Vercel's static limit and too big for git,
+ * so it lives on GitHub Releases. The `/releases/latest/download/<asset>` URL
+ * always points at the newest build, and the asset name is stable
+ * (Senti-Setup.exe), so this is a true one-click download that never breaks
+ * between versions. Override with NEXT_PUBLIC_DOWNLOAD_URL if you host it
+ * elsewhere.
  */
 const RELEASE_URL =
   process.env.NEXT_PUBLIC_DOWNLOAD_URL ||
-  'https://github.com/AadiSharma49/Senti/releases/latest'
+  'https://github.com/AadiSharma49/Senti/releases/latest/download/Senti-Setup.exe'
 
-const hasBuild = !!process.env.NEXT_PUBLIC_DOWNLOAD_URL
+// The releases page, for when someone wants notes or an older build.
+const RELEASES_PAGE = 'https://github.com/AadiSharma49/Senti/releases'
 
 export default function DownloadPage() {
   return (
@@ -40,16 +45,19 @@ export default function DownloadPage() {
 
           <a
             href={RELEASE_URL}
-            target="_blank"
-            rel="noreferrer"
             className="rounded-full bg-accent px-8 py-3.5 text-sm font-semibold text-black transition hover:bg-accent-glow accent-ring"
           >
-            {hasBuild ? 'Download for Windows' : 'Get the latest build'}
+            Download for Windows
           </a>
 
           <div className="max-w-md text-xs text-white/40">
             The installer is not code-signed yet, so Windows will say &ldquo;unknown
             publisher&rdquo;. Choose <span className="text-white/70">More info → Run anyway</span>.
+            {' '}Or see{' '}
+            <a href={RELEASES_PAGE} target="_blank" rel="noreferrer" className="text-accent hover:underline">
+              all releases
+            </a>
+            .
           </div>
           <div className="text-xs text-white/35">macOS &amp; Linux coming soon</div>
         </div>

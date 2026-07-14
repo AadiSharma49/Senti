@@ -46,7 +46,7 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Senti",
-      "artifactName": "Senti-Setup-${version}.exe",
+      "artifactName": "Senti-Setup.exe",
       "uninstallDisplayName": "Senti"
     }
   },
