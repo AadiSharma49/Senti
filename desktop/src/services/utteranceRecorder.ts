@@ -25,7 +25,9 @@ const PRE_ROLL_FRAMES = 6
 // Utterances shorter than this are discarded as noise blips.
 const MIN_UTTERANCE_SEC = 0.3
 
-// Hard cap: recording is finalized even if speech continues.
+// Hard cap: recording is finalized even if speech continues. This is the
+// DEFAULT (fine for unlock — a short phrase). The assistant passes a much
+// longer cap so it doesn't chop off a real question mid-sentence.
 const MAX_UTTERANCE_SEC = 6
 // ─────────────────────────────────────────────────────────────────
 
@@ -34,10 +36,24 @@ export type UtteranceRecorderState = 'idle' | 'listening' | 'recording'
 export type UtteranceCallback = (utterance: Utterance) => void
 export type RecorderStateCallback = (state: UtteranceRecorderState) => void
 
+export interface UtteranceRecorderOptions {
+  /** Max seconds to record one turn before finalizing (default 6). */
+  maxUtteranceSec?: number
+  /** Frames of silence before the turn ends (~50ms each; default 8 ≈ 400ms). */
+  silenceHangoverFrames?: number
+}
+
 export class UtteranceRecorder {
   private capture: AudioCapture | null = null
   private vad: VoiceActivityDetector | null = null
   private state: UtteranceRecorderState = 'idle'
+  private maxSec: number
+  private silenceHangoverFrames?: number
+
+  constructor(options: UtteranceRecorderOptions = {}) {
+    this.maxSec = options.maxUtteranceSec ?? MAX_UTTERANCE_SEC
+    this.silenceHangoverFrames = options.silenceHangoverFrames
+  }
 
   private preRoll: AudioFrame[] = []
   private recordedFrames: AudioFrame[] = []
@@ -72,7 +88,7 @@ export class UtteranceRecorder {
     if (this.capture) return
     this.capture = capture
 
-    this.vad = new VoiceActivityDetector()
+    this.vad = new VoiceActivityDetector({ silenceHangoverFrames: this.silenceHangoverFrames })
     this.unsubVad = this.vad.onStateChange((vadState) => {
       if (vadState === 'speaking') this.beginRecording()
       else this.finalizeRecording()
@@ -104,7 +120,7 @@ export class UtteranceRecorder {
     if (this.state === 'recording') {
       this.recordedFrames.push(frame)
       this.recordedDuration += frame.duration
-      if (this.recordedDuration >= MAX_UTTERANCE_SEC) {
+      if (this.recordedDuration >= this.maxSec) {
         this.finalizeRecording()
       }
     } else if (this.state === 'listening') {

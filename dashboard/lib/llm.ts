@@ -32,8 +32,10 @@ function resolveOpenAICompat(): Provider | null {
   if (process.env.GROQ_API_KEY)
     return {
       key: process.env.GROQ_API_KEY,
+      // Llama 4 Scout: newest generation, fast (~150ms first token on Groq),
+      // clean for short spoken replies. Override with LLM_MODEL.
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: model || 'llama-3.3-70b-versatile',
+      model: model || 'meta-llama/llama-4-scout-17b-16e-instruct',
       name: 'groq',
     }
   if (process.env.XAI_API_KEY)

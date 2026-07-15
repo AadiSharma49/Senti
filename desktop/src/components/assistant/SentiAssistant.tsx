@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react'
+import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAssistantStore, type AssistantStatus } from '../../state/assistantStore'
 
@@ -65,11 +65,6 @@ export default function SentiAssistant() {
   const status = useAssistantStore((s) => s.status)
   const messages = useAssistantStore((s) => s.messages)
   const error = useAssistantStore((s) => s.error)
-  const scrollRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
-  }, [messages, status])
 
   return (
     <AnimatePresence>
@@ -105,35 +100,16 @@ export default function SentiAssistant() {
               </button>
             </div>
 
-            {/* Transcript */}
-            <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-6 py-5">
-              {messages.length === 0 && (
-                <div className="flex h-full flex-col items-center justify-center text-center">
-                  <p className="max-w-sm text-sm text-secondary">
-                    Ask me anything — the weather, a fact, a plan for your day, or just talk. I answer out loud.
-                  </p>
-                </div>
-              )}
-              {messages.map((m) => (
-                <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
-                      m.role === 'user'
-                        ? 'bg-accent/15 text-white ring-1 ring-accent/20'
-                        : 'bg-white/5 text-white/90 ring-1 ring-white/10'
-                    }`}
-                  >
-                    {m.content}
-                  </div>
-                </div>
-              ))}
-              {error && <div className="text-center text-xs text-red-300/80">{error}</div>}
-            </div>
-
-            {/* Controls */}
-            <div className="flex flex-col items-center gap-3 border-t border-white/10 px-6 py-6">
+            {/* Voice-only stage — no transcript. Just you and Senti talking. */}
+            <div className="flex flex-1 flex-col items-center justify-center gap-8 px-6 py-8">
               <MicOrb />
-              <div className="text-xs uppercase tracking-[0.3em] text-secondary">{STATUS_LABEL[status]}</div>
+              <div className="text-sm uppercase tracking-[0.3em] text-secondary">{STATUS_LABEL[status]}</div>
+              {status === 'idle' && messages.length === 0 && (
+                <p className="max-w-xs text-center text-sm text-white/40">
+                  Tap and just talk — Senti answers out loud.
+                </p>
+              )}
+              {error && <div className="text-center text-xs text-red-300/80">{error}</div>}
             </div>
           </motion.div>
         </motion.div>

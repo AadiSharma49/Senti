@@ -29,7 +29,14 @@ export interface AssistantMessage {
   content: string
 }
 
-const LISTEN_TIMEOUT_MS = 9000
+// The "user tapped but hasn't started speaking" timeout. Generous so it doesn't
+// give up while you gather your thought.
+const LISTEN_TIMEOUT_MS = 15000
+
+// Conversational listening: record up to 20s per turn, and wait ~1.2s of
+// silence before ending — so a normal pause mid-sentence doesn't cut you off.
+const ASSISTANT_MAX_UTTERANCE_SEC = 20
+const ASSISTANT_SILENCE_HANGOVER_FRAMES = 24
 
 let recorder: UtteranceRecorder | null = null
 let listenTimer: number | null = null
@@ -95,7 +102,10 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
     }
 
     recorder?.stop()
-    recorder = new UtteranceRecorder()
+    recorder = new UtteranceRecorder({
+      maxUtteranceSec: ASSISTANT_MAX_UTTERANCE_SEC,
+      silenceHangoverFrames: ASSISTANT_SILENCE_HANGOVER_FRAMES,
+    })
     recorder.onUtterance((u) => {
       void handleUtterance(u)
     })

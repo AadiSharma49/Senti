@@ -20,11 +20,18 @@ const VAD_THRESHOLD = 0.02
 const SPEECH_CONSECUTIVE = 3
 
 // Consecutive frames below threshold required to return to 'silent'.
-// At 50 ms/frame this is ~400 ms hangover to avoid chopping off words.
+// At 50 ms/frame this is ~400 ms hangover to avoid chopping off words. This is
+// the DEFAULT (good for unlock); the assistant passes a longer one so a normal
+// thinking pause mid-sentence doesn't end your turn.
 const SILENCE_CONSECUTIVE = 8
 // ─────────────────────────────────────────────────────────────────
 
 export type VADState = 'silent' | 'speaking'
+
+export interface VADOptions {
+  /** Frames of silence (~50ms each) before the turn ends. Higher = more patient. */
+  silenceHangoverFrames?: number
+}
 
 export class VoiceActivityDetector {
   private capture: AudioCapture | null = null
@@ -33,8 +40,11 @@ export class VoiceActivityDetector {
   private speechCount = 0
   private subscribers = new Set<(state: VADState) => void>()
   private unsubFrame: (() => void) | null = null
+  private silenceNeeded: number
 
-  constructor() {}
+  constructor(options: VADOptions = {}) {
+    this.silenceNeeded = options.silenceHangoverFrames ?? SILENCE_CONSECUTIVE
+  }
 
   getState(): VADState {
     return this.state
@@ -84,7 +94,7 @@ export class VoiceActivityDetector {
     } else {
       if (!above) {
         this.silenceCount++
-        if (this.silenceCount >= SILENCE_CONSECUTIVE) {
+        if (this.silenceCount >= this.silenceNeeded) {
           this.setState('silent')
           this.speechCount = 0
         }
