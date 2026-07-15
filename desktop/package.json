@@ -27,6 +27,9 @@
       "dist/**/*",
       "!**/*.map"
     ],
+    "asarUnpack": [
+      "dist/models/**"
+    ],
     "win": {
       "target": [
         {

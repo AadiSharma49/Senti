@@ -15,6 +15,57 @@ const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
 const DEV_SERVER_URL = 'http://localhost:5173'
 
 let mainWindow: BrowserWindowType | null = null
+// In the packaged app we serve the built files over local HTTP (see
+// startStaticServer) so the renderer behaves EXACTLY like dev. Set once ready.
+let prodBaseUrl = ''
+
+// --- Local static server (packaged app) ------------------------------
+//
+// The renderer loads on-device ML models from "/models/...". Over file://
+// that path resolves to the DRIVE ROOT and the models are never found —
+// which is why voice worked in dev (served on http://localhost) but failed
+// the moment the app was installed. Serving the built "dist" folder over
+// http://localhost fixes it: /models, wasm fetches, workers — all behave like
+// dev. Bound to 127.0.0.1 only, so nothing off-machine can reach it.
+const MIME: Record<string, string> = {
+  '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.css': 'text/css', '.json': 'application/json', '.wasm': 'application/wasm',
+  '.onnx': 'application/octet-stream', '.bin': 'application/octet-stream',
+  '.data': 'application/octet-stream', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+  '.txt': 'text/plain', '.map': 'application/json',
+}
+
+function startStaticServer(root: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      try {
+        let urlPath = decodeURIComponent((req.url || '/').split('?')[0])
+        if (urlPath === '/' || urlPath === '') urlPath = '/index.html'
+        // Prevent path traversal; keep everything under root.
+        const safe = path.normalize(urlPath).replace(/^([/\\])+/, '')
+        const filePath = path.join(root, safe)
+        if (!filePath.startsWith(root) || !existsSync(filePath)) {
+          res.writeHead(404); res.end('Not found'); return
+        }
+        const body = readFileSync(filePath)
+        res.writeHead(200, {
+          'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
+          'Cache-Control': 'no-store',
+        })
+        res.end(body)
+      } catch {
+        res.writeHead(500); res.end('Error')
+      }
+    })
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address()
+      if (addr && typeof addr === 'object') resolve(`http://127.0.0.1:${addr.port}`)
+      else reject(new Error('static server failed to bind'))
+    })
+  })
+}
 
 // --- Device token vault ---------------------------------------------
 //
@@ -215,15 +266,13 @@ function createWindow(): void {
     mainWindow.loadURL(DEV_SERVER_URL).catch((err: Error) => {
       console.error('[Electron] Failed to load dev server:', err.message)
     })
+  } else if (prodBaseUrl) {
+    // Served over http://127.0.0.1 so /models and wasm resolve like dev.
+    mainWindow.loadURL(prodBaseUrl).catch((err: Error) => {
+      console.error('[Electron] Failed to load prod server:', err.message)
+    })
   } else {
-    const prodPath = path.join(__dirname, '../dist/index.html')
-    if (existsSync(prodPath)) {
-      mainWindow.loadFile(prodPath).catch((err: Error) => {
-        console.error('[Electron] Failed to load production file:', err.message)
-      })
-    } else {
-      console.error('[Electron] Production build not found at:', prodPath)
-    }
+    console.error('[Electron] Static server not started; cannot load UI.')
   }
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -329,6 +378,17 @@ app.whenReady().then(async () => {
     callback(isMedia(permission))
   })
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => isMedia(permission))
+
+  // Packaged app: serve the built UI over local HTTP so the ML models load.
+  if (!VITE_DEV_SERVER_URL) {
+    try {
+      prodBaseUrl = await startStaticServer(path.join(__dirname, '../dist'))
+    } catch (e) {
+      console.error('[Electron] Failed to start static server:', e)
+      app.quit()
+      return
+    }
+  }
 
   createWindow()
   enforceFocus()
