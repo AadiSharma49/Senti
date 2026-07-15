@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic'
  */
 const RELEASE_URL =
   process.env.NEXT_PUBLIC_DOWNLOAD_URL ||
-  'https://github.com/AadiSharma49/Senti/releases/download/Software/Senti-Setup-0.1.0.exe'
+  'https://github.com/AadiSharma49/Senti/releases/download/Software/Senti-Setup.exe'
 
 // The releases page, for when someone wants notes or an older build.
 const RELEASES_PAGE = 'https://github.com/AadiSharma49/Senti/releases'
