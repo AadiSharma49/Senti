@@ -22,7 +22,7 @@ export default function SiteHeader() {
         <nav className="hidden items-center gap-8 text-sm text-white/70 md:flex">
           <a href="/#features" className="transition hover:text-white">Features</a>
           <a href="/#vision" className="transition hover:text-white">Vision</a>
-          <a href="/#how" className="transition hover:text-white">How it works</a>
+          <Link href="/download" className="transition hover:text-white">Download</Link>
         </nav>
 
         <div className="flex items-center gap-3">
