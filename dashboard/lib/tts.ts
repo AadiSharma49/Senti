@@ -10,13 +10,12 @@ const KEY = process.env.ELEVENLABS_API_KEY
 export const humanVoiceEnabled = !!KEY
 
 /**
- * Default: "Brian" — a natural, conversational male voice that sounds light
- * and human rather than deep and synthetic. Other voices that work on the
- * free plan: Chris iP95p4xoKVk53GoZ742B, Will bIHbv24MWmeRgasZH58o,
+ * Default: "Chris" — a light, casual, natural male voice (free premade). Other
+ * free-plan voices: Will bIHbv24MWmeRgasZH58o, Brian nPczCjzI2devNBz1zQrb,
  * Eric cjVigY5qzO86Huf0OWal, Adam pNInz6obpgDQGcFmaJgB (deep).
  * Note: Voice Library voices need a paid ElevenLabs plan; premade ones are free.
  */
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb'
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'iP95p4xoKVk53GoZ742B'
 
 /**
  * Turbo v2.5 — multilingual, and much lower latency than multilingual_v2,

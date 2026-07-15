@@ -3,7 +3,7 @@ import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -319,6 +319,16 @@ app.whenReady().then(async () => {
       return
     }
   }
+
+  // Grant the microphone. Without this, getUserMedia is DENIED in the packaged
+  // app — voice unlock and the assistant fail silently, and the user is left
+  // typing a PIN with no idea why. Senti is the whole app; the mic is core to
+  // it, so we allow media outright rather than prompting.
+  const isMedia = (p: string) => p === 'media' || p === 'microphone' || p === 'audioCapture'
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
+    callback(isMedia(permission))
+  })
+  session.defaultSession.setPermissionCheckHandler((_wc, permission) => isMedia(permission))
 
   createWindow()
   enforceFocus()

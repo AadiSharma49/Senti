@@ -1,59 +1,59 @@
-import { existsSync as b, mkdirSync as _, writeFileSync as T, unlinkSync as F, readFileSync as V } from "fs";
+import { existsSync as S, mkdirSync as T, writeFileSync as F, unlinkSync as V, readFileSync as q } from "fs";
 import D from "http";
 import L from "os";
 import O from "electron";
 import d from "path";
-import { fileURLToPath as q } from "url";
-const { app: n, BrowserWindow: S, screen: A, ipcMain: c, globalShortcut: h, safeStorage: p } = O, U = q(import.meta.url), E = d.dirname(U), g = process.env.VITE_DEV_SERVER_URL, v = "http://localhost:5173";
+import { fileURLToPath as A } from "url";
+const { app: a, BrowserWindow: v, screen: U, ipcMain: c, globalShortcut: h, safeStorage: p, session: k } = O, P = A(import.meta.url), E = d.dirname(P), g = process.env.VITE_DEV_SERVER_URL, R = "http://localhost:5173";
 let e = null;
-const u = () => d.join(n.getPath("userData"), "device.token");
-function P(t) {
+const f = () => d.join(a.getPath("userData"), "device.token");
+function I(r) {
   try {
-    return _(d.dirname(u()), { recursive: !0 }), p.isEncryptionAvailable() ? (T(u(), p.encryptString(t)), !0) : !1;
+    return T(d.dirname(f()), { recursive: !0 }), p.isEncryptionAvailable() ? (F(f(), p.encryptString(r)), !0) : !1;
   } catch {
     return !1;
   }
 }
-function R() {
+function C() {
   try {
-    return !b(u()) || !p.isEncryptionAvailable() ? null : p.decryptString(V(u()));
+    return !S(f()) || !p.isEncryptionAvailable() ? null : p.decryptString(q(f()));
   } catch {
     return null;
   }
 }
-function I() {
+function $() {
   try {
-    b(u()) && F(u());
+    S(f()) && V(f());
   } catch {
   }
 }
-async function $(t) {
-  const { baseUrl: a, path: o, method: r = "GET", body: s, auth: f = !0 } = t;
-  if (!/^https?:\/\//i.test(a) || !o.startsWith("/api/device/"))
+async function x(r) {
+  const { baseUrl: o, path: s, method: t = "GET", body: n, auth: u = !0 } = r;
+  if (!/^https?:\/\//i.test(o) || !s.startsWith("/api/device/"))
     return { ok: !1, status: 400, data: { error: "Blocked request" } };
-  const i = { "Content-Type": "application/json" };
-  if (f) {
-    const l = R();
-    if (!l) return { ok: !1, status: 401, data: { error: "This device is not linked" } };
-    i.Authorization = `Bearer ${l}`;
+  const l = { "Content-Type": "application/json" };
+  if (u) {
+    const i = C();
+    if (!i) return { ok: !1, status: 401, data: { error: "This device is not linked" } };
+    l.Authorization = `Bearer ${i}`;
   }
   try {
-    const l = await fetch(`${a}${o}`, {
-      method: r,
-      headers: i,
-      body: s === void 0 ? void 0 : JSON.stringify(s)
-    }), y = await l.json().catch(() => null);
-    return { ok: l.ok, status: l.status, data: y };
-  } catch (l) {
+    const i = await fetch(`${o}${s}`, {
+      method: t,
+      headers: l,
+      body: n === void 0 ? void 0 : JSON.stringify(n)
+    }), y = await i.json().catch(() => null);
+    return { ok: i.ok, status: i.status, data: y };
+  } catch (i) {
     return {
       ok: !1,
       status: 0,
-      data: { error: l instanceof Error ? l.message : "Network error" }
+      data: { error: i instanceof Error ? i.message : "Network error" }
     };
   }
 }
 let m = !0;
-const C = [
+const w = [
   "Alt+Tab",
   "Alt+F4",
   "Alt+Escape",
@@ -63,42 +63,42 @@ const C = [
   // Task Manager (best-effort; OS may still win)
   "Super"
   // Win key (best-effort)
-], x = "CommandOrControl+Alt+Shift+Q";
-function j() {
-  for (const t of C)
+], j = "CommandOrControl+Alt+Shift+Q";
+function z() {
+  for (const r of w)
     try {
-      h.register(t, () => {
+      h.register(r, () => {
       });
     } catch {
     }
 }
-function z() {
-  for (const t of C)
+function B() {
+  for (const r of w)
     try {
-      h.isRegistered(t) && h.unregister(t);
+      h.isRegistered(r) && h.unregister(r);
     } catch {
     }
 }
-function k(t) {
-  m = t, t ? j() : z();
+function b(r) {
+  m = r, r ? z() : B();
 }
-function B(t, a = 15e3) {
-  return new Promise((o, r) => {
-    const s = Date.now(), f = () => {
-      D.get(t, (y) => {
-        y.statusCode === 200 ? o() : i();
-      }).on("error", i);
-    }, i = () => {
-      Date.now() - s > a ? r(new Error(`Vite dev server not reachable at ${t}`)) : setTimeout(f, 300);
+function G(r, o = 15e3) {
+  return new Promise((s, t) => {
+    const n = Date.now(), u = () => {
+      D.get(r, (y) => {
+        y.statusCode === 200 ? s() : l();
+      }).on("error", l);
+    }, l = () => {
+      Date.now() - n > o ? t(new Error(`Vite dev server not reachable at ${r}`)) : setTimeout(u, 300);
     };
-    f();
+    u();
   });
 }
-function w() {
-  const { width: t, height: a } = A.getPrimaryDisplay().workAreaSize, o = d.join(E, "preload.cjs");
-  if (e = new S({
-    width: t,
-    height: a,
+function _() {
+  const { width: r, height: o } = U.getPrimaryDisplay().workAreaSize, s = d.join(E, "preload.cjs");
+  if (e = new v({
+    width: r,
+    height: o,
     fullscreen: !0,
     frame: !1,
     transparent: !1,
@@ -111,91 +111,94 @@ function w() {
     thickFrame: !1,
     show: !1,
     webPreferences: {
-      preload: o,
+      preload: s,
       contextIsolation: !0,
       nodeIntegration: !1,
       sandbox: !1
     }
   }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), g)
-    e.loadURL(v).catch((r) => {
-      console.error("[Electron] Failed to load dev server:", r.message);
+    e.loadURL(R).catch((t) => {
+      console.error("[Electron] Failed to load dev server:", t.message);
     });
   else {
-    const r = d.join(E, "../dist/index.html");
-    b(r) ? e.loadFile(r).catch((s) => {
-      console.error("[Electron] Failed to load production file:", s.message);
-    }) : console.error("[Electron] Production build not found at:", r);
+    const t = d.join(E, "../dist/index.html");
+    S(t) ? e.loadFile(t).catch((n) => {
+      console.error("[Electron] Failed to load production file:", n.message);
+    }) : console.error("[Electron] Production build not found at:", t);
   }
   e.webContents.on("did-finish-load", () => {
-    var r, s;
-    e == null || e.show(), e == null || e.focus(), g && ((s = (r = e == null ? void 0 : e.webContents) == null ? void 0 : r.openDevTools) == null || s.call(r));
-  }), e.webContents.on("did-fail-load", (r, s, f, i, l) => {
-    console.error("[Electron] Renderer load failed:", { errorCode: s, errorDescription: f, validatedURL: i, isMainFrame: l });
-  }), e.webContents.on("console-message", (r, s, f) => {
-    const i = ["INFO", "WARN", "ERROR", "DEBUG"][s] || "LOG";
-    console.log(`[Renderer:${i}] ${f}`);
-  }), e.webContents.on("render-process-gone", (r, s) => {
-    console.error("[Electron] Renderer process gone:", s);
+    var t, n;
+    e == null || e.show(), e == null || e.focus(), g && ((n = (t = e == null ? void 0 : e.webContents) == null ? void 0 : t.openDevTools) == null || n.call(t));
+  }), e.webContents.on("did-fail-load", (t, n, u, l, i) => {
+    console.error("[Electron] Renderer load failed:", { errorCode: n, errorDescription: u, validatedURL: l, isMainFrame: i });
+  }), e.webContents.on("console-message", (t, n, u) => {
+    const l = ["INFO", "WARN", "ERROR", "DEBUG"][n] || "LOG";
+    console.log(`[Renderer:${l}] ${u}`);
+  }), e.webContents.on("render-process-gone", (t, n) => {
+    console.error("[Electron] Renderer process gone:", n);
   }), e.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
   }), e.on("blur", () => {
     e && !e.isDestroyed() && e.focus();
-  }), e.on("minimize", (r) => {
-    r.preventDefault(), e && (e.restore(), e.focus());
-  }), e.on("close", (r) => {
-    m && (r.preventDefault(), e == null || e.focus());
+  }), e.on("minimize", (t) => {
+    t.preventDefault(), e && (e.restore(), e.focus());
+  }), e.on("close", (t) => {
+    m && (t.preventDefault(), e == null || e.focus());
   }), e.on("leave-full-screen", () => {
     e && e.setFullScreen(!0);
   });
 }
-function G() {
+function H() {
   setInterval(() => {
     e && !e.isDestroyed() && (!e.isFocused() && e.isVisible() && e.focus(), e.isFullScreen() || e.setFullScreen(!0));
   }, 500);
 }
-n.requestSingleInstanceLock() ? n.on("second-instance", () => {
+a.requestSingleInstanceLock() ? a.on("second-instance", () => {
   e && !e.isDestroyed() && (e.show(), e.focus());
-}) : n.quit();
-n.whenReady().then(async () => {
+}) : a.quit();
+a.whenReady().then(async () => {
   if (g)
     try {
-      await B(v);
-    } catch (t) {
-      console.error("[Electron] Vite dev server failed to start:", t), n.quit();
+      await G(R);
+    } catch (o) {
+      console.error("[Electron] Vite dev server failed to start:", o), a.quit();
       return;
     }
-  w(), G(), k(!0);
+  const r = (o) => o === "media" || o === "microphone" || o === "audioCapture";
+  k.defaultSession.setPermissionRequestHandler((o, s, t) => {
+    t(r(s));
+  }), k.defaultSession.setPermissionCheckHandler((o, s) => r(s)), _(), H(), b(!0);
   try {
-    h.register(x, () => {
-      m = !1, n.exit(0);
+    h.register(j, () => {
+      m = !1, a.exit(0);
     });
   } catch {
   }
-  process.platform === "win32" && n.isPackaged && n.setLoginItemSettings({ openAtLogin: !0, args: [] });
+  process.platform === "win32" && a.isPackaged && a.setLoginItemSettings({ openAtLogin: !0, args: [] });
 });
-n.on("activate", () => {
-  S.getAllWindows().length === 0 ? w() : (e == null || e.show(), e == null || e.focus());
+a.on("activate", () => {
+  v.getAllWindows().length === 0 ? _() : (e == null || e.show(), e == null || e.focus());
 });
-n.on("window-all-closed", () => {
-  process.platform !== "darwin" && n.quit();
+a.on("window-all-closed", () => {
+  process.platform !== "darwin" && a.quit();
 });
-n.on("before-quit", () => {
+a.on("before-quit", () => {
   e = null;
 });
-n.on("will-quit", () => {
+a.on("will-quit", () => {
   h.unregisterAll();
 });
-c.handle("senti:token-set", (t, a) => typeof a != "string" || !a.trim() ? !1 : P(a.trim()));
-c.handle("senti:token-clear", () => (I(), !0));
-c.handle("senti:token-present", () => !!R());
-c.handle("senti:api", (t, a) => {
-  const o = a ?? {};
-  return typeof o.baseUrl != "string" || typeof o.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : $({
-    baseUrl: o.baseUrl,
-    path: o.path,
-    method: typeof o.method == "string" ? o.method : "GET",
-    body: o.body,
-    auth: o.auth !== !1
+c.handle("senti:token-set", (r, o) => typeof o != "string" || !o.trim() ? !1 : I(o.trim()));
+c.handle("senti:token-clear", () => ($(), !0));
+c.handle("senti:token-present", () => !!C());
+c.handle("senti:api", (r, o) => {
+  const s = o ?? {};
+  return typeof s.baseUrl != "string" || typeof s.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : x({
+    baseUrl: s.baseUrl,
+    path: s.path,
+    method: typeof s.method == "string" ? s.method : "GET",
+    body: s.body,
+    auth: s.auth !== !1
   });
 });
 c.handle("senti:get-platform", () => process.platform);
@@ -203,10 +206,10 @@ c.handle("senti:device-info", () => ({
   hostname: L.hostname(),
   platform: process.platform
 }));
-c.handle("senti:set-lock-state", (t, a) => {
-  k(!!a);
+c.handle("senti:set-lock-state", (r, o) => {
+  b(!!o);
 });
 c.handle("senti:lock", () => {
-  k(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
+  b(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
 });
-c.handle("senti:quit", () => m ? !1 : (n.quit(), !0));
+c.handle("senti:quit", () => m ? !1 : (a.quit(), !0));

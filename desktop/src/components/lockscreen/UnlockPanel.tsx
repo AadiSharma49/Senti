@@ -7,18 +7,41 @@ import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { audioManager } from '../../services/audioManager'
 
 function VoiceStatusCard() {
-  const { state } = useVoiceAuthStore()
+  const { state, error } = useVoiceAuthStore()
   const hasProfile = useVoiceProfileStore((s) => !!s.profile)
 
   // No voiceprint enrolled: tell the user how to turn voice unlock on.
   if (state === 'unavailable') {
-    if (hasProfile) return null // a real error (mic/model) — stay quiet, PIN still works
+    // No profile → prompt enrollment.
+    if (!hasProfile) {
+      return (
+        <div className="rounded-3xl border border-white/10 bg-white/5 p-5 ring-1 ring-white/5">
+          <div className="font-semibold text-white">Voice Unlock</div>
+          <p className="mt-1 text-sm text-secondary">
+            Not set up yet. Open Settings (top-right) to enroll your voice.
+          </p>
+        </div>
+      )
+    }
+    // Has a profile but the mic/model failed. NEVER hide silently — say what
+    // went wrong and let the user try again. Hiding this is what made voice
+    // "not work" with no explanation.
     return (
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 ring-1 ring-white/5">
-        <div className="font-semibold text-white">Voice Unlock</div>
-        <p className="mt-1 text-sm text-secondary">
-          Not set up yet. Open Settings (top-right) to enroll your voice.
-        </p>
+      <div className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 ring-1 ring-white/5">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <div className="font-semibold text-white">Voice Unlock unavailable</div>
+            <p className="mt-1 text-sm text-amber-200/90">
+              {error || 'Could not reach the microphone or voice model.'} Check mic access, or use your PIN.
+            </p>
+          </div>
+          <button
+            onClick={() => void useVoiceAuthStore.getState().startSession()}
+            className="shrink-0 rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-glow"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     )
   }
