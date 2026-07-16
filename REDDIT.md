@@ -1,126 +1,134 @@
 # Reddit launch post — ready to publish
 
-**Primary: r/SideProject.** Then r/coding, r/artificial, r/LocalLLaMA (the
-on-device angle plays well there).
+**Primary: r/SideProject.** Then r/artificial, r/coding, r/LocalLLaMA (the
+on-device angle plays hard there).
 
-**Post the 30-second demo video FIRST.** The clip is the post; this text is the
-caption. Without it, nothing here lands.
+**Record the 30-second demo FIRST — the clip IS the post.** Script at the bottom.
 
-Two rules this post follows, and why:
-1. It leads with what WORKS and clearly separates it from what's coming. A
-   security/AI tool that overclaims gets executed in the comments.
-2. It sells the **permission dial**, not "AI that sees everything." Same
-   product, opposite reaction. "An AI with access to my PC" reads as malware;
-   "an AI with exactly the access I gave it" reads as something people install.
+Why this post is angled the way it is: Microsoft announced Windows agents at
+Build 2026 (Agent Workspace, Agent Store, Fara-7B) — but it's still PRIVATE
+PREVIEW, Insiders only, and their own docs say they're "adding more granular
+security and privacy controls before general availability." Tom's Hardware's
+headline was literally "agents that pilfer through your files." People are
+already nervous. So we don't compete on "AI that controls your PC" (Microsoft
+wins that). We lead with the thing none of them have: **it knows it's you.**
 
 ---
 
 ## Title (pick one)
 
-- I built an AI that lives on my PC, knows my voice, and only has the access I
-  give it. It unlocks my computer when it hears me — then I just talk to it.
-- My computer unlocks when it hears *my* voice (no passphrase), then I talk to
-  it like a person. It's not a chat window — it lives on the machine. Building
-  in public.
-- Not another AI chat app: an assistant that lives on your PC, verifies it's
-  really you by voice, and does what you permit — nothing more.
+- Microsoft is putting AI agents inside Windows with access to your files. I'm
+  building the one that only listens to *me* — my voice is the key.
+- Every AI agent will do what anyone sitting at your PC tells it. I built one
+  that verifies it's actually you, by voice, on-device.
+- My PC unlocks when it hears my voice — no passphrase — and then I just talk to
+  it. Building the trust layer for PC agents, in public.
 
 ---
 
 ## Body
 
-Every AI assistant right now is a **window you go to**. You open a tab, paste
-your problem, copy the answer back. It doesn't know you, doesn't know your
-machine, and forgets you the second you close it.
+Microsoft is putting AI agents inside Windows — Agent Workspace, an Agent
+Store, agents that run in the background with access to your personal folders.
+It's still Insider-preview, and their own docs say they're still working out the
+"security and privacy controls." One headline called it *"agents that pilfer
+through your files."*
 
-I wanted the opposite: something that **lives on my computer**, knows it's me,
-and actually does things. So I've been building **Senti**.
+Here's the thing nobody's fixing: **none of these agents know who's talking to
+them.** Copilot, Cowork, all of them — they'll take a command from anyone
+sitting at your machine. And as agents get powerful enough to delete files,
+spend money, and run commands, "who is allowed to tell it to?" stops being a
+detail and becomes *the* question.
+
+So I've been building **Senti**: an AI that lives on my PC, and only listens to
+me.
 
 **Two things work today:**
 
-**1. My PC unlocks when it hears my voice.** No passphrase. It recognizes *who
-is speaking*, not *what you say* — so I can say literally anything, in any
-language, and it opens. A friend saying the exact same words gets rejected. The
-voiceprint is computed on my machine and never leaves it.
+**1. My computer unlocks when it hears my voice.** No passphrase. It recognizes
+*who is speaking*, not *what you say* — I can say literally anything, in any
+language. My friend saying the exact same sentence gets rejected. (That's the
+bit in the video.)
 
-**2. I just talk to it.** It answers out loud in a real voice, in any language,
-and it knows who it's talking to. Not a chat box — a conversation.
+**2. I just talk to it.** It answers out loud in a real voice, any language, and
+it knows who it's talking to. Not a chat window — it's on the machine.
 
-**How it actually works (for the technical folks):**
-- Voice → a neural net (WeSpeaker, ONNX) turns it into 256 numbers, locally.
-  That voiceprint and the audio **never leave the device**.
-- Speech → Whisper transcribes **on-device**; only the resulting text goes to
-  the LLM (Llama 4 on Groq — swappable to GPT/Gemini/Grok with one env var).
+**How it works (for the technical folks):**
+- Voice → a neural net (WeSpeaker, ONNX) turns it into 256 numbers, **on my
+  machine**. The voiceprint and the audio never leave the device.
+- Speech → Whisper transcribes **locally**; only the text goes to the LLM
+  (Llama 4 on Groq — swappable to GPT/Gemini/Grok with one env var).
 - Reply → spoken back via ElevenLabs, ~0.5s.
-- Voiceprints encrypted at rest, device tokens stored hashed, the device API
-  refuses anything that comes from a browser. I attacked my own backend before
-  I trusted it.
+- Voiceprints encrypted at rest, device tokens stored hashed, and the device API
+  refuses any request that comes from a browser. I attacked my own backend
+  before I trusted it.
 
-## Why this isn't "another agent wrapper"
+## Why this isn't another agent wrapper
 
-Three things, and the third is the one I actually care about:
+**It knows it's you.** Not a login you did once this morning — your voice, every
+time. No other assistant verifies the human in the room.
 
-**It knows it's you.** Not a login — your *voice*. No other assistant verifies
-the human in the room.
+**You hold the dial.** This is the whole design. "An AI with access to my PC" is
+terrifying. "An AI with exactly the access I gave it" is something you'd
+actually install. Nothing, or read one folder, or open apps, or act on its own
+while you're out. You set it. It can't quietly widen it.
 
-**It lives where your work is.** Not a tab. It's on the machine, at every
-stage, so you can ask about *this file*, *this system*, *this screen* — instead
-of describing your computer to a chatbot that can't see it.
+**It lives where your work is.** Not a tab you paste into. It's *on* the
+machine — so you can ask about *this* file, *this* system, *this* screen,
+instead of describing your computer to a chatbot that can't see it.
 
-**You hold the dial.** This is the whole design. An AI with access to your PC is
-terrifying — so Senti only ever has the access *you* grant. Nothing, or read
-this one folder, or open apps, or act on its own when you're away. You set it,
-you change it, and it can't quietly widen it.
+## Where it's going
 
-## Where it's going (the actual vision)
+- **Ask about your machine.** "Senti, is this file worth keeping?" "Why is my PC
+  slow?" "What should I upgrade?" — real answers about *your* hardware, not
+  generic advice.
+- **It does things.** Open apps, clear the junk, set up your workspace the way
+  you like it, every morning, automatically.
+- **It's there while you work.** Stuck in a game or a task? Ask it what to do —
+  it can look at what you point it at.
+- **Reach it from anywhere.** You're out, your machine needs a decision, your
+  phone buzzes, you approve. And if you don't reply, your trust dial decides.
+- **The real lock.** A Windows credential provider so it becomes the login gate
+  itself.
 
-- **Ask about your machine.** "Senti, look at this file — is it worth keeping?"
-  "Why is my PC slow?" "What should I upgrade?" It can see what you point it at.
-- **It does things.** Open apps, run tasks, clear the junk, set up your
-  workspace the way you like it every morning.
-- **Reach it from anywhere.** This is the one I'm most excited about: you're out,
-  your machine hits a decision — Claude Code asking "run this command, yes/no?"
-  — **your phone buzzes, you tap approve, your machine keeps working.** And if
-  you don't reply, it does what your trust dial says. Nobody has this.
-- **It learns you.** Gets more useful the more you use it, instead of resetting
-  every session.
-- **The real lock.** A Windows credential provider so it becomes the actual
-  login gate.
-
-## What it CANNOT do yet — being straight
+## What it CANNOT do yet — straight up
 
 - It's a full-screen lock that runs **after** Windows logs in, so **Ctrl+Alt+Del
-  and Task Manager still get past it.** It is not the real lock screen yet. The
-  C++ credential provider that fixes that is started, not finished.
-- **No liveness detection** — a good recording of your voice would currently
-  pass.
-- The assistant **talks, it doesn't act yet.** The doing-things part is next.
-- **No memory between sessions** yet.
-- Installer isn't code-signed, so Windows says "unknown publisher."
+  and Task Manager still get past it.** It is *not* the real lock screen yet.
+  The C++ credential provider is started, not finished.
+- **No liveness detection** — a good recording of my voice would currently pass.
+  (Working on it. Say so in the comments if you want to roast me for it, fair.)
+- The assistant **talks; it doesn't act yet.** The doing-things part is next.
+- No memory between sessions yet.
+- Installer isn't code-signed → Windows says "unknown publisher."
 
 ## "Isn't this just ___?"
 
-- **Windows Hello** — biometric unlock, but not voice, and it can't talk to you
-  or touch your machine.
-- **Copilot** — it's Microsoft's, it's cloud, you can't swap the model, and it
-  never verifies it's really you.
-- **Talon Voice** — genuinely great for voice-driving a PC, but it's
-  command-driven, not an assistant that knows you.
+- **Windows Hello** — unlocks with face/fingerprint, but it's not voice, and it
+  can't talk to you or touch your machine.
+- **Copilot / Cowork / Manus** — powerful, but cloud-tied, you can't swap the
+  model, and none of them check it's really you.
+- **claude-remote-approver / claude-push** — genuinely good tools for approving
+  agent prompts from your phone (credit where it's due — I found these after I
+  had the same idea). They solve approval. They don't solve *identity*.
+- **Voice biometrics vendors** (Sensory, etc.) — real tech, but it's aimed at
+  call centers and banks. Nobody's welded it to a PC agent.
 
-## One thing I refuse to build
+## The one thing I won't build
 
 Silent always-on screen recording. Autostart + a lock + always-on capture +
-remote control + upload is *literally* the behavior profile antivirus flags as
-a RAT — and I'm not putting anyone's screen on a server. Senti sees what you
-point it at, when you ask. The dial is always yours.
+remote control + upload is *literally* the behavior antivirus flags as a RAT,
+and I'm not putting anyone's screen on a server. Senti sees what you point it
+at, when you ask. The dial stays yours.
 
 ---
 
-It's early, rough, and free. Repo + site + demo below. I'd love brutal feedback:
+Early, rough, free, and open. Repo + site + demo below.
 
+Genuinely want the brutal version:
 - Would you install this? What access would you *actually* give it?
-- If you run AI agents — would the "approve from your phone" thing be useful to
-  you, or am I solving my own problem?
+- Is "the agent knows it's me" something you'd care about — or am I solving a
+  problem nobody has yet?
 - Anyone shipped a Windows credential provider? That's the part I most want to
   get right.
 
@@ -128,13 +136,14 @@ It's early, rough, and free. Repo + site + demo below. I'd love brutal feedback:
 
 ---
 
-## The 30-second demo to record FIRST
+## The 30-second demo (record this FIRST)
 
-1. Locked screen. You say something ordinary — "alright, let's get to work." It
+1. Locked screen. Say something ordinary — "alright, let's get to work." It
    unlocks and greets you by name. (~8s)
-2. "That wasn't a password — watch." Say something completely different. Unlocks
-   again. (~7s)
-3. Ask it a real question out loud; let the voice answer. (~10s)
-4. End on the orb. (~5s)
+2. **"That wasn't a password — watch."** Say something completely different. It
+   unlocks again. (~7s)
+3. **A friend says the exact same sentence. Rejected.** ← this is the money
+   shot, do not cut it (~8s)
+4. Ask it a real question; let the voice answer. (~7s)
 
 No narration. Let it speak for itself.
