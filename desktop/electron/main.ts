@@ -19,6 +19,85 @@ let mainWindow: BrowserWindowType | null = null
 // startStaticServer) so the renderer behaves EXACTLY like dev. Set once ready.
 let prodBaseUrl = ''
 
+// --- Multi-monitor cover ---------------------------------------------
+//
+// The lock lived on the primary display only, so on a second monitor the
+// desktop stayed visible AND CLICKABLE while Senti claimed to be locked — a
+// real bypass, not a cosmetic bug. Every non-primary display now gets an
+// opaque, always-on-top cover for as long as we're locked.
+let coverWindows: BrowserWindowType[] = []
+
+const COVER_HTML =
+  'data:text/html;charset=utf-8,' +
+  encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8">
+<style>
+  html,body{margin:0;height:100%;background:#070a0e;overflow:hidden;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;cursor:none}
+  .w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
+  .orb{width:74px;height:74px;border-radius:50%;border:2px solid rgba(0,212,255,.55);
+    box-shadow:0 0 34px rgba(0,212,255,.28) inset,0 0 44px rgba(0,212,255,.16);
+    animation:p 2.6s ease-in-out infinite}
+  @keyframes p{0%,100%{transform:scale(.94);opacity:.6}50%{transform:scale(1.04);opacity:1}}
+  .t{color:#7e93a6;font-size:12px;letter-spacing:.34em;text-transform:uppercase}
+</style></head><body><div class="w"><div class="orb"></div>
+<div class="t">Locked by Senti</div></div></body></html>`)
+
+function closeCoverWindows(): void {
+  for (const w of coverWindows) {
+    try {
+      if (!w.isDestroyed()) {
+        w.setClosable(true)
+        w.destroy()
+      }
+    } catch {
+      // ignore
+    }
+  }
+  coverWindows = []
+}
+
+function createCoverWindows(): void {
+  closeCoverWindows()
+  const primaryId = screen.getPrimaryDisplay().id
+  for (const d of screen.getAllDisplays()) {
+    if (d.id === primaryId) continue
+    try {
+      const w = new BrowserWindow({
+        x: d.bounds.x,
+        y: d.bounds.y,
+        width: d.bounds.width,
+        height: d.bounds.height,
+        frame: false,
+        resizable: false,
+        movable: false,
+        minimizable: false,
+        maximizable: false,
+        closable: false,
+        skipTaskbar: true,
+        alwaysOnTop: true,
+        fullscreen: true,
+        show: false,
+        webPreferences: { contextIsolation: true, nodeIntegration: false },
+      })
+      // 'screen-saver' is the highest normal level — above the taskbar and
+      // other apps' always-on-top windows.
+      w.setAlwaysOnTop(true, 'screen-saver')
+      w.setVisibleOnAllWorkspaces(true)
+      w.loadURL(COVER_HTML)
+      w.once('ready-to-show', () => w.show())
+      coverWindows.push(w)
+    } catch {
+      // A display we can't cover shouldn't crash the lock.
+    }
+  }
+}
+
+/** Covers follow the lock state, and survive monitors being plugged in. */
+function syncCovers(): void {
+  if (isLocked) createCoverWindows()
+  else closeCoverWindows()
+}
+
 // --- Local static server (packaged app) ------------------------------
 //
 // The renderer loads on-device ML models from "/models/...". Over file://
@@ -35,6 +114,13 @@ const MIME: Record<string, string> = {
   '.svg': 'image/svg+xml', '.ico': 'image/x-icon', '.woff2': 'font/woff2',
   '.txt': 'text/plain', '.map': 'application/json',
 }
+
+// A FIXED port, so the origin — and therefore localStorage — is STABLE across
+// launches. With a random port, every start was a different origin with empty
+// storage, so Senti forgot the PIN, the voiceprint, and "setup done", and made
+// the user redo onboarding every single boot. Only fall back to nearby ports if
+// this one is somehow taken (rare — the single-instance lock means it's ours).
+const STATIC_PORT_BASE = 47615
 
 function startStaticServer(root: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -58,12 +144,20 @@ function startStaticServer(root: string): Promise<string> {
         res.writeHead(500); res.end('Error')
       }
     })
-    server.on('error', reject)
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server.address()
-      if (addr && typeof addr === 'object') resolve(`http://127.0.0.1:${addr.port}`)
-      else reject(new Error('static server failed to bind'))
+
+    let port = STATIC_PORT_BASE
+    let attempts = 0
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE' && attempts < 12) {
+        attempts++
+        port++
+        setTimeout(() => server.listen(port, '127.0.0.1'), 40)
+      } else {
+        reject(err)
+      }
     })
+    server.on('listening', () => resolve(`http://127.0.0.1:${port}`))
+    server.listen(port, '127.0.0.1')
   })
 }
 
@@ -207,6 +301,8 @@ function setLocked(locked: boolean): void {
   isLocked = locked
   if (locked) registerLockShortcuts()
   else unregisterLockShortcuts()
+  // Blank every other monitor while locked; give them back on unlock.
+  syncCovers()
 }
 
 function waitForVite(url: string, timeout = 15000): Promise<void> {
@@ -261,6 +357,8 @@ function createWindow(): void {
 
   mainWindow.setVisibleOnAllWorkspaces(true)
   mainWindow.setMenuBarVisibility(false)
+  // Sit above the taskbar and every other app's always-on-top window.
+  mainWindow.setAlwaysOnTop(true, 'screen-saver')
 
   if (VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(DEV_SERVER_URL).catch((err: Error) => {
@@ -393,6 +491,11 @@ app.whenReady().then(async () => {
   createWindow()
   enforceFocus()
 
+  // A monitor plugged in (or unplugged) while locked must not open a hole.
+  screen.on('display-added', () => syncCovers())
+  screen.on('display-removed', () => syncCovers())
+  screen.on('display-metrics-changed', () => syncCovers())
+
   // Start locked: swallow escape hotkeys until the renderer authenticates.
   setLocked(true)
 
@@ -477,6 +580,38 @@ ipcMain.handle('senti:device-info', () => ({
 // The renderer reports its auth state here (locked = anything but unlocked).
 ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
   setLocked(!!locked)
+})
+
+/**
+ * Setup mode: a normal, resizable window instead of a fullscreen lock.
+ *
+ * First-time setup is not a lock — it's a form. Forcing it fullscreen and
+ * swallowing Alt+Tab makes a new user feel trapped before they've even
+ * linked their account. So the renderer tells us when it's in setup, and we
+ * behave like an ordinary app until they're done.
+ */
+function setSetupMode(inSetup: boolean): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  if (inSetup) {
+    setLocked(false) // no escape-key swallowing, no monitor covers
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setFullScreen(false)
+    mainWindow.setResizable(true)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setSize(980, 760)
+    mainWindow.center()
+  } else {
+    mainWindow.setResizable(false)
+    mainWindow.setSkipTaskbar(true)
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    mainWindow.setFullScreen(true)
+    mainWindow.focus()
+  }
+}
+
+ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
+  setSetupMode(!!inSetup)
+  return true
 })
 
 ipcMain.handle('senti:lock', () => {

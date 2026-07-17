@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('senti', {
   lock: () => ipcRenderer.invoke('senti:lock'),
   quit: () => ipcRenderer.invoke('senti:quit'),
   setLockState: (locked: boolean) => ipcRenderer.invoke('senti:set-lock-state', locked),
+  /** True while first-time setup is showing: a normal window, not a lock. */
+  setSetupMode: (inSetup: boolean) => ipcRenderer.invoke('senti:set-setup-mode', inSetup),
 
   // Backend access — the token is attached in main, never exposed here.
   api: (req: { baseUrl: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
