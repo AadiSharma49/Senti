@@ -7,28 +7,28 @@ import { clerkEnabled } from '@/lib/auth'
 
 const features = [
   {
-    title: 'Voice unlock',
-    body: 'Walk up and say anything at all. There is no passphrase to remember — Senti recognizes your voice itself, and unlocks instantly.',
+    title: 'It knows it is you',
+    body: 'Not a password you typed once this morning — your actual voice, every time. Senti verifies who is speaking, not what was said. The check runs on your machine; the voiceprint never leaves it.',
   },
   {
-    title: 'Fully on-device',
-    body: 'Your voiceprint never leaves your machine. A neural network verifies you locally — no cloud, no servers, no internet required.',
+    title: 'You hold the dial',
+    body: 'An AI with access to your PC is frightening. An AI with exactly the access you gave it is not. Grant nothing, one folder, opening apps, or acting on its own while you are out — you set it, and it can never quietly widen it.',
   },
   {
-    title: 'An assistant that talks back',
-    body: 'Once you are in, just talk to Senti. It answers out loud in a real human voice, in any language, and it knows who it is speaking to.',
+    title: 'It lives where your work is',
+    body: 'Not a browser tab you paste your problem into. Senti is on the machine — so you can ask about this file, this system, this screen, and it can actually see them.',
   },
   {
-    title: 'One account, every device',
-    body: 'Enroll once, sign in anywhere. Manage your voice and security policy from the dashboard — your devices just follow it.',
+    title: 'Talk, and it answers',
+    body: 'Once you are in, just speak. Senti replies out loud in a real human voice, in any language, and it always knows who it is talking to.',
   },
 ]
 
 const steps = [
-  { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices and voice profile.' },
-  { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and link it to your account.' },
+  { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices, voice, and what Senti is allowed to do.' },
+  { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and link it to your account with a one-time key.' },
   { n: '03', title: 'Enroll your voice', body: 'Speak naturally a few times — any words. Your voiceprint is learned on-device.' },
-  { n: '04', title: 'Unlock by speaking', body: 'Lock down, walk up, and talk to your computer. Your voice is the key.' },
+  { n: '04', title: 'It is yours', body: 'Unlock by speaking, then talk to it. Set exactly how much of your machine it can touch.' },
 ]
 
 // The vision, told honestly. Each item is labelled by where it really is, so
@@ -139,26 +139,42 @@ export default async function Home() {
         )}
 
         <h1 className="max-w-3xl text-5xl font-bold leading-tight text-white md:text-6xl">
-          Run your computer <span className="text-accent text-glow">with your voice.</span>
+          The AI on your PC that <span className="text-accent text-glow">only listens to you.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-white/60">
-          Senti is an AI layer for your PC. It knows your voice — so it unlocks for you and no
-          one else — and it is becoming the assistant that runs your machine, remembers you, and
-          answers from anywhere. Your voice verification runs entirely on your own device.
+          The whole industry is racing to put AI agents inside your computer — with access to your
+          files, running in the background. Not one of them knows who is talking to it. Senti does.
+          It unlocks for your voice and no one else, and only ever has the access you give it.
         </p>
 
         <div className="mt-10">
           <Cta />
         </div>
 
-        <div className="mt-8 text-xs text-white/35">On-device • No voice data ever leaves your machine</div>
+        <div className="mt-8 text-xs text-white/35">On-device • Your voice never leaves your machine</div>
+      </section>
+
+      {/* The argument — identity is the point */}
+      <section className="border-y border-white/5 bg-white/[0.02] py-20">
+        <div className="mx-auto max-w-3xl px-6 text-center">
+          <div className="text-xs uppercase tracking-[0.3em] text-accent">The question nobody is answering</div>
+          <h2 className="mt-4 text-2xl font-bold leading-snug text-white md:text-4xl">
+            When an AI can act on your machine, who is allowed to tell it to?
+          </h2>
+          <p className="mx-auto mt-6 max-w-2xl text-white/60">
+            Agents are getting powerful enough to delete files, spend money, and run commands — and
+            every one of them will do it for whoever is sitting at the keyboard. Senti starts from
+            the opposite end: <span className="text-white">prove it is you, then do only what you
+            allowed.</span> Identity first. Access on a dial. That is the whole idea.
+          </p>
+        </div>
       </section>
 
       {/* Features */}
       <section id="features" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-14 text-center">
-          <div className="text-xs uppercase tracking-[0.3em] text-accent">Why Senti</div>
-          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">Security that knows you</h2>
+          <div className="text-xs uppercase tracking-[0.3em] text-accent">Why Senti is different</div>
+          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">Not another chat window</h2>
         </div>
         <div className="grid gap-5 md:grid-cols-2">
           {features.map((f) => (
@@ -174,7 +190,7 @@ export default async function Home() {
       <section id="how" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-14 text-center">
           <div className="text-xs uppercase tracking-[0.3em] text-accent">How it works</div>
-          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">Four steps to voice unlock</h2>
+          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">Four steps to make it yours</h2>
         </div>
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
           {steps.map((s) => (
@@ -191,11 +207,11 @@ export default async function Home() {
       <section id="vision" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-4 text-center">
           <div className="text-xs uppercase tracking-[0.3em] text-accent">Where it is going</div>
-          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">An AI layer for your computer</h2>
+          <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">From your key to your co-pilot</h2>
           <p className="mx-auto mt-4 max-w-2xl text-white/55">
-            Senti starts as the lock that knows your voice. It is becoming the assistant that runs
-            your machine, remembers you, and reaches you anywhere. Built in public — here is exactly
-            where each piece stands, honestly.
+            It starts as the assistant that knows it is you. It becomes the one that runs your
+            machine, learns you, and reaches you anywhere — always behind the access dial you set.
+            Built in public, so here is exactly where each piece stands. No hype.
           </p>
         </div>
 
@@ -228,12 +244,12 @@ export default async function Home() {
               <SentiMark size={56} />
             </div>
             <h2 className="text-3xl font-bold text-white md:text-4xl">
-              {signedIn ? 'Your machine is waiting.' : 'Unlock with your voice.'}
+              {signedIn ? 'Your machine is waiting.' : 'Make your computer yours.'}
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-white/60">
               {signedIn
                 ? 'Install Senti on this computer, link it to your account, and enroll your voice.'
-                : 'Create an account, install Senti, and speak. That is the whole setup.'}
+                : 'Create a free account, install Senti, and speak. That is the whole setup.'}
             </p>
             <div className="mt-8 flex justify-center">
               <Cta />
