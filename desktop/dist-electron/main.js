@@ -1,11 +1,11 @@
-import { existsSync as R, readFileSync as T, mkdirSync as V, writeFileSync as q, unlinkSync as P } from "fs";
+import { existsSync as C, readFileSync as x, mkdirSync as V, writeFileSync as q, unlinkSync as P } from "fs";
 import _ from "http";
 import z from "os";
-import $ from "electron";
+import B from "electron";
 import d from "path";
-import { fileURLToPath as B } from "url";
-const { app: i, BrowserWindow: C, screen: p, ipcMain: f, globalShortcut: m, safeStorage: v, session: x } = $, H = B(import.meta.url), A = d.dirname(H), w = process.env.VITE_DEV_SERVER_URL, O = "http://localhost:5173";
-let e = null, k = "", E = [];
+import { fileURLToPath as $ } from "url";
+const { app: i, BrowserWindow: R, screen: p, ipcMain: f, globalShortcut: m, safeStorage: v, session: T } = B, H = $(import.meta.url), A = d.dirname(H), w = process.env.VITE_DEV_SERVER_URL, D = "http://localhost:5173";
+let e = null, E = "", S = [];
 const M = "data:text/html;charset=utf-8," + encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8">
 <style>
   html,body{margin:0;height:100%;background:#070a0e;overflow:hidden;
@@ -18,21 +18,21 @@ const M = "data:text/html;charset=utf-8," + encodeURIComponent(`<!doctype html><
   .t{color:#7e93a6;font-size:12px;letter-spacing:.34em;text-transform:uppercase}
 </style></head><body><div class="w"><div class="orb"></div>
 <div class="t">Locked by Senti</div></div></body></html>`);
-function D() {
-  for (const t of E)
+function O() {
+  for (const t of S)
     try {
       t.isDestroyed() || (t.setClosable(!0), t.destroy());
     } catch {
     }
-  E = [];
+  S = [];
 }
 function N() {
-  D();
+  O();
   const t = p.getPrimaryDisplay().id;
   for (const s of p.getAllDisplays())
     if (s.id !== t)
       try {
-        const r = new C({
+        const r = new R({
           x: s.bounds.x,
           y: s.bounds.y,
           width: s.bounds.width,
@@ -43,18 +43,31 @@ function N() {
           minimizable: !1,
           maximizable: !1,
           closable: !1,
+          // Never take keyboard focus — the PIN box on the primary lock keeps it.
+          focusable: !1,
           skipTaskbar: !0,
           alwaysOnTop: !0,
-          fullscreen: !0,
+          // NOT fullscreen: on Windows `fullscreen:true` goes fullscreen on the
+          // PRIMARY display (behind the lock), not the target monitor. Exact
+          // bounds cover the whole second screen, taskbar included.
+          enableLargerThanScreen: !0,
+          backgroundColor: "#070a0e",
           show: !1,
           webPreferences: { contextIsolation: !0, nodeIntegration: !1 }
         });
-        r.setAlwaysOnTop(!0, "screen-saver"), r.setVisibleOnAllWorkspaces(!0), r.loadURL(M), r.once("ready-to-show", () => r.show()), E.push(r);
+        r.setAlwaysOnTop(!0, "screen-saver"), r.setVisibleOnAllWorkspaces(!0), r.setBounds(s.bounds), r.loadURL(M), r.once("ready-to-show", () => {
+          r.setBounds(s.bounds), r.showInactive(), r.moveTop();
+        }), S.push(r);
       } catch {
       }
 }
 function b() {
-  y ? N() : D();
+  if (!y) {
+    O();
+    return;
+  }
+  const t = Math.max(0, p.getAllDisplays().length - 1);
+  S.filter((r) => !r.isDestroyed()).length === t && t > 0 || N();
 }
 const G = {
   ".html": "text/html",
@@ -80,12 +93,12 @@ function K(t) {
       try {
         let u = decodeURIComponent((l.url || "/").split("?")[0]);
         (u === "/" || u === "") && (u = "/index.html");
-        const I = d.normalize(u).replace(/^([/\\])+/, ""), g = d.join(t, I);
-        if (!g.startsWith(t) || !R(g)) {
+        const F = d.normalize(u).replace(/^([/\\])+/, ""), g = d.join(t, F);
+        if (!g.startsWith(t) || !C(g)) {
           n.writeHead(404), n.end("Not found");
           return;
         }
-        const j = T(g);
+        const j = x(g);
         n.writeHead(200, {
           "Content-Type": G[d.extname(g).toLowerCase()] || "application/octet-stream",
           "Cache-Control": "no-store"
@@ -108,16 +121,16 @@ function Q(t) {
     return !1;
   }
 }
-function U() {
+function L() {
   try {
-    return !R(h()) || !v.isEncryptionAvailable() ? null : v.decryptString(T(h()));
+    return !C(h()) || !v.isEncryptionAvailable() ? null : v.decryptString(x(h()));
   } catch {
     return null;
   }
 }
 function Y() {
   try {
-    R(h()) && P(h());
+    C(h()) && P(h());
   } catch {
   }
 }
@@ -127,7 +140,7 @@ async function X(t) {
     return { ok: !1, status: 400, data: { error: "Blocked request" } };
   const l = { "Content-Type": "application/json" };
   if (c) {
-    const n = U();
+    const n = L();
     if (!n) return { ok: !1, status: 401, data: { error: "This device is not linked" } };
     l.Authorization = `Bearer ${n}`;
   }
@@ -147,7 +160,7 @@ async function X(t) {
   }
 }
 let y = !0;
-const L = [
+const U = [
   "Alt+Tab",
   "Alt+F4",
   "Alt+Escape",
@@ -159,7 +172,7 @@ const L = [
   // Win key (best-effort)
 ], Z = "CommandOrControl+Alt+Shift+Q";
 function W() {
-  for (const t of L)
+  for (const t of U)
     try {
       m.register(t, () => {
       });
@@ -167,13 +180,13 @@ function W() {
     }
 }
 function ee() {
-  for (const t of L)
+  for (const t of U)
     try {
       m.isRegistered(t) && m.unregister(t);
     } catch {
     }
 }
-function S(t) {
+function k(t) {
   y = t, t ? W() : ee(), b();
 }
 function te(t, s = 15e3) {
@@ -188,9 +201,9 @@ function te(t, s = 15e3) {
     c();
   });
 }
-function F() {
+function I() {
   const { width: t, height: s } = p.getPrimaryDisplay().workAreaSize, r = d.join(A, "preload.cjs");
-  e = new C({
+  e = new R({
     width: t,
     height: s,
     fullscreen: !0,
@@ -210,9 +223,9 @@ function F() {
       nodeIntegration: !1,
       sandbox: !1
     }
-  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), e.setAlwaysOnTop(!0, "screen-saver"), w ? e.loadURL(O).catch((o) => {
+  }), e.setVisibleOnAllWorkspaces(!0), e.setMenuBarVisibility(!1), e.setAlwaysOnTop(!0, "screen-saver"), w ? e.loadURL(D).catch((o) => {
     console.error("[Electron] Failed to load dev server:", o.message);
-  }) : k ? e.loadURL(k).catch((o) => {
+  }) : E ? e.loadURL(E).catch((o) => {
     console.error("[Electron] Failed to load prod server:", o.message);
   }) : console.error("[Electron] Static server not started; cannot load UI."), e.webContents.on("did-finish-load", () => {
     var o, a;
@@ -247,22 +260,22 @@ i.requestSingleInstanceLock() ? i.on("second-instance", () => {
 i.whenReady().then(async () => {
   if (w)
     try {
-      await te(O);
+      await te(D);
     } catch (s) {
       console.error("[Electron] Vite dev server failed to start:", s), i.quit();
       return;
     }
   const t = (s) => s === "media" || s === "microphone" || s === "audioCapture";
-  if (x.defaultSession.setPermissionRequestHandler((s, r, o) => {
+  if (T.defaultSession.setPermissionRequestHandler((s, r, o) => {
     o(t(r));
-  }), x.defaultSession.setPermissionCheckHandler((s, r) => t(r)), !w)
+  }), T.defaultSession.setPermissionCheckHandler((s, r) => t(r)), !w)
     try {
-      k = await K(d.join(A, "../dist"));
+      E = await K(d.join(A, "../dist"));
     } catch (s) {
       console.error("[Electron] Failed to start static server:", s), i.quit();
       return;
     }
-  F(), se(), p.on("display-added", () => b()), p.on("display-removed", () => b()), p.on("display-metrics-changed", () => b()), S(!0);
+  I(), se(), p.on("display-added", () => b()), p.on("display-removed", () => b()), p.on("display-metrics-changed", () => b()), k(!0);
   try {
     m.register(Z, () => {
       y = !1, i.exit(0);
@@ -272,7 +285,7 @@ i.whenReady().then(async () => {
   process.platform === "win32" && i.isPackaged && i.setLoginItemSettings({ openAtLogin: !0, args: [] });
 });
 i.on("activate", () => {
-  C.getAllWindows().length === 0 ? F() : (e == null || e.show(), e == null || e.focus());
+  R.getAllWindows().length === 0 ? I() : (e == null || e.show(), e == null || e.focus());
 });
 i.on("window-all-closed", () => {
   process.platform !== "darwin" && i.quit();
@@ -285,7 +298,7 @@ i.on("will-quit", () => {
 });
 f.handle("senti:token-set", (t, s) => typeof s != "string" || !s.trim() ? !1 : Q(s.trim()));
 f.handle("senti:token-clear", () => (Y(), !0));
-f.handle("senti:token-present", () => !!U());
+f.handle("senti:token-present", () => !!L());
 f.handle("senti:api", (t, s) => {
   const r = s ?? {};
   return typeof r.baseUrl != "string" || typeof r.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : X({
@@ -302,13 +315,13 @@ f.handle("senti:device-info", () => ({
   platform: process.platform
 }));
 f.handle("senti:set-lock-state", (t, s) => {
-  S(!!s);
+  k(!!s);
 });
 function re(t) {
-  !e || e.isDestroyed() || (t ? (S(!1), e.setAlwaysOnTop(!1), e.setFullScreen(!1), e.setResizable(!0), e.setSkipTaskbar(!1), e.setSize(980, 760), e.center()) : (e.setResizable(!1), e.setSkipTaskbar(!0), e.setAlwaysOnTop(!0, "screen-saver"), e.setFullScreen(!0), e.focus()));
+  !e || e.isDestroyed() || (t ? (k(!1), e.setAlwaysOnTop(!1), e.setFullScreen(!1), e.setResizable(!0), e.setSkipTaskbar(!1), e.setSize(980, 760), e.center()) : (e.setResizable(!1), e.setSkipTaskbar(!0), e.setAlwaysOnTop(!0, "screen-saver"), e.setFullScreen(!0), e.focus()));
 }
 f.handle("senti:set-setup-mode", (t, s) => (re(!!s), !0));
 f.handle("senti:lock", () => {
-  S(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
+  k(!0), e == null || e.show(), e == null || e.focus(), e == null || e.setFullScreen(!0);
 });
 f.handle("senti:quit", () => y ? !1 : (i.quit(), !0));

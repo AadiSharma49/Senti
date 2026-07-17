@@ -73,9 +73,15 @@ function createCoverWindows(): void {
         minimizable: false,
         maximizable: false,
         closable: false,
+        // Never take keyboard focus — the PIN box on the primary lock keeps it.
+        focusable: false,
         skipTaskbar: true,
         alwaysOnTop: true,
-        fullscreen: true,
+        // NOT fullscreen: on Windows `fullscreen:true` goes fullscreen on the
+        // PRIMARY display (behind the lock), not the target monitor. Exact
+        // bounds cover the whole second screen, taskbar included.
+        enableLargerThanScreen: true,
+        backgroundColor: '#070a0e',
         show: false,
         webPreferences: { contextIsolation: true, nodeIntegration: false },
       })
@@ -83,8 +89,13 @@ function createCoverWindows(): void {
       // other apps' always-on-top windows.
       w.setAlwaysOnTop(true, 'screen-saver')
       w.setVisibleOnAllWorkspaces(true)
+      w.setBounds(d.bounds) // force onto THIS display, full size
       w.loadURL(COVER_HTML)
-      w.once('ready-to-show', () => w.show())
+      w.once('ready-to-show', () => {
+        w.setBounds(d.bounds)
+        w.showInactive() // visible, but focus stays on the lock
+        w.moveTop()
+      })
       coverWindows.push(w)
     } catch {
       // A display we can't cover shouldn't crash the lock.
@@ -94,8 +105,16 @@ function createCoverWindows(): void {
 
 /** Covers follow the lock state, and survive monitors being plugged in. */
 function syncCovers(): void {
-  if (isLocked) createCoverWindows()
-  else closeCoverWindows()
+  if (!isLocked) {
+    closeCoverWindows()
+    return
+  }
+  // Already covering exactly the right screens? Don't recreate them — that
+  // would flicker the second monitor on every lock-state push.
+  const need = Math.max(0, screen.getAllDisplays().length - 1)
+  const have = coverWindows.filter((w) => !w.isDestroyed()).length
+  if (have === need && need > 0) return
+  createCoverWindows()
 }
 
 // --- Local static server (packaged app) ------------------------------
