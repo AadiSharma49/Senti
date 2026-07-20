@@ -46,10 +46,23 @@ const loadSecurity = (): SettingsState['security'] => ({
   ...safe<Partial<SettingsState['security']>>('senti:security', {}),
 })
 
+// Setup flag: prefer the file-backed value from Electron main (origin-
+// independent — survives a local-server port change), fall back to
+// localStorage in dev/browser.
+const loadSetupCompleted = (): boolean => {
+  try {
+    const fromMain = window.senti?.setupCompletedAtBoot
+    if (typeof fromMain === 'boolean') return fromMain
+  } catch {
+    // not in Electron — fall through
+  }
+  return safe('senti:setupCompleted', false)
+}
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   security: loadSecurity(),
 
-  setupCompleted: safe('senti:setupCompleted', false),
+  setupCompleted: loadSetupCompleted(),
 
   setSecurity: (s) => {
     const next = { ...loadSecurity(), ...s }
@@ -59,6 +72,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   setSetupCompleted: (completed) => {
     persist('senti:setupCompleted', completed)
+    // Also persist to the file in main, so it survives an origin change.
+    try {
+      void window.senti?.persistSetupCompleted?.(completed)
+    } catch {}
     set({ setupCompleted: completed })
   },
 
@@ -71,6 +88,10 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     } catch {
       // ignore storage errors
     }
+    // Clear the file-backed flag too, so a reset really re-runs setup.
+    try {
+      void window.senti?.persistSetupCompleted?.(false)
+    } catch {}
 
     set({
       security: defaultSecurity,

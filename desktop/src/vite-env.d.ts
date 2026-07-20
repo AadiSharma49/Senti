@@ -23,6 +23,9 @@ interface SentiAPI {
   setLockState: (locked: boolean) => Promise<void>
   /** True while first-time setup is showing: a normal window, not a lock. */
   setSetupMode: (inSetup: boolean) => Promise<boolean>
+  /** Setup-completion flag read from a file at boot (survives port changes). */
+  setupCompletedAtBoot: boolean
+  persistSetupCompleted: (done: boolean) => Promise<boolean>
 
   /** Call the backend from the main process (token attached there). */
   api: <T = unknown>(req: ApiRequest) => Promise<ApiResponse<T>>

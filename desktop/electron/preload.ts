@@ -18,6 +18,17 @@ contextBridge.exposeInMainWorld('senti', {
   /** True while first-time setup is showing: a normal window, not a lock. */
   setSetupMode: (inSetup: boolean) => ipcRenderer.invoke('senti:set-setup-mode', inSetup),
 
+  // Setup-completion flag, persisted to a FILE in main (origin-independent, so
+  // it survives a local-server port change). Read synchronously at boot.
+  setupCompletedAtBoot: (() => {
+    try {
+      return ipcRenderer.sendSync('senti:get-setup') === true
+    } catch {
+      return false
+    }
+  })(),
+  persistSetupCompleted: (done: boolean) => ipcRenderer.invoke('senti:set-setup', done),
+
   // Backend access — the token is attached in main, never exposed here.
   api: (req: { baseUrl: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
     ipcRenderer.invoke('senti:api', req),

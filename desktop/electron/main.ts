@@ -224,6 +224,34 @@ function clearToken(): void {
   }
 }
 
+// --- Setup-completion flag (file, NOT localStorage) ------------------
+//
+// "Setup done" used to live only in localStorage, which is scoped to the
+// renderer ORIGIN. The packaged app serves itself over http://127.0.0.1:<port>;
+// if that port ever changes between launches, the origin changes and
+// localStorage is empty — so the app forgets setup and shows the first-run
+// wizard AGAIN. A plain file in userData is origin-independent, so the flag
+// survives no matter what port the local server ends up on.
+const setupFlagFile = () => path.join(app.getPath('userData'), 'setup.json')
+
+function readSetupFlag(): boolean {
+  try {
+    if (!existsSync(setupFlagFile())) return false
+    return JSON.parse(readFileSync(setupFlagFile(), 'utf8'))?.setupCompleted === true
+  } catch {
+    return false
+  }
+}
+
+function writeSetupFlag(done: boolean): void {
+  try {
+    mkdirSync(path.dirname(setupFlagFile()), { recursive: true })
+    writeFileSync(setupFlagFile(), JSON.stringify({ setupCompleted: !!done }))
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * The ONLY path from Senti to its backend.
  *
@@ -574,6 +602,16 @@ ipcMain.handle('senti:token-clear', () => {
 })
 
 ipcMain.handle('senti:token-present', () => !!loadToken())
+
+// Setup flag: sendSync so the renderer can read it synchronously at boot,
+// before deciding whether to show the wizard. Set via invoke on completion.
+ipcMain.on('senti:get-setup', (e: { returnValue: unknown }) => {
+  e.returnValue = readSetupFlag()
+})
+ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
+  writeSetupFlag(!!done)
+  return true
+})
 
 ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
   const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }
