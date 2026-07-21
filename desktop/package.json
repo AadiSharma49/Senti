@@ -51,7 +51,10 @@
       "shortcutName": "Senti",
       "artifactName": "Senti-Setup.exe",
       "uninstallDisplayName": "Senti"
-    }
+    },
+    "extraResources": [
+      "build/icon.png"
+    ]
   },
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",

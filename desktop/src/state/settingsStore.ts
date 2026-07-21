@@ -25,6 +25,12 @@ export interface SettingsState {
     cleanup: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
+    /**
+     * Keep listening in the background for "Senti …" so you never open the app.
+     * The listening is entirely on-device — audio is never uploaded, and only
+     * the text of a command leaves after the wake word fires.
+     */
+    alwaysListening: boolean
   }
 
   setSecurity: (s: Partial<SettingsState['security']>) => void
@@ -83,6 +89,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   closeApps: false,
   cleanup: false,
   systemControl: true,
+  alwaysListening: true,
 }
 
 const loadPermissions = (): SettingsState['permissions'] => ({

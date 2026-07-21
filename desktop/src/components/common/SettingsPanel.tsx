@@ -163,6 +163,11 @@ export default function SettingsPanel() {
           </p>
           <div className="grid gap-2">
             {([
+              {
+                key: 'alwaysListening',
+                title: 'Listen for “Senti” anywhere',
+                hint: 'Hands-free from any app. Listening happens only on this PC — audio is never uploaded.',
+              },
               { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
               { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },

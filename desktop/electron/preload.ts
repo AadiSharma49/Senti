@@ -18,6 +18,11 @@ contextBridge.exposeInMainWorld('senti', {
   /** True while first-time setup is showing: a normal window, not a lock. */
   setSetupMode: (inSetup: boolean) => ipcRenderer.invoke('senti:set-setup-mode', inSetup),
 
+  /** 'lock' fullscreen, 'setup' normal window, 'hud' small + hidden in tray. */
+  setWindowMode: (mode: 'lock' | 'setup' | 'hud') => ipcRenderer.invoke('senti:set-window-mode', mode),
+  hudShow: () => ipcRenderer.invoke('senti:hud-show'),
+  hudHide: () => ipcRenderer.invoke('senti:hud-hide'),
+
   // Setup-completion flag, persisted to a FILE in main (origin-independent, so
   // it survives a local-server port change). Read synchronously at boot.
   setupCompletedAtBoot: (() => {

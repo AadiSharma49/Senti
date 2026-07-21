@@ -7,7 +7,7 @@ import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -757,6 +757,13 @@ function createWindow(): void {
     if (isLocked) {
       event.preventDefault()
       mainWindow?.focus()
+      return
+    }
+    // Closing the HUD must not kill Senti — it still has to hear the wake word.
+    // Only an explicit Quit (tray) actually exits.
+    if (!quitting) {
+      event.preventDefault()
+      hideHud()
     }
   })
 
@@ -863,9 +870,15 @@ app.on('activate', () => {
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
+  // Senti lives in the tray and keeps listening; it does not exit with its
+  // window. Quitting happens from the tray menu (which sets `quitting`).
+  if (quitting && process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+app.on('before-quit', () => {
+  quitting = true
 })
 
 app.on('before-quit', () => {
@@ -942,6 +955,120 @@ ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
   setLocked(!!locked)
 })
 
+// --- Window modes + tray ---------------------------------------------
+//
+// Senti has to keep running after you unlock, or it can't hear you. So the
+// window is never destroyed — it becomes a small HUD that stays hidden until
+// the wake word fires, and the app lives in the tray.
+
+type WindowMode = 'lock' | 'setup' | 'hud'
+let windowMode: WindowMode = 'lock'
+let tray: InstanceType<typeof Tray> | null = null
+let quitting = false
+
+const HUD_W = 420
+const HUD_H = 150
+
+function positionHud(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  const { workArea } = screen.getPrimaryDisplay()
+  mainWindow.setBounds({
+    x: workArea.x + workArea.width - HUD_W - 24,
+    y: workArea.y + workArea.height - HUD_H - 24,
+    width: HUD_W,
+    height: HUD_H,
+  })
+}
+
+function setWindowMode(mode: WindowMode): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  windowMode = mode
+
+  if (mode === 'hud') {
+    // Small, frameless, out of the way — and hidden until Senti is spoken to.
+    setLocked(false)
+    mainWindow.setFullScreen(false)
+    mainWindow.setResizable(false)
+    mainWindow.setSkipTaskbar(true)
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    positionHud()
+    mainWindow.hide()
+  } else if (mode === 'setup') {
+    setLocked(false)
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setFullScreen(false)
+    mainWindow.setResizable(true)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setSize(980, 760)
+    mainWindow.center()
+    mainWindow.show()
+  } else {
+    setLocked(true)
+    mainWindow.setResizable(false)
+    mainWindow.setSkipTaskbar(true)
+    mainWindow.setAlwaysOnTop(true, 'screen-saver')
+    mainWindow.setFullScreen(true)
+    mainWindow.show()
+    mainWindow.focus()
+  }
+}
+
+/** Bring the HUD up (without stealing focus from what you're doing). */
+function showHud(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || windowMode !== 'hud') return
+  positionHud()
+  mainWindow.showInactive()
+  mainWindow.setAlwaysOnTop(true, 'screen-saver')
+}
+
+function hideHud(): void {
+  if (!mainWindow || mainWindow.isDestroyed() || windowMode !== 'hud') return
+  mainWindow.hide()
+}
+
+function trayIcon(): Electron.NativeImage {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'build', 'icon.png'),
+    path.join(__dirname, '..', 'build', 'icon.png'),
+  ]
+  for (const p of candidates) {
+    try {
+      if (existsSync(p)) {
+        const img = nativeImage.createFromPath(p)
+        if (!img.isEmpty()) return img.resize({ width: 16, height: 16 })
+      }
+    } catch {
+      // try the next one
+    }
+  }
+  return nativeImage.createEmpty()
+}
+
+function buildTray(): void {
+  if (tray) return
+  try {
+    tray = new Tray(trayIcon())
+    tray.setToolTip('Senti — listening for you')
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Lock now', click: () => setWindowMode('lock') },
+        { label: 'Show Senti', click: () => showHud() },
+        { type: 'separator' },
+        {
+          label: 'Quit Senti',
+          click: () => {
+            quitting = true
+            app.quit()
+          },
+        },
+      ])
+    )
+    tray.on('click', () => showHud())
+  } catch {
+    // A missing tray shouldn't stop Senti from running.
+  }
+}
+
 /**
  * Setup mode: a normal, resizable window instead of a fullscreen lock.
  *
@@ -971,6 +1098,25 @@ function setSetupMode(inSetup: boolean): void {
 
 ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
   setSetupMode(!!inSetup)
+  return true
+})
+
+// Background operation: after unlock Senti becomes a hidden HUD in the tray so
+// it can keep listening. The renderer drives these.
+ipcMain.handle('senti:set-window-mode', (_e: unknown, mode: unknown) => {
+  if (mode === 'lock' || mode === 'setup' || mode === 'hud') {
+    setWindowMode(mode)
+    if (mode === 'hud') buildTray()
+    return true
+  }
+  return false
+})
+ipcMain.handle('senti:hud-show', () => {
+  showHud()
+  return true
+})
+ipcMain.handle('senti:hud-hide', () => {
+  hideHud()
   return true
 })
 
