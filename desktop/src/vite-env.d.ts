@@ -28,8 +28,12 @@ interface SentiAPI {
   persistSetupCompleted: (done: boolean) => Promise<boolean>
   /** Real vitals for this machine (memory, disk, top processes, startup apps). */
   systemInfo: () => Promise<SystemSnapshot>
-  /** Open an app or site by name (whitelisted in main). */
+  /** OS actions (whitelisted or scoped in main). */
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
+  closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
+  cleanTemp: () => Promise<{ freedMB: number; files: number }>
+  lockWorkstation: () => Promise<boolean>
+  volume: (direction: 'up' | 'down' | 'mute') => Promise<boolean>
 
   /** Call the backend from the main process (token attached there). */
   api: <T = unknown>(req: ApiRequest) => Promise<ApiResponse<T>>

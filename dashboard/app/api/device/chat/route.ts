@@ -28,7 +28,57 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'close_app',
+      description:
+        'Close or quit a running application — e.g. "close Chrome", "quit Spotify", "kill Discord".',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'App name only, lowercase. e.g. chrome, spotify, discord.' },
+        },
+        required: ['name'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'clean_temp',
+      description:
+        'Free disk space by deleting temporary files. Use when the user asks to clean up, free space, clear junk/temp files, or says the disk is full. Also the right follow-up when they ask you to fix a slow or full machine.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'lock_workstation',
+      description:
+        'Lock the computer (the real Windows lock). Use for "lock my PC", "lock the computer", "I am stepping away".',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'set_volume',
+      description: 'Change the system volume. Use for "turn it up", "volume down", "mute".',
+      parameters: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: ['up', 'down', 'mute'], description: 'up, down, or mute' },
+        },
+        required: ['direction'],
+      },
+    },
+  },
 ]
+
+/** Actions the desktop knows how to run. */
+const KNOWN_ACTIONS = new Set(['open_app', 'close_app', 'clean_temp', 'lock_workstation', 'set_volume'])
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -124,11 +174,27 @@ export async function POST(req: Request) {
   let action: { name: string; args: Record<string, unknown> } | null = null
   let reply = result?.text || ''
 
-  if (result?.toolCall?.name === 'open_app') {
-    const target = String(result.toolCall.args?.name ?? '').slice(0, 60)
-    if (target) {
-      action = { name: 'open_app', args: { name: target } }
-      if (!reply) reply = `Opening ${target}.`
+  const call = result?.toolCall
+  if (call && KNOWN_ACTIONS.has(call.name)) {
+    // Only pass through arguments we understand, capped.
+    const args: Record<string, unknown> = {}
+    if (typeof call.args?.name === 'string') args.name = call.args.name.slice(0, 60)
+    if (typeof call.args?.direction === 'string') args.direction = call.args.direction.slice(0, 10)
+    action = { name: call.name, args }
+
+    // The desktop replaces this with the real outcome, but we always have
+    // something to say if it can't.
+    if (!reply) {
+      reply =
+        call.name === 'open_app'
+          ? `Opening ${args.name ?? 'that'}.`
+          : call.name === 'close_app'
+          ? `Closing ${args.name ?? 'that'}.`
+          : call.name === 'clean_temp'
+          ? 'Cleaning up temporary files.'
+          : call.name === 'lock_workstation'
+          ? 'Locking your PC.'
+          : 'Done.'
     }
   }
 

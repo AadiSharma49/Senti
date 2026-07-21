@@ -1,4 +1,7 @@
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs'
+import {
+  existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync,
+  readdirSync, statSync, rmdirSync,
+} from 'fs'
 import { execFile, spawn } from 'child_process'
 import http from 'http'
 import os from 'os'
@@ -412,6 +415,116 @@ function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: strin
   }
 }
 
+// --- Cleanup ----------------------------------------------------------
+//
+// The other half of system awareness: Senti already tells you the disk is full
+// and what's eating it — this lets it actually fix that. Only temp directories,
+// the same thing Windows Disk Cleanup targets.
+//
+// Safety: every path is checked to be inside a directory whose name contains
+// "temp" before a single file is touched, symlinks are never followed, and any
+// file in use is skipped rather than forced.
+
+const MAX_CLEAN_MS = 20_000
+
+function cleanTempDirs(): { freedMB: number; files: number } {
+  const targets = [os.tmpdir(), path.join(process.env.SystemRoot || 'C:\\Windows', 'Temp')]
+  const started = Date.now()
+  let freedBytes = 0
+  let files = 0
+
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 6 || Date.now() - started > MAX_CLEAN_MS) return
+    // Hard guard: never delete outside a temp directory.
+    if (!/temp/i.test(dir)) return
+
+    let entries: import('fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+
+    for (const entry of entries) {
+      if (Date.now() - started > MAX_CLEAN_MS) return
+      const full = path.join(dir, entry.name)
+      try {
+        if (entry.isSymbolicLink()) continue // never follow links out of temp
+        if (entry.isDirectory()) {
+          walk(full, depth + 1)
+          try {
+            rmdirSync(full) // only succeeds once it's empty
+          } catch {
+            // still has locked contents — fine
+          }
+        } else if (entry.isFile()) {
+          const size = statSync(full).size
+          unlinkSync(full)
+          freedBytes += size
+          files++
+        }
+      } catch {
+        // In use or protected — skip it. Never force.
+      }
+    }
+  }
+
+  for (const t of targets) walk(t, 0)
+  return { freedMB: Math.round(freedBytes / 1024 / 1024), files }
+}
+
+/** Lock the workstation — the real Windows lock, not our window. */
+function lockWorkstation(): boolean {
+  try {
+    spawn('rundll32.exe', ['user32.dll,LockWorkStation'], { detached: true, stdio: 'ignore' }).unref()
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Volume via media-key virtual codes: simple, no extra dependency. */
+function changeVolume(direction: 'up' | 'down' | 'mute'): boolean {
+  const key = direction === 'up' ? 175 : direction === 'down' ? 174 : 173
+  const repeat = direction === 'mute' ? 1 : 5 // ~10% per step
+  const ps = `$w = New-Object -ComObject WScript.Shell; 1..${repeat} | ForEach-Object { $w.SendKeys([char]${key}) }`
+  try {
+    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+      timeout: 4000,
+      windowsHide: true,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Close an app — whitelisted process names only, never arbitrary input. */
+const CLOSABLE: Record<string, { proc: string; label: string }> = {
+  chrome: { proc: 'chrome.exe', label: 'Chrome' },
+  edge: { proc: 'msedge.exe', label: 'Edge' },
+  firefox: { proc: 'firefox.exe', label: 'Firefox' },
+  notepad: { proc: 'notepad.exe', label: 'Notepad' },
+  spotify: { proc: 'Spotify.exe', label: 'Spotify' },
+  discord: { proc: 'Discord.exe', label: 'Discord' },
+  steam: { proc: 'steam.exe', label: 'Steam' },
+  calculator: { proc: 'CalculatorApp.exe', label: 'Calculator' },
+  paint: { proc: 'mspaint.exe', label: 'Paint' },
+}
+
+function closeApp(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
+  if (typeof nameRaw !== 'string') return { ok: false, error: 'unknown' }
+  const hit = CLOSABLE[nameRaw.toLowerCase().trim()]
+  if (!hit) return { ok: false, error: 'unknown' }
+  try {
+    // /IM takes a value from OUR table; the model's text never reaches a shell.
+    spawn('taskkill', ['/IM', hit.proc, '/F'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    return { ok: true, label: hit.label }
+  } catch {
+    return { ok: false, error: 'failed' }
+  }
+}
+
 async function systemSnapshot(): Promise<SystemSnapshot> {
   if (sysCache && Date.now() - sysCache.at < SYS_CACHE_MS) return sysCache.data
   const base = basicSystem()
@@ -792,8 +905,16 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
 
-// The first real OS action: open an app or site by name (whitelisted).
+// OS actions. Each is whitelisted or scoped in main; the renderer (and the
+// model behind it) can only ask, never dictate a command.
 ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
+ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name))
+ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
+ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
+ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
+  const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null
+  return d ? changeVolume(d) : false
+})
 
 ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
   const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }

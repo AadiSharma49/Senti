@@ -161,28 +161,36 @@ export default function SettingsPanel() {
           <p className="section-sub mb-3">
             Senti only ever does what you switch on here.
           </p>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <div className="font-semibold text-white">Open apps and websites</div>
-                <div className="mt-1 text-xs text-secondary">
-                  Let Senti launch things when you ask — &ldquo;open Chrome&rdquo;.
+          <div className="grid gap-2">
+            {([
+              { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
+              { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
+              { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },
+              { key: 'cleanup', title: 'Delete temporary files', hint: 'Frees disk space. Off by default.' },
+            ] as const).map((p) => (
+              <div key={p.key} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <div className="font-semibold text-white">{p.title}</div>
+                    <div className="mt-1 text-xs text-secondary">{p.hint}</div>
+                  </div>
+                  <button
+                    onClick={() => setPermissions({ [p.key]: !permissions[p.key] })}
+                    aria-pressed={permissions[p.key]}
+                    aria-label={p.title}
+                    className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                      permissions[p.key] ? 'bg-accent' : 'bg-white/15'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-1 h-5 w-5 rounded-full bg-black transition-all ${
+                        permissions[p.key] ? 'left-6' : 'left-1'
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => setPermissions({ openApps: !permissions.openApps })}
-                aria-pressed={permissions.openApps}
-                className={`relative h-7 w-12 shrink-0 rounded-full transition ${
-                  permissions.openApps ? 'bg-accent' : 'bg-white/15'
-                }`}
-              >
-                <span
-                  className={`absolute top-1 h-5 w-5 rounded-full bg-black transition-all ${
-                    permissions.openApps ? 'left-6' : 'left-1'
-                  }`}
-                />
-              </button>
-            </div>
+            ))}
           </div>
         </motion.section>
 

@@ -96,9 +96,12 @@ export interface ChatResult {
   toolCall: ToolCall | null
 }
 
-async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
-  { ok: true; result: ChatResult } | { ok: false; modelGone: boolean }
-> {
+type CallOutcome =
+  | { ok: true; result: ChatResult }
+  /** 'empty' = the model replied with neither text nor a tool call. */
+  | { ok: false; reason: 'model-gone' | 'empty' | 'error' }
+
+async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<CallOutcome> {
   const messages = [
     { role: 'system', content: opts.system },
     ...opts.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -120,7 +123,7 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
       const body = await res.text().catch(() => '')
       const modelGone = res.status === 404 || /model_not_found|does not exist/i.test(body)
       if (modelGone) console.error(`[senti] model "${model}" unavailable — falling back`)
-      return { ok: false, modelGone }
+      return { ok: false, reason: modelGone ? 'model-gone' : 'error' }
     }
     const data = await res.json()
     const msg = data?.choices?.[0]?.message
@@ -139,10 +142,10 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
       toolCall = { name: raw.function.name, args }
     }
 
-    if (!text && !toolCall) return { ok: false, modelGone: false }
+    if (!text && !toolCall) return { ok: false, reason: 'empty' }
     return { ok: true, result: { text: text || null, toolCall } }
   } catch {
-    return { ok: false, modelGone: false }
+    return { ok: false, reason: 'error' }
   }
 }
 
@@ -150,9 +153,16 @@ async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<ChatResult
   // Primary model, then any fallbacks — a retired model must never silently
   // take the assistant offline.
   for (const model of [p.model, ...(p.fallbackModels ?? [])]) {
-    const r = await callModel(p, model, opts)
+    let r = await callModel(p, model, opts)
+
+    // Models intermittently return NOTHING when tools are attached, which would
+    // turn an ordinary question into an error. Ask again without the tools.
+    if (!r.ok && r.reason === 'empty' && opts.tools?.length) {
+      r = await callModel(p, model, { ...opts, tools: undefined })
+    }
+
     if (r.ok) return r.result
-    if (!r.modelGone) return null // a real failure (auth, rate limit) — don't churn
+    if (r.reason !== 'model-gone') return null // real failure (auth, rate limit)
   }
   return null
 }

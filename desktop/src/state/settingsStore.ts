@@ -17,8 +17,14 @@ export interface SettingsState {
    * granted is not.
    */
   permissions: {
-    /** Allow Senti to open apps and websites on this machine. */
+    /** Open apps and websites. */
     openApps: boolean
+    /** Close running apps. */
+    closeApps: boolean
+    /** Delete temp files to free disk space. */
+    cleanup: boolean
+    /** Volume and locking the workstation. */
+    systemControl: boolean
   }
 
   setSecurity: (s: Partial<SettingsState['security']>) => void
@@ -70,7 +76,14 @@ const loadSetupCompleted = (): boolean => {
   return safe('senti:setupCompleted', false)
 }
 
-const DEFAULT_PERMISSIONS: SettingsState['permissions'] = { openApps: true }
+// Opening things and volume are harmless; deleting files and killing apps are
+// the ones a user should switch on deliberately.
+const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
+  openApps: true,
+  closeApps: false,
+  cleanup: false,
+  systemControl: true,
+}
 
 const loadPermissions = (): SettingsState['permissions'] => ({
   ...DEFAULT_PERMISSIONS,

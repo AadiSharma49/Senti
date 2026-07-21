@@ -32,8 +32,12 @@ contextBridge.exposeInMainWorld('senti', {
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
 
-  /** Open an app or site by name. Whitelisted in main — never a raw command. */
+  /** OS actions. All whitelisted or scoped in main — never a raw command. */
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),
+  closeApp: (name: string) => ipcRenderer.invoke('senti:close-app', name),
+  cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
+  lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
+  volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 
   // Backend access — the token is attached in main, never exposed here.
   api: (req: { baseUrl: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
