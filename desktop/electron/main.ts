@@ -23,103 +23,8 @@ let mainWindow: BrowserWindowType | null = null
 // startStaticServer) so the renderer behaves EXACTLY like dev. Set once ready.
 let prodBaseUrl = ''
 
-// --- Multi-monitor cover ---------------------------------------------
-//
-// The lock lived on the primary display only, so on a second monitor the
-// desktop stayed visible AND CLICKABLE while Senti claimed to be locked — a
-// real bypass, not a cosmetic bug. Every non-primary display now gets an
-// opaque, always-on-top cover for as long as we're locked.
-let coverWindows: BrowserWindowType[] = []
-
-const COVER_HTML =
-  'data:text/html;charset=utf-8,' +
-  encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8">
-<style>
-  html,body{margin:0;height:100%;background:#070a0e;overflow:hidden;
-    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;cursor:none}
-  .w{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px}
-  .orb{width:74px;height:74px;border-radius:50%;border:2px solid rgba(0,212,255,.55);
-    box-shadow:0 0 34px rgba(0,212,255,.28) inset,0 0 44px rgba(0,212,255,.16);
-    animation:p 2.6s ease-in-out infinite}
-  @keyframes p{0%,100%{transform:scale(.94);opacity:.6}50%{transform:scale(1.04);opacity:1}}
-  .t{color:#7e93a6;font-size:12px;letter-spacing:.34em;text-transform:uppercase}
-</style></head><body><div class="w"><div class="orb"></div>
-<div class="t">Locked by Senti</div></div></body></html>`)
-
-function closeCoverWindows(): void {
-  for (const w of coverWindows) {
-    try {
-      if (!w.isDestroyed()) {
-        w.setClosable(true)
-        w.destroy()
-      }
-    } catch {
-      // ignore
-    }
-  }
-  coverWindows = []
-}
-
-function createCoverWindows(): void {
-  closeCoverWindows()
-  const primaryId = screen.getPrimaryDisplay().id
-  for (const d of screen.getAllDisplays()) {
-    if (d.id === primaryId) continue
-    try {
-      const w = new BrowserWindow({
-        x: d.bounds.x,
-        y: d.bounds.y,
-        width: d.bounds.width,
-        height: d.bounds.height,
-        frame: false,
-        resizable: false,
-        movable: false,
-        minimizable: false,
-        maximizable: false,
-        closable: false,
-        // Never take keyboard focus — the PIN box on the primary lock keeps it.
-        focusable: false,
-        skipTaskbar: true,
-        alwaysOnTop: true,
-        // NOT fullscreen: on Windows `fullscreen:true` goes fullscreen on the
-        // PRIMARY display (behind the lock), not the target monitor. Exact
-        // bounds cover the whole second screen, taskbar included.
-        enableLargerThanScreen: true,
-        backgroundColor: '#070a0e',
-        show: false,
-        webPreferences: { contextIsolation: true, nodeIntegration: false },
-      })
-      // 'screen-saver' is the highest normal level — above the taskbar and
-      // other apps' always-on-top windows.
-      w.setAlwaysOnTop(true, 'screen-saver')
-      w.setVisibleOnAllWorkspaces(true)
-      w.setBounds(d.bounds) // force onto THIS display, full size
-      w.loadURL(COVER_HTML)
-      w.once('ready-to-show', () => {
-        w.setBounds(d.bounds)
-        w.showInactive() // visible, but focus stays on the lock
-        w.moveTop()
-      })
-      coverWindows.push(w)
-    } catch {
-      // A display we can't cover shouldn't crash the lock.
-    }
-  }
-}
-
-/** Covers follow the lock state, and survive monitors being plugged in. */
-function syncCovers(): void {
-  if (!isLocked) {
-    closeCoverWindows()
-    return
-  }
-  // Already covering exactly the right screens? Don't recreate them — that
-  // would flicker the second monitor on every lock-state push.
-  const need = Math.max(0, screen.getAllDisplays().length - 1)
-  const have = coverWindows.filter((w) => !w.isDestroyed()).length
-  if (have === need && need > 0) return
-  createCoverWindows()
-}
+// (Senti used to be a lock screen that blanked every other monitor. That whole
+// mechanism is gone — it is an assistant now, and it never takes your screens.)
 
 // --- Local static server (packaged app) ------------------------------
 //
@@ -611,17 +516,6 @@ const LOCK_SHORTCUTS = [
 // yourself on your own machine. Kept intentionally obscure.
 const RECOVERY_SHORTCUT = 'CommandOrControl+Alt+Shift+Q'
 
-function registerLockShortcuts(): void {
-  for (const accel of LOCK_SHORTCUTS) {
-    try {
-      globalShortcut.register(accel, () => {
-        // Swallow: do nothing while locked.
-      })
-    } catch {
-      // Some accelerators are not registrable on this OS; ignore.
-    }
-  }
-}
 
 function unregisterLockShortcuts(): void {
   for (const accel of LOCK_SHORTCUTS) {
@@ -633,12 +527,18 @@ function unregisterLockShortcuts(): void {
   }
 }
 
+/**
+ * Senti is NOT a lock screen.
+ *
+ * It used to hold the machine hostage: fullscreen on every monitor, swallowing
+ * Alt+Tab, blocking close, forcing focus. That framing is gone. All this tracks
+ * now is whether you've signed in yet, so Senti knows it's really you before it
+ * acts. It never blanks your screens and never traps you.
+ */
 function setLocked(locked: boolean): void {
   isLocked = locked
-  if (locked) registerLockShortcuts()
-  else unregisterLockShortcuts()
-  // Blank every other monitor while locked; give them back on unlock.
-  syncCovers()
+  unregisterLockShortcuts()
+
 }
 
 function waitForVite(url: string, timeout = 15000): Promise<void> {
@@ -736,56 +636,19 @@ function createWindow(): void {
     console.error('[Electron] Renderer unresponsive')
   })
 
-  mainWindow.on('blur', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.focus()
-    }
-  })
-
-  mainWindow.on('minimize', (event: any) => {
-    event.preventDefault()
-    if (mainWindow) {
-      mainWindow.restore()
-      mainWindow.focus()
-    }
-  })
-
-  // Block closing the window while locked (Alt+F4, taskbar close, etc.).
-  // The renderer closes the window itself only after a successful unlock,
-  // at which point isLocked is already false.
+  // Senti is not a lock screen: it never steals focus back, never refuses to
+  // minimise, and never forces itself fullscreen. Closing the window just
+  // sends it to the tray — it keeps listening. Only Quit actually exits.
   mainWindow.on('close', (event: any) => {
-    if (isLocked) {
-      event.preventDefault()
-      mainWindow?.focus()
-      return
-    }
-    // Closing the HUD must not kill Senti — it still has to hear the wake word.
-    // Only an explicit Quit (tray) actually exits.
     if (!quitting) {
       event.preventDefault()
-      hideHud()
-    }
-  })
-
-  mainWindow.on('leave-full-screen', () => {
-    if (mainWindow) {
-      mainWindow.setFullScreen(true)
+      mainWindow?.hide()
     }
   })
 }
 
-function enforceFocus(): void {
-  setInterval(() => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      if (!mainWindow.isFocused() && mainWindow.isVisible()) {
-        mainWindow.focus()
-      }
-      if (!mainWindow.isFullScreen()) {
-        mainWindow.setFullScreen(true)
-      }
-    }
-  }, 500)
-}
+// (The old enforceFocus loop — which yanked focus back every 500ms and forced
+// fullscreen — is gone. Senti no longer fights you for your own screen.)
 
 // A second Senti would fight the first for focus and the lock state. Keep one.
 if (!app.requestSingleInstanceLock()) {
@@ -832,12 +695,9 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
-  enforceFocus()
 
   // A monitor plugged in (or unplugged) while locked must not open a hole.
-  screen.on('display-added', () => syncCovers())
-  screen.on('display-removed', () => syncCovers())
-  screen.on('display-metrics-changed', () => syncCovers())
+  // (No display listeners any more — Senti never blanks your other monitors.)
 
   // Start locked: swallow escape hotkeys until the renderer authenticates.
   setLocked(true)
@@ -961,8 +821,8 @@ ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
 // window is never destroyed — it becomes a small HUD that stays hidden until
 // the wake word fires, and the app lives in the tray.
 
-type WindowMode = 'lock' | 'setup' | 'hud'
-let windowMode: WindowMode = 'lock'
+type WindowMode = 'signin' | 'setup' | 'hud'
+let windowMode: WindowMode = 'signin'
 let tray: InstanceType<typeof Tray> | null = null
 let quitting = false
 
@@ -1003,11 +863,15 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.center()
     mainWindow.show()
   } else {
+    // Sign-in: a normal window you can move, minimise or Alt+Tab away from.
+    // Shown once when Senti starts, then it goes to the tray. Not a lock.
     setLocked(true)
+    mainWindow.setFullScreen(false)
+    mainWindow.setAlwaysOnTop(false)
     mainWindow.setResizable(false)
-    mainWindow.setSkipTaskbar(true)
-    mainWindow.setAlwaysOnTop(true, 'screen-saver')
-    mainWindow.setFullScreen(true)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setSize(680, 780)
+    mainWindow.center()
     mainWindow.show()
     mainWindow.focus()
   }
@@ -1051,7 +915,7 @@ function buildTray(): void {
     tray.setToolTip('Senti — listening for you')
     tray.setContextMenu(
       Menu.buildFromTemplate([
-        { label: 'Lock now', click: () => setWindowMode('lock') },
+        { label: 'Sign in again', click: () => setWindowMode('signin') },
         { label: 'Show Senti', click: () => showHud() },
         { type: 'separator' },
         {
@@ -1078,22 +942,9 @@ function buildTray(): void {
  * behave like an ordinary app until they're done.
  */
 function setSetupMode(inSetup: boolean): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  if (inSetup) {
-    setLocked(false) // no escape-key swallowing, no monitor covers
-    mainWindow.setAlwaysOnTop(false)
-    mainWindow.setFullScreen(false)
-    mainWindow.setResizable(true)
-    mainWindow.setSkipTaskbar(false)
-    mainWindow.setSize(980, 760)
-    mainWindow.center()
-  } else {
-    mainWindow.setResizable(false)
-    mainWindow.setSkipTaskbar(true)
-    mainWindow.setAlwaysOnTop(true, 'screen-saver')
-    mainWindow.setFullScreen(true)
-    mainWindow.focus()
-  }
+  // Superseded by setWindowMode. Kept so the older renderer call still works,
+  // and deliberately no longer forces fullscreen.
+  setWindowMode(inSetup ? 'setup' : 'signin')
 }
 
 ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
@@ -1104,7 +955,7 @@ ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
 // Background operation: after unlock Senti becomes a hidden HUD in the tray so
 // it can keep listening. The renderer drives these.
 ipcMain.handle('senti:set-window-mode', (_e: unknown, mode: unknown) => {
-  if (mode === 'lock' || mode === 'setup' || mode === 'hud') {
+  if (mode === 'signin' || mode === 'setup' || mode === 'hud') {
     setWindowMode(mode)
     if (mode === 'hud') buildTray()
     return true
@@ -1120,11 +971,9 @@ ipcMain.handle('senti:hud-hide', () => {
   return true
 })
 
+/** "Sign in again" — shows the normal sign-in window, never a fullscreen lock. */
 ipcMain.handle('senti:lock', () => {
-  setLocked(true)
-  mainWindow?.show()
-  mainWindow?.focus()
-  mainWindow?.setFullScreen(true)
+  setWindowMode('signin')
 })
 
 ipcMain.handle('senti:quit', () => {

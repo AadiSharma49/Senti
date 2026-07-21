@@ -23,8 +23,8 @@ interface SentiAPI {
   setLockState: (locked: boolean) => Promise<void>
   /** True while first-time setup is showing: a normal window, not a lock. */
   setSetupMode: (inSetup: boolean) => Promise<boolean>
-  /** 'lock' fullscreen, 'setup' normal window, 'hud' small + hidden in tray. */
-  setWindowMode: (mode: 'lock' | 'setup' | 'hud') => Promise<boolean>
+  /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
+  setWindowMode: (mode: 'signin' | 'setup' | 'hud') => Promise<boolean>
   hudShow: () => Promise<boolean>
   hudHide: () => Promise<boolean>
   /** Setup-completion flag read from a file at boot (survives port changes). */

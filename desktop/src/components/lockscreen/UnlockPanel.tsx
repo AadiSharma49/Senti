@@ -16,7 +16,7 @@ function VoiceStatusCard() {
     if (!hasProfile) {
       return (
         <div className="rounded-3xl border border-white/10 bg-white/5 p-5 ring-1 ring-white/5">
-          <div className="font-semibold text-white">Voice Unlock</div>
+          <div className="font-semibold text-white">Sign in with your voice</div>
           <p className="mt-1 text-sm text-secondary">
             Not set up yet. Open Settings (top-right) to enroll your voice.
           </p>
@@ -30,7 +30,7 @@ function VoiceStatusCard() {
       <div className="rounded-3xl border border-amber-400/30 bg-amber-500/10 p-5 ring-1 ring-white/5">
         <div className="flex items-center justify-between gap-4">
           <div>
-            <div className="font-semibold text-white">Voice Unlock unavailable</div>
+            <div className="font-semibold text-white">Voice sign-in unavailable</div>
             <p className="mt-1 text-sm text-amber-200/90">
               {error || 'Could not reach the microphone or voice model.'} Check mic access, or use your PIN.
             </p>
@@ -59,7 +59,7 @@ function VoiceStatusCard() {
 
   const text =
     state === 'idle'
-      ? 'Tap to unlock with your voice'
+      ? 'Tap and say anything'
       : state === 'loading'
       ? 'Starting…'
       : state === 'listening'
@@ -68,7 +68,7 @@ function VoiceStatusCard() {
       ? 'Verifying your voice…'
       : state === 'rejected'
       ? "That's not your voice — tap to try again"
-      : 'Voice recognized — unlocking'
+      : 'Recognized — signing you in'
 
   const onTap = () => {
     if (state === 'idle' || state === 'rejected') {
@@ -82,7 +82,7 @@ function VoiceStatusCard() {
         <button
           onClick={onTap}
           disabled={busy}
-          aria-label="Voice unlock"
+          aria-label="Sign in with your voice"
           className={`relative flex h-12 w-12 items-center justify-center rounded-full transition ${
             busy ? 'cursor-default' : 'cursor-pointer hover:scale-105'
           } ${listening ? 'bg-accent/20' : 'bg-white/5'}`}
@@ -108,7 +108,7 @@ function VoiceStatusCard() {
           </svg>
         </button>
         <div className="flex-1">
-          <div className="font-semibold text-white">Voice Unlock</div>
+          <div className="font-semibold text-white">Sign in with your voice</div>
           <p
             className={`text-sm ${
               state === 'rejected' ? 'text-red-300' : state === 'matched' ? 'text-green-300' : 'text-secondary'
@@ -122,7 +122,7 @@ function VoiceStatusCard() {
             onClick={onTap}
             className="rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-black transition hover:bg-accent-glow"
           >
-            {state === 'rejected' ? 'Retry' : 'Unlock'}
+            {state === 'rejected' ? 'Retry' : 'Sign in'}
           </button>
         )}
       </div>
@@ -181,8 +181,8 @@ export default function UnlockPanel() {
   }
 
   const backupStatus = lockedActive
-    ? 'Locked for ' + Math.max(0, Math.ceil((lockoutUntil! - now) / 1000)) + 's'
-    : 'Enter your PIN to unlock.'
+    ? 'Try again in ' + Math.max(0, Math.ceil((lockoutUntil! - now) / 1000)) + 's'
+    : 'Enter your PIN to sign in.'
 
   return (
     <motion.div
@@ -199,8 +199,8 @@ export default function UnlockPanel() {
       >
         <div className="flex flex-col gap-4">
           <div>
-            <div className="text-xs uppercase tracking-[0.3em] text-accent">Unlock</div>
-            <div className="text-2xl font-display mt-2">Senti is locked</div>
+            <div className="text-xs uppercase tracking-[0.3em] text-accent">Welcome back</div>
+            <div className="text-2xl font-display mt-2">Sign in to Senti</div>
           </div>
 
           <VoiceStatusCard />
@@ -208,15 +208,15 @@ export default function UnlockPanel() {
           <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/10 p-5 ring-1 ring-white/5 shadow-lg shadow-cyan-700/10">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="font-semibold text-white">PIN Access</div>
-                <p className="text-sm text-secondary">Enter your PIN to unlock Senti.</p>
+                <div className="font-semibold text-white">Use your PIN instead</div>
+                <p className="text-sm text-secondary">If your voice isn’t available.</p>
               </div>
               <button
                 onClick={handleShowBackup}
                 disabled={showBackupPin || lockedActive}
                 className={'rounded-2xl px-4 py-2 text-sm font-semibold transition ' + (showBackupPin || lockedActive ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-accent text-black hover:bg-accent-glow')}
               >
-                {showBackupPin ? 'Enter PIN' : 'Unlock'}
+                {showBackupPin ? 'Enter PIN' : 'Use PIN'}
               </button>
             </div>
             <div className="mt-3 text-xs uppercase tracking-[0.3em] text-secondary">{backupStatus}</div>
@@ -237,7 +237,7 @@ export default function UnlockPanel() {
             <div className="flex flex-col items-center gap-6">
               <div className="w-full max-w-md text-center">
                 <div className="text-xs uppercase tracking-[0.3em] text-accent">PIN</div>
-                <div className="mt-2 text-sm text-secondary">Enter the 4-digit PIN you configured during setup.</div>
+                <div className="mt-2 text-sm text-secondary">The 4-digit PIN you set during setup.</div>
               </div>
               <motion.div
                 className="relative w-full max-w-md"
@@ -285,7 +285,7 @@ export default function UnlockPanel() {
                 whileHover={pin.length === 4 && !lockedActive ? { scale: 1.02 } : {}}
                 whileTap={pin.length === 4 && !lockedActive ? { scale: 0.98 } : {}}
               >
-                {isVerifying ? 'Unlocking...' : 'Unlock'}
+                {isVerifying ? 'Signing in…' : 'Sign in'}
               </motion.button>
               <div className="text-xs uppercase tracking-[0.3em] text-secondary">
                 {isFailed ? failedAttempts + ' failed attempt' + (failedAttempts === 1 ? '' : 's') : 'Your PIN is stored locally.'}

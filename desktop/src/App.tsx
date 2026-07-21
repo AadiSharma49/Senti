@@ -21,14 +21,14 @@ function App() {
   const unlocked = lockState === 'unlocked'
 
   /**
-   * Three modes, driven from here:
-   *   setup — a normal window you can move and Alt+Tab away from
-   *   lock  — fullscreen, covering every monitor
-   *   hud   — after unlock: a small panel hidden in the tray, so Senti keeps
-   *           running and listening instead of quitting
+   * Three modes, driven from here. Senti is NOT a lock screen — sign-in is a
+   * normal window shown once when it starts, then it lives in the tray.
+   *   setup  — first run, a normal window
+   *   signin — "it's me" once at startup; movable, minimisable, no fullscreen
+   *   hud    — after that: a small panel hidden in the tray, still listening
    */
   useEffect(() => {
-    const mode = needsSetup ? 'setup' : unlocked ? 'hud' : 'lock'
+    const mode = needsSetup ? 'setup' : unlocked ? 'hud' : 'signin'
     void window.senti?.setWindowMode?.(mode)
   }, [needsSetup, unlocked])
 
