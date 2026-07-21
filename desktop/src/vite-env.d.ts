@@ -26,6 +26,8 @@ interface SentiAPI {
   /** Setup-completion flag read from a file at boot (survives port changes). */
   setupCompletedAtBoot: boolean
   persistSetupCompleted: (done: boolean) => Promise<boolean>
+  /** Real vitals for this machine (memory, disk, top processes, startup apps). */
+  systemInfo: () => Promise<SystemSnapshot>
 
   /** Call the backend from the main process (token attached there). */
   api: <T = unknown>(req: ApiRequest) => Promise<ApiResponse<T>>
@@ -34,6 +36,19 @@ interface SentiAPI {
   tokenClear: () => Promise<boolean>
   /** Whether this device is linked. There is no way to READ the token. */
   tokenPresent: () => Promise<boolean>
+}
+
+export interface SystemSnapshot {
+  os: string
+  cpu: string
+  cores: number
+  ramTotalGB: number
+  ramUsedGB: number
+  ramUsedPct: number
+  uptimeHours: number
+  disks?: { drive: string; totalGB: number; freeGB: number; usedPct: number }[]
+  topProcesses?: { name: string; memMB: number }[]
+  startupApps?: number
 }
 
 declare global {

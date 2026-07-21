@@ -3,6 +3,7 @@ import { audioCapture } from '../services/audioCapture'
 import { UtteranceRecorder } from '../services/utteranceRecorder'
 import { loadSpeechRecognition, transcribeRaw } from '../services/speechRecognition'
 import { askSenti, type ChatTurn } from '../services/assistantService'
+import { getSystemSnapshot, describeSystem } from '../services/systemInfo'
 import { say, deviceLang } from '../services/greetingService'
 import type { Utterance } from '../types/audio'
 
@@ -156,7 +157,11 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
     const history: ChatTurn[] = useAssistantStore
       .getState()
       .messages.map((m) => ({ role: m.role, content: m.content }))
-    const reply = await askSenti(history, lang)
+
+    // Senti's edge over a cloud chatbot: it can see this machine. Attach the
+    // vitals so "why is my PC slow?" gets answered with real numbers.
+    const snap = await getSystemSnapshot()
+    const reply = await askSenti(history, lang, snap ? describeSystem(snap) : null)
 
     const botMsg: AssistantMessage = { id: ++msgId, role: 'assistant', content: reply.text }
     useAssistantStore.setState((s) => ({ messages: [...s.messages, botMsg], status: 'speaking' }))

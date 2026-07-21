@@ -18,6 +18,23 @@ import { generateSpeech } from '@/lib/tts'
  */
 export const runtime = 'nodejs'
 
+/**
+ * The desktop attaches a factual snapshot of the machine it runs on. This is
+ * what a cloud chatbot cannot do — so tell the model to actually use it and
+ * quote the real numbers rather than giving generic PC advice.
+ */
+function systemContext(system: string | null): string {
+  if (!system) return ''
+  return (
+    '\n\nLIVE FACTS about the computer you are running on, captured seconds ago:\n' +
+    system +
+    '\nWhen the user asks anything about their machine — why it is slow, what to ' +
+    'clean up, what to upgrade, what is using memory — answer from these real ' +
+    'numbers and name them out loud. Never give generic advice when a real figure ' +
+    'above answers the question. Keep it spoken and short.'
+  )
+}
+
 function persona(name: string | null, language: string): string {
   const who = name
     ? `Your owner's name is ${name}. Use their first name occasionally and naturally, not in every line.`
@@ -43,7 +60,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
   const { device } = auth
 
-  let body: { messages?: ChatMsg[]; language?: string }
+  let body: { messages?: ChatMsg[]; language?: string; system?: string }
   try {
     body = await req.json()
   } catch {
@@ -63,9 +80,12 @@ export async function POST(req: Request) {
   const name = user?.name || user?.email?.split('@')[0] || null
   const language = (body.language || 'en-US').slice(0, 20)
 
+  // Cap it: this is a summary, not a data dump.
+  const system = typeof body.system === 'string' ? body.system.slice(0, 1500) : null
+
   const reply =
     (await llmChat({
-      system: persona(name, language),
+      system: persona(name, language) + systemContext(system),
       messages,
       search: true,
       maxTokens: 400,

@@ -1,4 +1,5 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs'
+import { execFile } from 'child_process'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
@@ -250,6 +251,102 @@ function writeSetupFlag(done: boolean): void {
   } catch {
     // ignore
   }
+}
+
+// --- System awareness -------------------------------------------------
+//
+// This is what a cloud chatbot fundamentally cannot do: look at THIS machine.
+// We collect a small, factual snapshot (memory, disk, top processes, startup
+// items) so the assistant can answer "why is my PC slow?" with real numbers
+// instead of generic advice.
+//
+// Read-only, and deliberately narrow: no file contents, no screen, no browsing
+// history. Just the vitals you'd see in Task Manager.
+
+interface SystemSnapshot {
+  os: string
+  cpu: string
+  cores: number
+  ramTotalGB: number
+  ramUsedGB: number
+  ramUsedPct: number
+  uptimeHours: number
+  disks?: { drive: string; totalGB: number; freeGB: number; usedPct: number }[]
+  topProcesses?: { name: string; memMB: number }[]
+  startupApps?: number
+}
+
+let sysCache: { at: number; data: SystemSnapshot } | null = null
+const SYS_CACHE_MS = 20_000
+
+function basicSystem(): SystemSnapshot {
+  const totalGB = os.totalmem() / 1024 ** 3
+  const freeGB = os.freemem() / 1024 ** 3
+  const usedGB = totalGB - freeGB
+  return {
+    os: `${os.type()} ${os.release()}`,
+    cpu: os.cpus()[0]?.model?.trim() ?? 'unknown',
+    cores: os.cpus().length,
+    ramTotalGB: +totalGB.toFixed(1),
+    ramUsedGB: +usedGB.toFixed(1),
+    ramUsedPct: Math.round((usedGB / totalGB) * 100),
+    uptimeHours: +(os.uptime() / 3600).toFixed(1),
+  }
+}
+
+/** One PowerShell round-trip for the Windows-specific detail. */
+function windowsDetail(): Promise<Partial<SystemSnapshot>> {
+  const script = `
+$ErrorActionPreference='SilentlyContinue'
+$d = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
+     ForEach-Object { [pscustomobject]@{ drive=$_.DeviceID; totalGB=[math]::Round($_.Size/1GB,1); freeGB=[math]::Round($_.FreeSpace/1GB,1) } }
+$p = Get-Process | Sort-Object WorkingSet -Descending | Select-Object -First 6 |
+     ForEach-Object { [pscustomobject]@{ name=$_.ProcessName; memMB=[math]::Round($_.WorkingSet/1MB) } }
+$s = (Get-CimInstance Win32_StartupCommand | Measure-Object).Count
+[pscustomobject]@{ disks=@($d); topProcesses=@($p); startupApps=$s } | ConvertTo-Json -Compress -Depth 4
+`
+  return new Promise((resolve) => {
+    execFile(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-Command', script],
+      { timeout: 6000, windowsHide: true, maxBuffer: 1024 * 512 },
+      (err, stdout) => {
+        if (err || !stdout) return resolve({})
+        try {
+          const parsed = JSON.parse(stdout)
+          const disks = (parsed.disks || []).map((d: any) => ({
+            drive: d.drive,
+            totalGB: d.totalGB,
+            freeGB: d.freeGB,
+            usedPct: d.totalGB ? Math.round(((d.totalGB - d.freeGB) / d.totalGB) * 100) : 0,
+          }))
+          resolve({
+            disks,
+            topProcesses: parsed.topProcesses || [],
+            startupApps: typeof parsed.startupApps === 'number' ? parsed.startupApps : undefined,
+          })
+        } catch {
+          resolve({})
+        }
+      }
+    )
+  })
+}
+
+async function systemSnapshot(): Promise<SystemSnapshot> {
+  if (sysCache && Date.now() - sysCache.at < SYS_CACHE_MS) return sysCache.data
+  const base = basicSystem()
+  let extra: Partial<SystemSnapshot> = {}
+  if (process.platform === 'win32') {
+    try {
+      extra = await windowsDetail()
+    } catch {
+      // Fall back to the os-module basics.
+    }
+  }
+  const data = { ...base, ...extra }
+  sysCache = { at: Date.now(), data }
+  return data
 }
 
 /**
@@ -612,6 +709,9 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
   writeSetupFlag(!!done)
   return true
 })
+
+// Real machine vitals, so the assistant can answer about THIS computer.
+ipcMain.handle('senti:system-info', () => systemSnapshot())
 
 ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
   const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }

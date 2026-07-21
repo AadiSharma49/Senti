@@ -21,10 +21,15 @@ export interface Reply {
   audio: string | null
 }
 
-export async function askSenti(messages: ChatTurn[], lang: string): Promise<Reply> {
+export async function askSenti(
+  messages: ChatTurn[],
+  lang: string,
+  /** Plain-text vitals for this machine, so Senti can answer about it. */
+  system?: string | null
+): Promise<Reply> {
   const res = await api<{ reply?: string; audio?: string; error?: string }>(CHAT_PATH, {
     method: 'POST',
-    body: { messages, language: lang },
+    body: { messages, language: lang, system: system || undefined },
   })
 
   if (!res.ok) {

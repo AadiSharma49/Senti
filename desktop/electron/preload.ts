@@ -29,6 +29,9 @@ contextBridge.exposeInMainWorld('senti', {
   })(),
   persistSetupCompleted: (done: boolean) => ipcRenderer.invoke('senti:set-setup', done),
 
+  /** Real vitals for THIS machine, so the assistant can answer about it. */
+  systemInfo: () => ipcRenderer.invoke('senti:system-info'),
+
   // Backend access — the token is attached in main, never exposed here.
   api: (req: { baseUrl: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
     ipcRenderer.invoke('senti:api', req),

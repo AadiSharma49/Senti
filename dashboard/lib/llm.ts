@@ -25,6 +25,8 @@ interface Provider {
   baseUrl: string
   model: string
   name: string
+  /** Tried in order if the primary model is gone (hosted IDs get retired). */
+  fallbackModels?: string[]
 }
 
 function resolveOpenAICompat(): Provider | null {
@@ -32,11 +34,14 @@ function resolveOpenAICompat(): Provider | null {
   if (process.env.GROQ_API_KEY)
     return {
       key: process.env.GROQ_API_KEY,
-      // Llama 4 Scout: newest generation, fast (~150ms first token on Groq),
-      // clean for short spoken replies. Override with LLM_MODEL.
+      // Llama 3.3 70B: fast (~240ms) and stable. NOTE: we previously defaulted
+      // to llama-4-scout and Groq removed it from the account within days —
+      // hosted model IDs disappear without warning, which is why fallbackModels
+      // exists below. Override with LLM_MODEL.
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: model || 'meta-llama/llama-4-scout-17b-16e-instruct',
+      model: model || 'llama-3.3-70b-versatile',
       name: 'groq',
+      fallbackModels: ['qwen/qwen3.6-27b', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'],
     }
   if (process.env.XAI_API_KEY)
     return {
@@ -78,7 +83,9 @@ export interface ChatOpts {
   search?: boolean
 }
 
-async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<string | null> {
+async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
+  { ok: true; text: string } | { ok: false; modelGone: boolean }
+> {
   const messages = [
     { role: 'system', content: opts.system },
     ...opts.messages.map((m) => ({ role: m.role, content: m.content })),
@@ -88,19 +95,38 @@ async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<string | n
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${p.key}` },
       body: JSON.stringify({
-        model: p.model,
+        model,
         messages,
         max_tokens: opts.maxTokens ?? 400,
         temperature: opts.temperature ?? 0.85,
       }),
     })
-    if (!res.ok) return null
+    if (!res.ok) {
+      // 404 / "model_not_found" => this model was retired; try the next one.
+      const body = await res.text().catch(() => '')
+      const modelGone = res.status === 404 || /model_not_found|does not exist/i.test(body)
+      if (modelGone) console.error(`[senti] model "${model}" unavailable — falling back`)
+      return { ok: false, modelGone }
+    }
     const data = await res.json()
     const text = data?.choices?.[0]?.message?.content
-    return typeof text === 'string' && text.trim() ? text.trim() : null
+    return typeof text === 'string' && text.trim()
+      ? { ok: true, text: text.trim() }
+      : { ok: false, modelGone: false }
   } catch {
-    return null
+    return { ok: false, modelGone: false }
   }
+}
+
+async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<string | null> {
+  // Primary model, then any fallbacks — a retired model must never silently
+  // take the assistant offline.
+  for (const model of [p.model, ...(p.fallbackModels ?? [])]) {
+    const r = await callModel(p, model, opts)
+    if (r.ok) return r.text
+    if (!r.modelGone) return null // a real failure (auth, rate limit) — don't churn
+  }
+  return null
 }
 
 /** Generate a reply from the active brain. Returns text, or null on failure. */
