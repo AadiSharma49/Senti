@@ -1,7 +1,34 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
-import { llmChat, type ChatMsg } from '@/lib/llm'
+import { llmChatRich, type ChatMsg } from '@/lib/llm'
+
+/**
+ * What Senti is allowed to DO on the machine. The desktop enforces this too —
+ * it resolves the name against its own whitelist and can refuse — so the model
+ * can never turn a sentence into an arbitrary command.
+ */
+const TOOLS = [
+  {
+    type: 'function',
+    function: {
+      name: 'open_app',
+      description:
+        "Open an application or website on the user's computer. Use this whenever they ask to open, launch, start, run, pull up, bring up, or go to something — e.g. \"open Chrome\", \"launch Spotify\", \"pull up YouTube\", \"go to GitHub\".",
+      parameters: {
+        type: 'object',
+        properties: {
+          name: {
+            type: 'string',
+            description:
+              'The app or site name only, lowercase, no path or command. Examples: chrome, spotify, notepad, task manager, youtube, github.',
+          },
+        },
+        required: ['name'],
+      },
+    },
+  },
+]
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -83,16 +110,33 @@ export async function POST(req: Request) {
   // Cap it: this is a summary, not a data dump.
   const system = typeof body.system === 'string' ? body.system.slice(0, 1500) : null
 
-  const reply =
-    (await llmChat({
-      system: persona(name, language) + systemContext(system),
-      messages,
-      search: true,
-      maxTokens: 400,
-      temperature: 0.85,
-    })) || "I'm having trouble reaching my brain right now — check the assistant connection and try again."
+  const result = await llmChatRich({
+    system: persona(name, language) + systemContext(system),
+    messages,
+    search: true,
+    maxTokens: 400,
+    temperature: 0.85,
+    tools: TOOLS,
+  })
+
+  // The model can answer, act, or both. Turn an action into something to say,
+  // so the user always hears a confirmation.
+  let action: { name: string; args: Record<string, unknown> } | null = null
+  let reply = result?.text || ''
+
+  if (result?.toolCall?.name === 'open_app') {
+    const target = String(result.toolCall.args?.name ?? '').slice(0, 60)
+    if (target) {
+      action = { name: 'open_app', args: { name: target } }
+      if (!reply) reply = `Opening ${target}.`
+    }
+  }
+
+  if (!reply) {
+    reply = "I'm having trouble reaching my brain right now — check the assistant connection and try again."
+  }
 
   const audio = await generateSpeech(reply)
 
-  return NextResponse.json({ reply, audio }, { headers: NO_STORE })
+  return NextResponse.json({ reply, audio, action }, { headers: NO_STORE })
 }

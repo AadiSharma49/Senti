@@ -18,6 +18,8 @@ export default function SettingsPanel() {
   const close = useUiStore((s) => s.closeSettings)
 
   const resetConfiguration = useSettingsStore((s) => s.resetConfiguration)
+  const permissions = useSettingsStore((s) => s.permissions)
+  const setPermissions = useSettingsStore((s) => s.setPermissions)
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
   const [enrolling, setEnrolling] = useState(false)
@@ -151,6 +153,36 @@ export default function SettingsPanel() {
           <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
             <div className="font-semibold text-white">PIN Unlock</div>
             <div className="text-xs text-green-400">Configured · fallback</div>
+          </div>
+        </motion.section>
+
+        <motion.section variants={sectionVariant} initial="hidden" animate="visible">
+          <h4 className="section-title">What Senti can do</h4>
+          <p className="section-sub mb-3">
+            Senti only ever does what you switch on here.
+          </p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-white">Open apps and websites</div>
+                <div className="mt-1 text-xs text-secondary">
+                  Let Senti launch things when you ask — &ldquo;open Chrome&rdquo;.
+                </div>
+              </div>
+              <button
+                onClick={() => setPermissions({ openApps: !permissions.openApps })}
+                aria-pressed={permissions.openApps}
+                className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                  permissions.openApps ? 'bg-accent' : 'bg-white/15'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-black transition-all ${
+                    permissions.openApps ? 'left-6' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
           </div>
         </motion.section>
 

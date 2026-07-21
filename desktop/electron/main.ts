@@ -1,10 +1,10 @@
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'fs'
-import { execFile } from 'child_process'
+import { execFile, spawn } from 'child_process'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -331,6 +331,85 @@ $s = (Get-CimInstance Win32_StartupCommand | Measure-Object).Count
       }
     )
   })
+}
+
+// --- OS actions -------------------------------------------------------
+//
+// The first thing Senti can DO rather than just say. Security is the whole
+// design here: the model only ever supplies a FRIENDLY NAME, which we look up
+// in a whitelist. Model output never reaches a shell as a command, so a prompt
+// injection ("open '; format c:'") resolves to nothing instead of executing.
+
+type AppTarget = { kind: 'exe' | 'url'; target: string; label: string }
+
+const APP_ALIASES: Record<string, AppTarget> = {
+  // Browsers
+  chrome: { kind: 'exe', target: 'chrome', label: 'Chrome' },
+  'google chrome': { kind: 'exe', target: 'chrome', label: 'Chrome' },
+  edge: { kind: 'exe', target: 'msedge', label: 'Edge' },
+  firefox: { kind: 'exe', target: 'firefox', label: 'Firefox' },
+  // Windows built-ins
+  notepad: { kind: 'exe', target: 'notepad', label: 'Notepad' },
+  calculator: { kind: 'exe', target: 'calc', label: 'Calculator' },
+  calc: { kind: 'exe', target: 'calc', label: 'Calculator' },
+  explorer: { kind: 'exe', target: 'explorer', label: 'File Explorer' },
+  files: { kind: 'exe', target: 'explorer', label: 'File Explorer' },
+  'file explorer': { kind: 'exe', target: 'explorer', label: 'File Explorer' },
+  'task manager': { kind: 'exe', target: 'taskmgr', label: 'Task Manager' },
+  settings: { kind: 'url', target: 'ms-settings:', label: 'Settings' },
+  terminal: { kind: 'exe', target: 'wt', label: 'Terminal' },
+  cmd: { kind: 'exe', target: 'cmd', label: 'Command Prompt' },
+  paint: { kind: 'exe', target: 'mspaint', label: 'Paint' },
+  // Common apps
+  spotify: { kind: 'exe', target: 'spotify', label: 'Spotify' },
+  discord: { kind: 'exe', target: 'discord', label: 'Discord' },
+  steam: { kind: 'exe', target: 'steam', label: 'Steam' },
+  code: { kind: 'exe', target: 'code', label: 'VS Code' },
+  'vs code': { kind: 'exe', target: 'code', label: 'VS Code' },
+  vscode: { kind: 'exe', target: 'code', label: 'VS Code' },
+  // Sites
+  youtube: { kind: 'url', target: 'https://youtube.com', label: 'YouTube' },
+  google: { kind: 'url', target: 'https://google.com', label: 'Google' },
+  gmail: { kind: 'url', target: 'https://mail.google.com', label: 'Gmail' },
+  github: { kind: 'url', target: 'https://github.com', label: 'GitHub' },
+  chatgpt: { kind: 'url', target: 'https://chatgpt.com', label: 'ChatGPT' },
+  whatsapp: { kind: 'url', target: 'https://web.whatsapp.com', label: 'WhatsApp' },
+  maps: { kind: 'url', target: 'https://maps.google.com', label: 'Maps' },
+}
+
+/** Whitelist lookup only. Unknown names are refused, never guessed into a shell. */
+function resolveApp(nameRaw: unknown): AppTarget | null {
+  if (typeof nameRaw !== 'string') return null
+  const name = nameRaw.toLowerCase().trim().replace(/^(open|launch|start)\s+/, '')
+  if (!name) return null
+  if (APP_ALIASES[name]) return APP_ALIASES[name]
+
+  // A bare domain the user asked for ("open reddit.com") is safe to open as a
+  // URL — still not a command.
+  if (/^[a-z0-9-]+(\.[a-z]{2,})+$/i.test(name)) {
+    return { kind: 'url', target: `https://${name}`, label: name }
+  }
+  return null
+}
+
+function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
+  const hit = resolveApp(nameRaw)
+  if (!hit) return { ok: false, error: 'unknown' }
+  try {
+    if (hit.kind === 'url') {
+      void shell.openExternal(hit.target)
+    } else {
+      // `target` comes from OUR table, never from the model.
+      spawn('cmd', ['/c', 'start', '', hit.target], {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      }).unref()
+    }
+    return { ok: true, label: hit.label }
+  } catch {
+    return { ok: false, error: 'launch-failed' }
+  }
 }
 
 async function systemSnapshot(): Promise<SystemSnapshot> {
@@ -712,6 +791,9 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
+
+// The first real OS action: open an app or site by name (whitelisted).
+ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
 
 ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
   const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }

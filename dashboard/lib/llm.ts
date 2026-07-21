@@ -81,10 +81,23 @@ export interface ChatOpts {
   temperature?: number
   /** Live web search — only Gemini honors this; ignored by other providers. */
   search?: boolean
+  /** OpenAI-style tool definitions, so the model can decide to ACT. */
+  tools?: unknown[]
+}
+
+/** What the model wants Senti to do on the machine. */
+export interface ToolCall {
+  name: string
+  args: Record<string, unknown>
+}
+
+export interface ChatResult {
+  text: string | null
+  toolCall: ToolCall | null
 }
 
 async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
-  { ok: true; text: string } | { ok: false; modelGone: boolean }
+  { ok: true; result: ChatResult } | { ok: false; modelGone: boolean }
 > {
   const messages = [
     { role: 'system', content: opts.system },
@@ -99,6 +112,7 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
         messages,
         max_tokens: opts.maxTokens ?? 400,
         temperature: opts.temperature ?? 0.85,
+        ...(opts.tools?.length ? { tools: opts.tools, tool_choice: 'auto' } : {}),
       }),
     })
     if (!res.ok) {
@@ -109,33 +123,59 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<
       return { ok: false, modelGone }
     }
     const data = await res.json()
-    const text = data?.choices?.[0]?.message?.content
-    return typeof text === 'string' && text.trim()
-      ? { ok: true, text: text.trim() }
-      : { ok: false, modelGone: false }
+    const msg = data?.choices?.[0]?.message
+    const text = typeof msg?.content === 'string' ? msg.content.trim() : ''
+
+    // The model may answer, act, or both.
+    let toolCall: ToolCall | null = null
+    const raw = msg?.tool_calls?.[0]
+    if (raw?.function?.name) {
+      let args: Record<string, unknown> = {}
+      try {
+        args = JSON.parse(raw.function.arguments || '{}')
+      } catch {
+        args = {}
+      }
+      toolCall = { name: raw.function.name, args }
+    }
+
+    if (!text && !toolCall) return { ok: false, modelGone: false }
+    return { ok: true, result: { text: text || null, toolCall } }
   } catch {
     return { ok: false, modelGone: false }
   }
 }
 
-async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<string | null> {
+async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<ChatResult | null> {
   // Primary model, then any fallbacks — a retired model must never silently
   // take the assistant offline.
   for (const model of [p.model, ...(p.fallbackModels ?? [])]) {
     const r = await callModel(p, model, opts)
-    if (r.ok) return r.text
+    if (r.ok) return r.result
     if (!r.modelGone) return null // a real failure (auth, rate limit) — don't churn
+  }
+  return null
+}
+
+/**
+ * Full result from the active brain: what to say, and optionally what to DO.
+ * Only OpenAI-compatible providers support tools; Gemini falls back to text.
+ */
+export async function llmChatRich(opts: ChatOpts): Promise<ChatResult | null> {
+  if (provider) {
+    const out = await openAICompatChat(provider, opts)
+    if (out) return out
+    // If the primary provider failed and Gemini is also set, fall through.
+  }
+  if (geminiEnabled) {
+    const text = await geminiGenerate(opts)
+    return text ? { text, toolCall: null } : null
   }
   return null
 }
 
 /** Generate a reply from the active brain. Returns text, or null on failure. */
 export async function llmChat(opts: ChatOpts): Promise<string | null> {
-  if (provider) {
-    const out = await openAICompatChat(provider, opts)
-    if (out) return out
-    // If the primary provider failed and Gemini is also set, fall through.
-  }
-  if (geminiEnabled) return geminiGenerate(opts)
-  return null
+  const r = await llmChatRich(opts)
+  return r?.text ?? null
 }

@@ -5,6 +5,7 @@ import { loadSpeechRecognition, transcribeRaw } from '../services/speechRecognit
 import { askSenti, type ChatTurn } from '../services/assistantService'
 import { getSystemSnapshot, describeSystem } from '../services/systemInfo'
 import { say, deviceLang } from '../services/greetingService'
+import { useSettingsStore } from './settingsStore'
 import type { Utterance } from '../types/audio'
 
 /**
@@ -131,6 +132,28 @@ export const useAssistantStore = create<AssistantStore>((set, get) => ({
   clear: () => set({ messages: [], error: null }),
 }))
 
+/**
+ * Carry out an action the model asked for.
+ *
+ * Two gates before anything happens: the user's permission dial, and the
+ * whitelist in the main process. Returns a replacement line to speak when the
+ * outcome differs from what the model assumed, or null to keep its wording.
+ */
+async function runAction(action: { name: string; args: Record<string, unknown> }): Promise<string | null> {
+  if (action.name !== 'open_app') return null
+
+  const allowed = useSettingsStore.getState().permissions.openApps
+  if (!allowed) {
+    return "I'm not allowed to open apps. You can turn that on in Settings."
+  }
+
+  const target = String(action.args?.name ?? '')
+  const res = await window.senti?.openApp?.(target)
+  if (res?.ok) return `Opening ${res.label ?? target}.`
+  if (res?.error === 'unknown') return `I don't know how to open ${target} yet.`
+  return `I couldn't open ${target}.`
+}
+
 async function handleUtterance(utterance: Utterance): Promise<void> {
   if (busy) return
   if (useAssistantStore.getState().status !== 'listening') return
@@ -163,11 +186,19 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
     const snap = await getSystemSnapshot()
     const reply = await askSenti(history, lang, snap ? describeSystem(snap) : null)
 
-    const botMsg: AssistantMessage = { id: ++msgId, role: 'assistant', content: reply.text }
+    // Do the thing, if Senti was asked to — and only if it's permitted.
+    let spoken = reply.text
+    if (reply.action) {
+      const result = await runAction(reply.action)
+      if (result) spoken = result
+    }
+
+    const botMsg: AssistantMessage = { id: ++msgId, role: 'assistant', content: spoken }
     useAssistantStore.setState((s) => ({ messages: [...s.messages, botMsg], status: 'speaking' }))
 
-    // Speak it (human voice if available, else the browser voice).
-    await say({ text: reply.text, audio: reply.audio }, lang)
+    // Speak it (human voice if available, else the browser voice). If an action
+    // changed what we say, fall back to the browser voice for that line.
+    await say({ text: spoken, audio: spoken === reply.text ? reply.audio : null }, lang)
   } catch (err) {
     useAssistantStore.setState({
       error: err instanceof Error ? err.message : 'Something went wrong',

@@ -19,6 +19,8 @@ export interface Reply {
   text: string
   /** data: URI of human-voice audio (ElevenLabs), or null → browser TTS. */
   audio: string | null
+  /** Something Senti should DO on this machine, if the model asked for it. */
+  action: { name: string; args: Record<string, unknown> } | null
 }
 
 export async function askSenti(
@@ -27,7 +29,12 @@ export async function askSenti(
   /** Plain-text vitals for this machine, so Senti can answer about it. */
   system?: string | null
 ): Promise<Reply> {
-  const res = await api<{ reply?: string; audio?: string; error?: string }>(CHAT_PATH, {
+  const res = await api<{
+    reply?: string
+    audio?: string
+    action?: { name: string; args: Record<string, unknown> } | null
+    error?: string
+  }>(CHAT_PATH, {
     method: 'POST',
     body: { messages, language: lang, system: system || undefined },
   })
@@ -41,11 +48,12 @@ export async function askSenti(
         : res.status === 503
         ? 'My assistant service is not running. Start the Senti dashboard and try again.'
         : 'I could not reach my brain just now. Give me a moment and try again.'
-    return { text, audio: null }
+    return { text, audio: null, action: null }
   }
 
   const data = res.data || {}
   const text = typeof data.reply === 'string' && data.reply.trim() ? data.reply.trim() : 'Sorry, I did not catch that.'
   const audio = typeof data.audio === 'string' && data.audio.startsWith('data:audio') ? data.audio : null
-  return { text, audio }
+  const action = data.action && typeof data.action.name === 'string' ? data.action : null
+  return { text, audio, action }
 }
