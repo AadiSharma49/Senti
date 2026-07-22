@@ -574,7 +574,8 @@ function createWindow(): void {
     height,
     fullscreen: true,
     frame: false,
-    transparent: false,
+    transparent: true,
+    backgroundColor: '#00000000',
     resizable: false,
     maximizable: false,
     minimizable: false,
@@ -826,15 +827,17 @@ let windowMode: WindowMode = 'signin'
 let tray: InstanceType<typeof Tray> | null = null
 let quitting = false
 
-const HUD_W = 420
-const HUD_H = 150
+// Square, so the floating orb has room to breathe.
+const HUD_W = 400
+const HUD_H = 400
 
+/** Centre the orb, slightly above middle — where your eyes already are. */
 function positionHud(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const { workArea } = screen.getPrimaryDisplay()
   mainWindow.setBounds({
-    x: workArea.x + workArea.width - HUD_W - 24,
-    y: workArea.y + workArea.height - HUD_H - 24,
+    x: Math.round(workArea.x + (workArea.width - HUD_W) / 2),
+    y: Math.round(workArea.y + (workArea.height - HUD_H) / 2 - workArea.height * 0.06),
     width: HUD_W,
     height: HUD_H,
   })

@@ -74,6 +74,38 @@ export interface WakeStore {
   stop: () => void
 }
 
+/**
+ * A short rising two-tone chime the instant the wake word lands.
+ *
+ * Hands-free needs an answer before Senti has finished thinking, or you're left
+ * wondering whether it heard you at all. Synthesised with Web Audio so there's
+ * no asset to load and no delay.
+ */
+function playWakeChime(): void {
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const ctx = new Ctx()
+    const now = ctx.currentTime
+    const gain = ctx.createGain()
+    gain.connect(ctx.destination)
+    gain.gain.setValueAtTime(0.0001, now)
+    gain.gain.exponentialRampToValueAtTime(0.16, now + 0.03)
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.5)
+
+    for (const [freq, at] of [[660, 0], [990, 0.09]] as const) {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(freq, now + at)
+      osc.connect(gain)
+      osc.start(now + at)
+      osc.stop(now + at + 0.4)
+    }
+    window.setTimeout(() => void ctx.close().catch(() => {}), 900)
+  } catch {
+    // No audio device — the orb still shows.
+  }
+}
+
 function setHud(visible: boolean) {
   try {
     if (visible) void window.senti?.hudShow?.()
@@ -153,7 +185,8 @@ async function onUtterance(utterance: Utterance): Promise<void> {
       if (!inline) {
         // Just the name: open the HUD and wait for the command.
         awaitingCommand = true
-        useWakeStore.setState({ state: 'heard', detail: 'Listening…' })
+        useWakeStore.setState({ state: 'heard', detail: 'Yes? Go ahead.' })
+        playWakeChime()
         setHud(true)
         followupTimer = window.setTimeout(() => {
           followupTimer = null
@@ -176,6 +209,7 @@ async function onUtterance(utterance: Utterance): Promise<void> {
 }
 
 async function handleCommand(command: string): Promise<void> {
+  playWakeChime()
   setHud(true)
   useWakeStore.setState({ state: 'working', detail: command })
 

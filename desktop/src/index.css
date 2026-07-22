@@ -223,3 +223,16 @@ html, body, #root {
 @keyframes orb-spin-rev {
   to { transform: rotate(-360deg); }
 }
+/* --- Orb (HUD) mode -------------------------------------------------
+   In HUD mode the Electron window is transparent, so nothing here may
+   paint a background — only the floating orb should be visible on top of
+   whatever the user is actually working in. */
+html.orb-mode,
+html.orb-mode body,
+html.orb-mode #root {
+  background: transparent !important;
+}
+html.orb-mode body::before,
+html.orb-mode body::after {
+  display: none !important;
+}

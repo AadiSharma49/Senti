@@ -30,6 +30,10 @@ function App() {
   useEffect(() => {
     const mode = needsSetup ? 'setup' : unlocked ? 'hud' : 'signin'
     void window.senti?.setWindowMode?.(mode)
+
+    // In HUD mode the window is transparent, so nothing may paint a background
+    // — only the orb should appear over whatever you're working in.
+    document.documentElement.classList.toggle('orb-mode', mode === 'hud')
   }, [needsSetup, unlocked])
 
   // Greet on unlock. The lock screen used to do this, but it unmounts the

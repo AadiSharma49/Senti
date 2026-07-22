@@ -341,7 +341,8 @@ function Y() {
     height: e,
     fullscreen: !0,
     frame: !1,
-    transparent: !1,
+    transparent: !0,
+    backgroundColor: "#00000000",
     resizable: !1,
     maximizable: !1,
     minimizable: !1,
@@ -456,15 +457,15 @@ l.handle("senti:set-lock-state", (t, e) => {
   y(!!e);
 });
 let j = "signin", b = null, E = !1;
-const L = 420, M = 150;
+const M = 400, L = 400;
 function K() {
   if (!r || r.isDestroyed()) return;
   const { workArea: t } = z.getPrimaryDisplay();
   r.setBounds({
-    x: t.x + t.width - L - 24,
-    y: t.y + t.height - M - 24,
-    width: L,
-    height: M
+    x: Math.round(t.x + (t.width - M) / 2),
+    y: Math.round(t.y + (t.height - L) / 2 - t.height * 0.06),
+    width: M,
+    height: L
   });
 }
 function T(t) {
