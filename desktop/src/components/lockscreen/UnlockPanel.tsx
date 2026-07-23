@@ -186,43 +186,27 @@ export default function UnlockPanel() {
 
   return (
     <motion.div
-      className="mt-12 flex w-full max-w-3xl flex-col items-center gap-8"
+      className="flex w-full flex-col items-center gap-4"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.6, ease: 'easeOut' }}
     >
-      <motion.div
-        className="w-full rounded-[32px] border border-white/10 bg-black/20 p-6 glass-strong shadow-2xl shadow-cyan-500/10"
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: 'easeOut' }}
-      >
-        <div className="flex flex-col gap-4">
-          <div>
-            <div className="text-xs uppercase tracking-[0.3em] text-accent">Welcome back</div>
-            <div className="text-2xl font-display mt-2">Sign in to Senti</div>
-          </div>
-
+      <div className="w-full rounded-[28px] border border-white/10 bg-black/25 p-5 glass-strong shadow-2xl shadow-cyan-500/10">
+        <div className="flex flex-col gap-3">
           <VoiceStatusCard />
 
-          <div className="rounded-3xl border border-white/10 bg-gradient-to-br from-white/5 to-white/10 p-5 ring-1 ring-white/5 shadow-lg shadow-cyan-700/10">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-semibold text-white">Use your PIN instead</div>
-                <p className="text-sm text-secondary">If your voice isn’t available.</p>
-              </div>
-              <button
-                onClick={handleShowBackup}
-                disabled={showBackupPin || lockedActive}
-                className={'rounded-2xl px-4 py-2 text-sm font-semibold transition ' + (showBackupPin || lockedActive ? 'bg-white/10 text-white/40 cursor-not-allowed' : 'bg-accent text-black hover:bg-accent-glow')}
-              >
-                {showBackupPin ? 'Enter PIN' : 'Use PIN'}
-              </button>
-            </div>
-            <div className="mt-3 text-xs uppercase tracking-[0.3em] text-secondary">{backupStatus}</div>
-          </div>
+          {/* PIN as the quiet secondary — a link, not a competing button. */}
+          {!showBackupPin && (
+            <button
+              onClick={handleShowBackup}
+              disabled={lockedActive}
+              className="mx-auto text-xs uppercase tracking-[0.3em] text-secondary transition hover:text-accent disabled:opacity-40"
+            >
+              {lockedActive ? backupStatus : 'or use your PIN'}
+            </button>
+          )}
         </div>
-      </motion.div>
+      </div>
 
       <AnimatePresence>
         {showBackupPin && (

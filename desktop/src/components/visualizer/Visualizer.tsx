@@ -20,9 +20,10 @@ export default function Visualizer() {
   const coreOpacity = useTransform(smooth, [0, 1], [0.35, 0.95])
   const glowOpacity = useTransform(smooth, [0, 1], [0.12, 0.42])
 
-  const bright = alarm ? 'rgba(255,120,120,0.75)' : 'rgba(226,232,240,0.6)'
-  const dim = alarm ? 'rgba(255,120,120,0.35)' : 'rgba(160,172,190,0.28)'
-  const faint = alarm ? 'rgba(255,120,120,0.2)' : 'rgba(140,152,170,0.18)'
+  // Senti cyan — this is the mark, so it carries the brand, not grey.
+  const bright = alarm ? 'rgba(255,120,120,0.8)' : 'rgba(0,212,255,0.85)'
+  const dim = alarm ? 'rgba(255,120,120,0.35)' : 'rgba(0,190,235,0.4)'
+  const faint = alarm ? 'rgba(255,120,120,0.2)' : 'rgba(90,210,255,0.22)'
 
   return (
     <motion.div className="relative flex h-72 w-72 items-center justify-center" style={{ scale }}>
@@ -35,8 +36,8 @@ export default function Visualizer() {
           opacity: glowOpacity,
           background: alarm
             ? 'radial-gradient(circle, rgba(255,90,90,0.6), transparent 70%)'
-            : 'radial-gradient(circle, rgba(210,220,235,0.5), transparent 70%)',
-          filter: 'blur(14px)',
+            : 'radial-gradient(circle, rgba(0,212,255,0.55), transparent 70%)',
+          filter: 'blur(16px)',
         }}
       />
 
@@ -87,8 +88,8 @@ export default function Visualizer() {
           width: '7%',
           scale: coreScale,
           opacity: coreOpacity,
-          background: alarm ? '#ff8a8a' : '#e6ebf2',
-          boxShadow: alarm ? '0 0 16px rgba(255,120,120,0.7)' : '0 0 16px rgba(220,228,240,0.6)',
+          background: alarm ? '#ff8a8a' : '#7fe9ff',
+          boxShadow: alarm ? '0 0 16px rgba(255,120,120,0.7)' : '0 0 22px rgba(0,212,255,0.9)',
         }}
       />
     </motion.div>
