@@ -3,6 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
 import WakeHud from './components/assistant/WakeHud'
+import SettingsPanel from './components/common/SettingsPanel'
 import CustomCursor from './components/common/CustomCursor'
 import AudioCaptureTest from './components/debug/AudioCaptureTest'
 import VADTest from './components/debug/VADTest'
@@ -11,74 +12,94 @@ import VoiceAuthTest from './components/debug/VoiceAuthTest'
 import { useSettingsStore } from './state/settingsStore'
 import { useLockStore } from './state/lockStore'
 import { useWakeStore } from './state/wakeStore'
+import { useUiStore } from './state/uiStore'
 import { useGreetingStore } from './state/greetingStore'
 import { startReporting, stopReporting } from './services/statusReporter'
 
 function App() {
   const settings = useSettingsStore((s) => s)
   const lockState = useLockStore((s) => s.state)
+  const settingsOpen = useUiStore((s) => s.settingsOpen)
   const securityConfigured = settings.security.pin.trim().length >= 4
   const needsSetup = !settings.setupCompleted || !securityConfigured
+  const requireSignIn = settings.requireSignIn
   const unlocked = lockState === 'unlocked'
 
+  // Returning users go STRAIGHT to Senti — no sign-in gate every launch, unless
+  // they explicitly asked for one. Signing in once (at setup) is enough.
+  useEffect(() => {
+    if (!needsSetup && !requireSignIn && !unlocked) {
+      useLockStore.getState().authSuccess()
+    }
+  }, [needsSetup, requireSignIn, unlocked])
+
+  const signedIn = !needsSetup && (unlocked || !requireSignIn)
+
   /**
-   * Three modes, driven from here. Senti is NOT a lock screen — sign-in is a
-   * normal window shown once when it starts, then it lives in the tray.
+   * Window modes:
    *   setup  — first run, a normal window
-   *   signin — "it's me" once at startup; movable, minimisable, no fullscreen
-   *   hud    — after that: a small panel hidden in the tray, still listening
+   *   signin — the once-per-launch "it's me" screen (only if requireSignIn)
+   *   panel  — a normal window showing Settings (reachable from the tray/orb)
+   *   hud    — the floating orb; listening
    */
   useEffect(() => {
-    const mode = needsSetup ? 'setup' : unlocked ? 'hud' : 'signin'
+    const mode = needsSetup ? 'setup' : !signedIn ? 'signin' : settingsOpen ? 'panel' : 'hud'
     void window.senti?.setWindowMode?.(mode)
-
-    // In HUD mode the window is transparent, so nothing may paint a background
-    // — only the orb should appear over whatever you're working in.
+    // The orb window is transparent; nothing may paint a background over it.
     document.documentElement.classList.toggle('orb-mode', mode === 'hud')
-  }, [needsSetup, unlocked])
+  }, [needsSetup, signedIn, settingsOpen])
 
-  // Greet on unlock. The lock screen used to do this, but it unmounts the
-  // moment we switch to the HUD, so it lives here now.
+  // The tray "Open Senti" opens the control center.
   useEffect(() => {
-    if (!unlocked || needsSetup) return
+    const off = window.senti?.onOpenSettings?.(() => useUiStore.getState().openSettings())
+    return () => off?.()
+  }, [])
+
+  // Greet once, when Senti comes online.
+  useEffect(() => {
+    if (!signedIn) return
     void useGreetingStore.getState().greet()
     return () => useGreetingStore.getState().reset()
-  }, [unlocked, needsSetup])
+  }, [signedIn])
 
-  // Once unlocked, Senti listens for its name in the background — that's what
-  // makes it hands-free from anywhere. Stops the moment it locks again.
+  // Listen for "Senti" in the background — hands-free from anywhere.
   useEffect(() => {
-    if (needsSetup) return
     const wake = useWakeStore.getState()
-    if (unlocked && settings.permissions.alwaysListening) void wake.start()
+    if (signedIn && settings.permissions.alwaysListening) void wake.start()
     else wake.stop()
-  }, [unlocked, needsSetup, settings.permissions.alwaysListening])
+  }, [signedIn, settings.permissions.alwaysListening])
 
-  // Report live status to the dashboard while unlocked, so you can check this
-  // PC from your phone. Stops when it locks.
+  // Report live status so you can check this PC from your phone.
   useEffect(() => {
-    if (!needsSetup && unlocked) startReporting()
+    if (signedIn) startReporting()
     else stopReporting()
-  }, [unlocked, needsSetup])
+  }, [signedIn])
 
-  // In HUD mode the lock screen is gone; only the wake panel remains.
-  if (!needsSetup && unlocked) {
+  // Setup wizard — its own full-window flow.
+  if (needsSetup) {
     return (
       <div className="relative h-full w-full overflow-hidden">
-        <WakeHud />
+        <SetupWizard />
+        <SettingsPanel />
+        <CustomCursor />
       </div>
     )
   }
 
+  // Signed in: the orb (hidden while the control center is open), plus Settings.
+  if (signedIn) {
+    return (
+      <div className="relative h-full w-full overflow-hidden">
+        {!settingsOpen && <WakeHud />}
+        <SettingsPanel />
+      </div>
+    )
+  }
+
+  // Once-per-launch sign-in (only when the user opted into it).
   return (
     <div className="relative w-full h-full overflow-hidden">
-      <AnimatePresence mode="wait">
-        {needsSetup ? (
-          <SetupWizard key="setup-wizard" />
-        ) : (
-          <LockScreen key="lock-screen" />
-        )}
-      </AnimatePresence>
+      <LockScreen />
       <CustomCursor />
       <AudioCaptureTest />
       <VADTest />

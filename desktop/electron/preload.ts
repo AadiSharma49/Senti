@@ -19,9 +19,15 @@ contextBridge.exposeInMainWorld('senti', {
   setSetupMode: (inSetup: boolean) => ipcRenderer.invoke('senti:set-setup-mode', inSetup),
 
   /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
-  setWindowMode: (mode: 'signin' | 'setup' | 'hud') => ipcRenderer.invoke('senti:set-window-mode', mode),
+  setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => ipcRenderer.invoke('senti:set-window-mode', mode),
   hudShow: () => ipcRenderer.invoke('senti:hud-show'),
   hudHide: () => ipcRenderer.invoke('senti:hud-hide'),
+  /** Fired from the tray / second launch. Returns an unsubscribe function. */
+  onOpenSettings: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('senti:open-settings', handler)
+    return () => ipcRenderer.removeListener('senti:open-settings', handler)
+  },
 
   // Setup-completion flag, persisted to a FILE in main (origin-independent, so
   // it survives a local-server port change). Read synchronously at boot.

@@ -55,21 +55,25 @@ export default function WakeHud() {
   const spin = busy ? 6 : 22
   const spinBack = busy ? 9 : 30
 
-  // Idle presence: a small orb in the corner so you always see Senti is alive
-  // and listening. It grows to the centre treatment below when you talk to it.
+  // Idle presence: a small orb in the corner so you always see Senti is alive.
+  // Cyan + breathing when it's actively listening; dim and still when it's not
+  // (so you can tell at a glance whether it can hear you).
   if (!active) {
+    const listening = state === 'listening'
     return (
-      <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+      <div className={`pointer-events-none fixed inset-0 flex items-center justify-center ${listening ? 'text-accent' : 'text-white/30'}`}>
         <motion.div
           className="relative"
           animate={{ y: [0, -4, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <div
-            className="absolute inset-0 rounded-full blur-xl"
-            style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), transparent 65%)' }}
-          />
-          <svg width="112" height="112" viewBox="0 0 112 112" className="relative text-accent">
+          {listening && (
+            <div
+              className="absolute inset-0 rounded-full blur-xl"
+              style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), transparent 65%)' }}
+            />
+          )}
+          <svg width="112" height="112" viewBox="0 0 112 112" className="relative">
             <motion.circle
               cx="56" cy="56" r="44" fill="none" stroke="currentColor" strokeWidth="1.5"
               strokeLinecap="round" strokeDasharray="70 40" opacity="0.7"
@@ -84,9 +88,9 @@ export default function WakeHud() {
             />
             <motion.circle
               cx="56" cy="56" fill="currentColor"
-              animate={{ r: [7, 9, 7], opacity: [0.6, 1, 0.6] }}
-              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
-              style={{ filter: 'drop-shadow(0 0 12px rgba(0,212,255,0.9))' }}
+              animate={listening ? { r: [7, 9, 7], opacity: [0.6, 1, 0.6] } : { r: 7, opacity: 0.5 }}
+              transition={{ duration: 2.6, repeat: listening ? Infinity : 0, ease: 'easeInOut' }}
+              style={{ filter: listening ? 'drop-shadow(0 0 12px rgba(0,212,255,0.9))' : 'none' }}
             />
           </svg>
         </motion.div>

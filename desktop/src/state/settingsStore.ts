@@ -12,6 +12,12 @@ export interface SettingsState {
   setupCompleted: boolean
 
   /**
+   * Ask for voice/PIN sign-in every time Senti starts. Off by default: Senti is
+   * an assistant, not a lock, so returning users go straight to listening.
+   */
+  requireSignIn: boolean
+
+  /**
    * The permission dial. Senti only ever does what you have switched on — an
    * AI with access to your PC is frightening; an AI with exactly the access you
    * granted is not.
@@ -36,6 +42,7 @@ export interface SettingsState {
   setSecurity: (s: Partial<SettingsState['security']>) => void
   setPermissions: (p: Partial<SettingsState['permissions']>) => void
   setSetupCompleted: (completed: boolean) => void
+  setRequireSignIn: (require: boolean) => void
   resetConfiguration: () => void
 }
 
@@ -102,6 +109,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   permissions: loadPermissions(),
 
   setupCompleted: loadSetupCompleted(),
+  requireSignIn: safe<boolean>('senti:requireSignIn', false),
 
   setSecurity: (s) => {
     const next = { ...loadSecurity(), ...s }
@@ -113,6 +121,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const next = { ...loadPermissions(), ...p }
     persist('senti:permissions', next)
     set({ permissions: next })
+  },
+
+  setRequireSignIn: (require) => {
+    persist('senti:requireSignIn', require)
+    set({ requireSignIn: require })
   },
 
   setSetupCompleted: (completed) => {

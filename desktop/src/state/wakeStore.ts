@@ -125,9 +125,19 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     if (get().state !== 'off') return
     if (!useSettingsStore.getState().permissions.alwaysListening) return
 
-    try {
-      await Promise.all([loadSpeechRecognition(), audioCapture.start()])
-    } catch {
+    // Load the speech model + mic. Retry once — a cold start right after
+    // unlock can lose the race for the mic, and we must not end up silently
+    // not listening.
+    let started = false
+    for (let attempt = 0; attempt < 2 && !started; attempt++) {
+      try {
+        await Promise.all([loadSpeechRecognition(), audioCapture.start()])
+        started = true
+      } catch {
+        await new Promise((r) => setTimeout(r, 1200))
+      }
+    }
+    if (!started) {
       set({ state: 'off', detail: '' })
       return
     }

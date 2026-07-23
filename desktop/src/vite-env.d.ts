@@ -24,9 +24,11 @@ interface SentiAPI {
   /** True while first-time setup is showing: a normal window, not a lock. */
   setSetupMode: (inSetup: boolean) => Promise<boolean>
   /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
-  setWindowMode: (mode: 'signin' | 'setup' | 'hud') => Promise<boolean>
+  setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => Promise<boolean>
   hudShow: () => Promise<boolean>
   hudHide: () => Promise<boolean>
+  /** Fired from the tray / second launch to open Settings. Returns unsubscribe. */
+  onOpenSettings: (cb: () => void) => () => void
   /** Setup-completion flag read from a file at boot (survives port changes). */
   setupCompletedAtBoot: boolean
   persistSetupCompleted: (done: boolean) => Promise<boolean>

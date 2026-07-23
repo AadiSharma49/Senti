@@ -659,11 +659,10 @@ function createWindow(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
+  // Launching Senti again (double-click the icon) opens the control center,
+  // since a single instance is already running in the tray.
   app.on('second-instance', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show()
-      mainWindow.focus()
-    }
+    if (mainWindow && !mainWindow.isDestroyed()) openSettingsWindow()
   })
 }
 
@@ -846,7 +845,7 @@ ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
 // window is never destroyed — it becomes a small HUD that stays hidden until
 // the wake word fires, and the app lives in the tray.
 
-type WindowMode = 'signin' | 'setup' | 'hud'
+type WindowMode = 'signin' | 'setup' | 'hud' | 'panel'
 let windowMode: WindowMode = 'signin'
 let tray: InstanceType<typeof Tray> | null = null
 let quitting = false
@@ -898,6 +897,7 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.showInactive()
   } else if (mode === 'setup') {
     setLocked(false)
+    mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setAlwaysOnTop(false)
     mainWindow.setFullScreen(false)
     mainWindow.setResizable(true)
@@ -905,10 +905,22 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.setSize(980, 760)
     mainWindow.center()
     mainWindow.show()
+  } else if (mode === 'panel') {
+    // The control center (Settings), reachable from the tray/orb once signed in.
+    setLocked(false)
+    mainWindow.setIgnoreMouseEvents(false)
+    mainWindow.setAlwaysOnTop(false)
+    mainWindow.setFullScreen(false)
+    mainWindow.setResizable(false)
+    mainWindow.setSkipTaskbar(false)
+    mainWindow.setSize(760, 840)
+    mainWindow.center()
+    mainWindow.show()
+    mainWindow.focus()
   } else {
     // Sign-in: a normal window you can move, minimise or Alt+Tab away from.
-    // Shown once when Senti starts, then it goes to the tray. Not a lock.
     setLocked(true)
+    mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setFullScreen(false)
     mainWindow.setAlwaysOnTop(false)
     mainWindow.setResizable(false)
@@ -952,6 +964,15 @@ function trayIcon(): Electron.NativeImage {
   return nativeImage.createEmpty()
 }
 
+/** Open the control center (Settings): a normal window + tell the renderer. */
+function openSettingsWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.webContents.send('senti:open-settings')
+  setWindowMode('panel')
+  mainWindow.show()
+  mainWindow.focus()
+}
+
 function buildTray(): void {
   if (tray) return
   try {
@@ -959,8 +980,8 @@ function buildTray(): void {
     tray.setToolTip('Senti — listening for you')
     tray.setContextMenu(
       Menu.buildFromTemplate([
+        { label: 'Open Senti (Settings)', click: () => openSettingsWindow() },
         { label: 'Sign in again', click: () => setWindowMode('signin') },
-        { label: 'Show Senti', click: () => showHud() },
         { type: 'separator' },
         {
           label: 'Quit Senti',
@@ -971,7 +992,8 @@ function buildTray(): void {
         },
       ])
     )
-    tray.on('click', () => showHud())
+    // Left-click the tray icon opens Settings — the natural "open the app".
+    tray.on('click', () => openSettingsWindow())
   } catch {
     // A missing tray shouldn't stop Senti from running.
   }
@@ -999,7 +1021,7 @@ ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
 // Background operation: after unlock Senti becomes a hidden HUD in the tray so
 // it can keep listening. The renderer drives these.
 ipcMain.handle('senti:set-window-mode', (_e: unknown, mode: unknown) => {
-  if (mode === 'signin' || mode === 'setup' || mode === 'hud') {
+  if (mode === 'signin' || mode === 'setup' || mode === 'hud' || mode === 'panel') {
     setWindowMode(mode)
     if (mode === 'hud') buildTray()
     return true
