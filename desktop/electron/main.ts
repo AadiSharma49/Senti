@@ -589,6 +589,10 @@ function createWindow(): void {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      // CRITICAL: Windows throttles hidden/occluded windows to ~1fps, which
+      // stalls the always-listening audio loop. Senti has to keep hearing you
+      // while it sits quietly in the corner, so throttling stays OFF.
+      backgroundThrottling: false,
     },
   })
 
@@ -848,19 +852,31 @@ let tray: InstanceType<typeof Tray> | null = null
 let quitting = false
 
 // Square, so the floating orb has room to breathe.
-const HUD_W = 400
-const HUD_H = 400
+// Two footprints: a small always-visible orb tucked in the corner (so you can
+// SEE Senti is alive and listening), and a larger centred one when you talk to
+// it.
+const HUD_BIG = 380
+const HUD_SMALL = 132
 
-/** Centre the orb, slightly above middle — where your eyes already are. */
-function positionHud(): void {
+/** Small: bottom-right corner. Big: centred, slightly high. */
+function positionHud(big: boolean): void {
   if (!mainWindow || mainWindow.isDestroyed()) return
   const { workArea } = screen.getPrimaryDisplay()
-  mainWindow.setBounds({
-    x: Math.round(workArea.x + (workArea.width - HUD_W) / 2),
-    y: Math.round(workArea.y + (workArea.height - HUD_H) / 2 - workArea.height * 0.06),
-    width: HUD_W,
-    height: HUD_H,
-  })
+  if (big) {
+    mainWindow.setBounds({
+      x: Math.round(workArea.x + (workArea.width - HUD_BIG) / 2),
+      y: Math.round(workArea.y + (workArea.height - HUD_BIG) / 2 - workArea.height * 0.06),
+      width: HUD_BIG,
+      height: HUD_BIG,
+    })
+  } else {
+    mainWindow.setBounds({
+      x: Math.round(workArea.x + workArea.width - HUD_SMALL - 18),
+      y: Math.round(workArea.y + workArea.height - HUD_SMALL - 18),
+      width: HUD_SMALL,
+      height: HUD_SMALL,
+    })
+  }
 }
 
 function setWindowMode(mode: WindowMode): void {
@@ -868,14 +884,18 @@ function setWindowMode(mode: WindowMode): void {
   windowMode = mode
 
   if (mode === 'hud') {
-    // Small, frameless, out of the way — and hidden until Senti is spoken to.
+    // The orb LIVES here: a small, click-through presence in the corner that's
+    // always visible, so you know Senti is listening. It grows to the centre
+    // when you speak to it (showHud).
     setLocked(false)
     mainWindow.setFullScreen(false)
     mainWindow.setResizable(false)
     mainWindow.setSkipTaskbar(true)
     mainWindow.setAlwaysOnTop(true, 'screen-saver')
-    positionHud()
-    mainWindow.hide()
+    // Clicks pass straight through to whatever you're working in.
+    mainWindow.setIgnoreMouseEvents(true, { forward: true })
+    positionHud(false)
+    mainWindow.showInactive()
   } else if (mode === 'setup') {
     setLocked(false)
     mainWindow.setAlwaysOnTop(false)
@@ -900,17 +920,18 @@ function setWindowMode(mode: WindowMode): void {
   }
 }
 
-/** Bring the HUD up (without stealing focus from what you're doing). */
+/** Grow the orb to centre-screen while Senti is being spoken to. */
 function showHud(): void {
   if (!mainWindow || mainWindow.isDestroyed() || windowMode !== 'hud') return
-  positionHud()
+  positionHud(true)
   mainWindow.showInactive()
   mainWindow.setAlwaysOnTop(true, 'screen-saver')
 }
 
+/** Shrink back to the small corner presence — it stays visible, not hidden. */
 function hideHud(): void {
   if (!mainWindow || mainWindow.isDestroyed() || windowMode !== 'hud') return
-  mainWindow.hide()
+  positionHud(false)
 }
 
 function trayIcon(): Electron.NativeImage {

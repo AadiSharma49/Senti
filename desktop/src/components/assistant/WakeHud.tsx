@@ -48,16 +48,55 @@ function Ticks({ r, count, len, width, opacity }: { r: number; count: number; le
 export default function WakeHud() {
   const state = useWakeStore((s) => s.state)
   const detail = useWakeStore((s) => s.detail)
-  const visible = state === 'heard' || state === 'working' || state === 'speaking'
+  const active = state === 'heard' || state === 'working' || state === 'speaking'
 
   // Everything speeds up while it's thinking, settles while it speaks.
   const busy = state === 'working'
   const spin = busy ? 6 : 22
   const spinBack = busy ? 9 : 30
 
+  // Idle presence: a small orb in the corner so you always see Senti is alive
+  // and listening. It grows to the centre treatment below when you talk to it.
+  if (!active) {
+    return (
+      <div className="pointer-events-none fixed inset-0 flex items-center justify-center">
+        <motion.div
+          className="relative"
+          animate={{ y: [0, -4, 0] }}
+          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <div
+            className="absolute inset-0 rounded-full blur-xl"
+            style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), transparent 65%)' }}
+          />
+          <svg width="112" height="112" viewBox="0 0 112 112" className="relative text-accent">
+            <motion.circle
+              cx="56" cy="56" r="44" fill="none" stroke="currentColor" strokeWidth="1.5"
+              strokeLinecap="round" strokeDasharray="70 40" opacity="0.7"
+              style={{ originX: '56px', originY: '56px' }}
+              animate={{ rotate: 360 }} transition={{ duration: 14, repeat: Infinity, ease: 'linear' }}
+            />
+            <motion.circle
+              cx="56" cy="56" r="30" fill="none" stroke="currentColor" strokeWidth="1"
+              strokeLinecap="round" strokeDasharray="30 30" opacity="0.45"
+              style={{ originX: '56px', originY: '56px' }}
+              animate={{ rotate: -360 }} transition={{ duration: 18, repeat: Infinity, ease: 'linear' }}
+            />
+            <motion.circle
+              cx="56" cy="56" fill="currentColor"
+              animate={{ r: [7, 9, 7], opacity: [0.6, 1, 0.6] }}
+              transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
+              style={{ filter: 'drop-shadow(0 0 12px rgba(0,212,255,0.9))' }}
+            />
+          </svg>
+        </motion.div>
+      </div>
+    )
+  }
+
   return (
     <AnimatePresence>
-      {visible && (
+      {active && (
         <motion.div
           className="pointer-events-none fixed inset-0 flex flex-col items-center justify-center"
           initial={{ opacity: 0, scale: 0.86 }}
