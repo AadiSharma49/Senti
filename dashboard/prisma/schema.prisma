@@ -78,6 +78,13 @@ model Device {
   lastSeen      DateTime @default(now())
   createdAt     DateTime @default(now())
 
+  /// Live status the desktop pushes so you can check it from your phone.
+  /// activity: what Senti is doing now ("Idle", "Cleaning temp files", …)
+  activity      String?
+  /// A compact vitals line (RAM/disk), and when it was last reported.
+  vitals        String?
+  reportedAt    DateTime?
+
   events UnlockEvent[]
 }
 

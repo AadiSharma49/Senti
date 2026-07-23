@@ -6,6 +6,7 @@ import { askSenti, type ChatTurn } from '../services/assistantService'
 import { getSystemSnapshot, describeSystem } from '../services/systemInfo'
 import { say, deviceLang } from '../services/greetingService'
 import { runAction } from '../services/actions'
+import { reportActivity } from '../services/statusReporter'
 import { useSettingsStore } from './settingsStore'
 import type { Utterance } from '../types/audio'
 
@@ -212,6 +213,8 @@ async function handleCommand(command: string): Promise<void> {
   playWakeChime()
   setHud(true)
   useWakeStore.setState({ state: 'working', detail: command })
+  // So your phone sees what you asked it to do, live.
+  reportActivity(command, true)
 
   const lang = deviceLang()
   const snap = await getSystemSnapshot()
@@ -225,6 +228,8 @@ async function handleCommand(command: string): Promise<void> {
     const outcome = await runAction(reply.action)
     if (outcome) spoken = outcome
   }
+
+  reportActivity(spoken.slice(0, 120), false)
 
   useWakeStore.setState({ state: 'speaking', detail: spoken })
   await say({ text: spoken, audio: spoken === reply.text ? reply.audio : null }, lang)

@@ -32,6 +32,8 @@ interface SentiAPI {
   persistSetupCompleted: (done: boolean) => Promise<boolean>
   /** Real vitals for this machine (memory, disk, top processes, startup apps). */
   systemInfo: () => Promise<SystemSnapshot>
+  /** Hold the machine awake while a monitored task runs. */
+  keepAwake: (on: boolean) => Promise<boolean>
   /** OS actions (whitelisted or scoped in main). */
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>

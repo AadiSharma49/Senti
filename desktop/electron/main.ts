@@ -7,7 +7,7 @@ import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -778,6 +778,26 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
+
+// --- Keep-awake ------------------------------------------------------
+//
+// If you're monitoring a long task from your phone and the PC sleeps, Senti
+// goes dark and you lose the thread. While a task is running, hold the machine
+// awake. Released the moment it's idle again, so we don't drain the battery.
+let awakeBlockerId: number | null = null
+ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown) => {
+  try {
+    if (on && awakeBlockerId === null) {
+      awakeBlockerId = powerSaveBlocker.start('prevent-display-sleep')
+    } else if (!on && awakeBlockerId !== null) {
+      powerSaveBlocker.stop(awakeBlockerId)
+      awakeBlockerId = null
+    }
+    return awakeBlockerId !== null
+  } catch {
+    return false
+  }
+})
 
 // OS actions. Each is whitelisted or scoped in main; the renderer (and the
 // model behind it) can only ask, never dictate a command.

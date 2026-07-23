@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('senti', {
 
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
+  /** Hold the machine awake while a monitored task runs. */
+  keepAwake: (on: boolean) => ipcRenderer.invoke('senti:keep-awake', on),
 
   /** OS actions. All whitelisted or scoped in main — never a raw command. */
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),

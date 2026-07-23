@@ -7,6 +7,7 @@ import { ensureUser } from '@/lib/user'
 const nav = [
   { href: '/dashboard', label: 'Overview', icon: '▚' },
   { href: '/dashboard/devices', label: 'Devices', icon: '▢' },
+  { href: '/dashboard/remote', label: 'Remote', icon: '◈' },
   { href: '/dashboard/voice', label: 'Voice Profile', icon: '◉' },
   { href: '/dashboard/activity', label: 'Security Timeline', icon: '‖' },
   { href: '/dashboard/download', label: 'Download', icon: '↓' },

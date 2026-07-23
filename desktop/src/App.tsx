@@ -12,6 +12,7 @@ import { useSettingsStore } from './state/settingsStore'
 import { useLockStore } from './state/lockStore'
 import { useWakeStore } from './state/wakeStore'
 import { useGreetingStore } from './state/greetingStore'
+import { startReporting, stopReporting } from './services/statusReporter'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -52,6 +53,13 @@ function App() {
     if (unlocked && settings.permissions.alwaysListening) void wake.start()
     else wake.stop()
   }, [unlocked, needsSetup, settings.permissions.alwaysListening])
+
+  // Report live status to the dashboard while unlocked, so you can check this
+  // PC from your phone. Stops when it locks.
+  useEffect(() => {
+    if (!needsSetup && unlocked) startReporting()
+    else stopReporting()
+  }, [unlocked, needsSetup])
 
   // In HUD mode the lock screen is gone; only the wake panel remains.
   if (!needsSetup && unlocked) {
