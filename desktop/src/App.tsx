@@ -4,7 +4,6 @@ import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
 import WakeHud from './components/assistant/WakeHud'
 import SettingsPanel from './components/common/SettingsPanel'
-import CustomCursor from './components/common/CustomCursor'
 import AudioCaptureTest from './components/debug/AudioCaptureTest'
 import VADTest from './components/debug/VADTest'
 import UtteranceTest from './components/debug/UtteranceTest'
@@ -87,7 +86,6 @@ function App() {
       <div className="relative h-full w-full overflow-hidden">
         <SetupWizard />
         <SettingsPanel />
-        <CustomCursor />
       </div>
     )
   }
@@ -106,7 +104,6 @@ function App() {
   return (
     <div className="relative w-full h-full overflow-hidden">
       <LockScreen />
-      <CustomCursor />
       <AudioCaptureTest />
       <VADTest />
       <UtteranceTest />

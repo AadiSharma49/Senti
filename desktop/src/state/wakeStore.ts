@@ -6,6 +6,7 @@ import { askSenti, type ChatTurn } from '../services/assistantService'
 import { getSystemSnapshot, describeSystem } from '../services/systemInfo'
 import { say, deviceLang } from '../services/greetingService'
 import { runAction } from '../services/actions'
+import { parseWake } from '../services/wakeParse'
 import { reportActivity } from '../services/statusReporter'
 import { useSettingsStore } from './settingsStore'
 import type { Utterance } from '../types/audio'
@@ -32,28 +33,6 @@ export type WakeState =
   | 'working' // thinking / acting
   | 'speaking'
 
-/** Whisper mishears the name in predictable ways; accept the near-misses. */
-const WAKE_PATTERNS = [
-  'senti', 'sentai', 'sente', 'sentie', 'sensei', 'sanity', 'centi', 'century',
-  'sentry', 'santi', 'shanti', 'sentio', 'set me', 'send it',
-]
-
-/** Strip the wake word off the front and return whatever command remains. */
-function parseWake(textRaw: string): { woke: boolean; command: string } {
-  const text = textRaw.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim()
-  if (!text) return { woke: false, command: '' }
-
-  for (const w of WAKE_PATTERNS) {
-    // Only treat it as a wake if the name starts the utterance — otherwise
-    // saying "senti" mid-sentence in a call would trigger it.
-    if (text === w) return { woke: true, command: '' }
-    if (text.startsWith(w + ' ')) {
-      return { woke: true, command: textRaw.trim().slice(w.length).replace(/^[\s,.:!-]+/, '') }
-    }
-  }
-  return { woke: false, command: '' }
-}
-
 // A wake utterance is short; a command can run longer.
 const WAKE_MAX_SEC = 6
 const COMMAND_MAX_SEC = 15
@@ -70,6 +49,13 @@ export interface WakeStore {
   /** What Senti is doing right now, shown in the HUD. */
   detail: string
   enabled: boolean
+  /**
+   * The last thing Senti transcribed, addressed to it or not. Shown in the
+   * Control Center so "it can't hear me" is something you can actually see the
+   * answer to — either nothing arrives (mic problem) or the words come out
+   * wrong (the name was misheard). Held in memory only; never stored or sent.
+   */
+  lastHeard: string
 
   start: () => Promise<void>
   stop: () => void
@@ -120,6 +106,7 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   state: 'off',
   detail: '',
   enabled: false,
+  lastHeard: '',
 
   start: async () => {
     if (get().state !== 'off') return
@@ -178,6 +165,7 @@ async function onUtterance(utterance: Utterance): Promise<void> {
   try {
     const heard = (await transcribeRaw(utterance)).trim()
     if (!heard) return
+    useWakeStore.setState({ lastHeard: heard })
 
     let command = ''
 

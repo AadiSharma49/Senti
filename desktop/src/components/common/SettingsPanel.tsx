@@ -4,6 +4,7 @@ import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
 import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useDeviceStore } from '../../state/deviceStore'
+import { useWakeStore } from '../../state/wakeStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
 import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
 import { apiBase, apiOverride, setApiBase } from '../../config'
@@ -19,6 +20,7 @@ export default function SettingsPanel() {
 
   const resetConfiguration = useSettingsStore((s) => s.resetConfiguration)
   const permissions = useSettingsStore((s) => s.permissions)
+  const lastHeard = useWakeStore((s) => s.lastHeard)
   const setPermissions = useSettingsStore((s) => s.setPermissions)
   const requireSignIn = useSettingsStore((s) => s.requireSignIn)
   const setRequireSignIn = useSettingsStore((s) => s.setRequireSignIn)
@@ -208,6 +210,20 @@ export default function SettingsPanel() {
                     />
                   </button>
                 </div>
+
+                {/* Proof it is actually hearing you — the answer to "it ignored me". */}
+                {p.key === 'alwaysListening' && permissions.alwaysListening && (
+                  <div className="mt-3 border-t border-white/5 pt-3 text-xs">
+                    <span className="text-white/35">Last heard: </span>
+                    <span className="text-white/70">
+                      {lastHeard ? `“${lastHeard}”` : 'nothing yet — say something.'}
+                    </span>
+                    <div className="mt-1 text-white/30">
+                      Stays on this PC. If your words show up here but Senti stayed quiet, it
+                      didn&apos;t catch its name — start with &ldquo;Hey Senti&rdquo;.
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
