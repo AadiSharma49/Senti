@@ -5,12 +5,23 @@
  * with no microphone, no model and no browser — so it can be tested directly,
  * which matters because a bug here is silent. Senti just doesn't answer, and
  * you're left wondering whether the mic is broken.
+ *
+ * The rule is deliberately loose. You should not have to remember a magic
+ * phrase — "hey Senti", "wake up", "buddy", or just "hello" all work. What it
+ * will NOT do is treat every sentence in the room as a command: something has
+ * to be aimed at Senti, or a private conversation would be transcribed and
+ * sent off to answer a question nobody asked.
  */
 
-/** Whisper mishears the name in predictable ways; accept the near-misses. */
-const WAKE_PATTERNS = [
+/** The name, plus the ways Whisper mishears it. */
+const NAME_PATTERNS = [
   'senti', 'sentai', 'sente', 'sentie', 'senty', 'sensei', 'sanity', 'centi',
   'century', 'sentry', 'santi', 'shanti', 'sentio', 'sentini', 'saint e', 'sent e',
+]
+
+/** Other ways of addressing it — you don't have to use the name. */
+const ADDRESS_PATTERNS = [
+  'buddy', 'wake up', 'you there', 'are you there', 'listen up', 'hey buddy',
 ]
 
 /**
@@ -20,11 +31,21 @@ const WAKE_PATTERNS = [
  */
 const BARE_ONLY_PATTERNS = ['send it', 'set me', 'sent it', 'sent me']
 
+/** Run-up that can precede the name: "HEY Senti", "OK Senti, um, open Chrome". */
+const FILLERS = ['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh', 'er', 'so', 'please']
+
+/** A greeting on its own is addressed to Senti; "ok" or "um" on its own is not. */
+const GREETINGS = ['hey', 'hi', 'hello', 'yo']
+
 /**
- * Nobody says "Senti, open Chrome" — they say "HEY Senti, open Chrome". The
- * name almost never starts the sentence, so skip the run-up first.
+ * Imperatives that only make sense aimed at a machine, so "hello, clean my
+ * system" works without the name. Question words are deliberately absent —
+ * "hello, how are you" is how you greet a person, not Senti.
  */
-const LEAD_FILLERS = ['hey', 'hi', 'hello', 'ok', 'okay', 'yo', 'um', 'uh', 'er', 'so']
+const COMMAND_VERBS = [
+  'open', 'close', 'clean', 'delete', 'lock', 'unlock', 'mute', 'unmute',
+  'launch', 'quit', 'shut', 'empty', 'free', 'turn', 'kill',
+]
 
 /** Lowercase, letters and digits only — how we compare a spoken word. */
 function normalize(word: string): string {
@@ -34,12 +55,12 @@ function normalize(word: string): string {
 export interface WakeMatch {
   /** Was Senti addressed at all? */
   woke: boolean
-  /** What was asked, with the name stripped off. Empty means just the name. */
+  /** What was asked, with the address stripped off. Empty means no command. */
   command: string
 }
 
 /**
- * Split the wake word off the front of what was heard.
+ * Split however you addressed Senti off the front of what you said.
  *
  * Matching runs on a normalized copy, but the command is sliced out of the
  * ORIGINAL text, so capitalisation and apostrophes survive into the request —
@@ -51,28 +72,45 @@ export function parseWake(textRaw: string): WakeMatch {
 
   const norm = words.map(normalize)
 
-  // Step over "hey", "ok", "um"… but never the entire utterance, or a lone
-  // "hey" would look like a wake with an empty command.
-  let i = 0
-  while (i < norm.length - 1 && LEAD_FILLERS.includes(norm[i])) i++
-
-  const rest = () => words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '').trim()
-
-  // One-word names, then two-word mishearings ("saint e").
-  for (const len of [1, 2]) {
-    const candidate = norm.slice(i, i + len).join(' ')
-    if (!candidate) continue
-
-    if (WAKE_PATTERNS.includes(candidate)) {
-      i += len
-      return { woke: true, command: rest() }
+  /** How many words of an address phrase start at `at`, or 0 for none. */
+  const addressAt = (at: number): number => {
+    for (const len of [3, 2, 1]) {
+      const phrase = norm.slice(at, at + len).join(' ')
+      if (!phrase) continue
+      if (NAME_PATTERNS.includes(phrase) || ADDRESS_PATTERNS.includes(phrase)) return len
+      // Ordinary-English homophones: only when nothing follows them.
+      if (BARE_ONLY_PATTERNS.includes(phrase) && at + len >= norm.length) return len
     }
-
-    // Ordinary-English homophones: only when nothing follows them.
-    if (BARE_ONLY_PATTERNS.includes(candidate) && i + len >= norm.length) {
-      return { woke: true, command: '' }
-    }
+    return 0
   }
 
-  return { woke: false, command: '' }
+  // Eat the run-up and every way you addressed it: "hey senti buddy, ...".
+  let i = 0
+  let woke = false
+  let greeted = false
+  while (i < norm.length) {
+    const len = addressAt(i)
+    if (len) {
+      i += len
+      woke = true
+      continue
+    }
+    if (FILLERS.includes(norm[i])) {
+      if (GREETINGS.includes(norm[i])) greeted = true
+      i++
+      continue
+    }
+    break
+  }
+
+  const command = words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '').trim()
+
+  // "Hello." on its own is aimed at Senti — nothing else is left for it to be.
+  if (!woke && greeted && i >= norm.length) return { woke: true, command: '' }
+
+  // "Hello, clean my system" — an order like that is meant for the machine.
+  if (!woke && greeted && COMMAND_VERBS.includes(norm[i])) return { woke: true, command }
+
+  if (!woke) return { woke: false, command: '' }
+  return { woke: true, command }
 }

@@ -9,6 +9,7 @@ import { runAction } from '../services/actions'
 import { parseWake } from '../services/wakeParse'
 import { reportActivity } from '../services/statusReporter'
 import { useSettingsStore } from './settingsStore'
+import { useUiStore } from './uiStore'
 import type { Utterance } from '../types/audio'
 
 /**
@@ -40,6 +41,8 @@ const COMMAND_SILENCE_FRAMES = 22
 const FOLLOWUP_TIMEOUT_MS = 8000
 
 let recorder: UtteranceRecorder | null = null
+let unsubscribeLevel: (() => void) | null = null
+let lastLevelAt = 0
 let busy = false
 let awaitingCommand = false
 let followupTimer: number | null = null
@@ -56,6 +59,16 @@ export interface WakeStore {
    * wrong (the name was misheard). Held in memory only; never stored or sent.
    */
   lastHeard: string
+  /**
+   * Plain words for where listening actually is: starting up, running, or the
+   * reason it isn't. Silence used to be the only symptom of a dead microphone,
+   * a blocked permission or a speech model that wouldn't load — all three
+   * looked identical from the outside, which made "it ignored me" impossible
+   * to act on.
+   */
+  status: string
+  /** Live microphone loudness, 0-1. Published only while the panel is open. */
+  micLevel: number
 
   start: () => Promise<void>
   stop: () => void
@@ -107,6 +120,8 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   detail: '',
   enabled: false,
   lastHeard: '',
+  status: 'Not listening.',
+  micLevel: 0,
 
   start: async () => {
     if (get().state !== 'off') return
@@ -115,19 +130,45 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     // Load the speech model + mic. Retry once — a cold start right after
     // unlock can lose the race for the mic, and we must not end up silently
     // not listening.
+    //
+    // The two are loaded separately so a failure can say WHICH one broke. They
+    // used to share one catch, and "Senti is quiet" was the only symptom of
+    // either.
+    set({ status: 'Starting up…' })
     let started = false
+    let why = ''
     for (let attempt = 0; attempt < 2 && !started; attempt++) {
       try {
-        await Promise.all([loadSpeechRecognition(), audioCapture.start()])
+        await loadSpeechRecognition()
+      } catch {
+        why = 'The speech model could not load, so Senti cannot understand you.'
+        await new Promise((r) => setTimeout(r, 1200))
+        continue
+      }
+      try {
+        await audioCapture.start()
         started = true
       } catch {
+        why = 'No microphone. Check that one is plugged in and that Windows lets Senti use it.'
         await new Promise((r) => setTimeout(r, 1200))
       }
     }
     if (!started) {
-      set({ state: 'off', detail: '' })
+      set({ state: 'off', detail: '', status: why || 'Listening could not start.' })
       return
     }
+
+    // Mirror the microphone level so the Control Center can show it moving.
+    // Only while the panel is open: at ~20 frames a second this would
+    // otherwise re-render the orb for no reason.
+    unsubscribeLevel?.()
+    unsubscribeLevel = audioCapture.subscribe((_frame, level) => {
+      if (!useUiStore.getState().settingsOpen) return
+      const now = Date.now()
+      if (now - lastLevelAt < 90) return
+      lastLevelAt = now
+      useWakeStore.setState({ micLevel: Math.min(1, level.rms * 6) })
+    })
 
     recorder?.stop()
     recorder = new UtteranceRecorder({
@@ -136,10 +177,12 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     })
     recorder.onUtterance((u) => void onUtterance(u))
     recorder.start(audioCapture)
-    set({ state: 'listening', detail: '', enabled: true })
+    set({ state: 'listening', detail: '', enabled: true, status: 'Listening.' })
   },
 
   stop: () => {
+    unsubscribeLevel?.()
+    unsubscribeLevel = null
     if (followupTimer !== null) {
       clearTimeout(followupTimer)
       followupTimer = null
@@ -149,7 +192,7 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     audioCapture.stop()
     awaitingCommand = false
     setHud(false)
-    set({ state: 'off', detail: '', enabled: false })
+    set({ state: 'off', detail: '', enabled: false, status: 'Not listening.', micLevel: 0 })
   },
 }))
 
