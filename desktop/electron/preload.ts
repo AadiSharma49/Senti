@@ -49,6 +49,12 @@ contextBridge.exposeInMainWorld('senti', {
 
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
+
+  /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
+  memoryList: () => ipcRenderer.invoke('senti:memory-list'),
+  memoryAdd: (text: string) => ipcRenderer.invoke('senti:memory-add', text),
+  memoryForget: (id: string) => ipcRenderer.invoke('senti:memory-forget', id),
+  memoryClear: () => ipcRenderer.invoke('senti:memory-clear'),
   /** Hold the machine awake while a monitored task runs. */
   keepAwake: (on: boolean) => ipcRenderer.invoke('senti:keep-awake', on),
 

@@ -45,6 +45,15 @@ export async function runAction(action: {
       } by deleting ${res.files} temporary files.`
     }
 
+    case 'remember': {
+      // Not a system action — just saving a fact. No permission gate; it only
+      // ever writes to Senti's local memory file, nothing on the machine.
+      const fact = String(action.args?.fact ?? '').trim()
+      if (!fact) return null
+      await senti?.memoryAdd?.(fact)
+      return null // let Senti keep its own natural wording; nothing to override
+    }
+
     case 'empty_recycle_bin': {
       if (!perms.cleanup) return denied('empty the Recycle Bin')
       const res = await senti?.emptyRecycleBin?.()

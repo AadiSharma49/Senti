@@ -84,10 +84,28 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'remember',
+      description:
+        "Save a durable fact about the owner or their machine to Senti's long-term memory, so you don't forget it or ask again next time. Use it when they tell you a preference, a name, how their setup is arranged, or how they like things done — e.g. \"my main drive is D\", \"call me Aditya\", \"I hate apps that auto-start\". Do NOT use it for one-off requests or passing chit-chat.",
+      parameters: {
+        type: 'object',
+        properties: {
+          fact: {
+            type: 'string',
+            description: 'The single fact to remember, written as a short statement. e.g. "Prefers dark mode everywhere."',
+          },
+        },
+        required: ['fact'],
+      },
+    },
+  },
 ]
 
 /** Actions the desktop knows how to run. */
-const KNOWN_ACTIONS = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'set_volume'])
+const KNOWN_ACTIONS = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'set_volume', 'remember'])
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -121,6 +139,24 @@ function systemContext(system: string | null): string {
   )
 }
 
+/**
+ * What Senti remembers about its owner — sent up from the desktop's local
+ * memory file. This is the difference between a chatbot that forgets you every
+ * time and an assistant that actually knows you.
+ */
+function memoryContext(memories: string[]): string {
+  if (!memories.length) return ''
+  const block = memories.map((m) => `- ${m}`).join('\n').slice(0, 1500)
+  return (
+    '\n\nWHAT YOU ALREADY KNOW about your owner (from past conversations — treat as true ' +
+    'and use it; do NOT ask again for anything already listed here):\n' +
+    block +
+    '\nWhen the user tells you something durable about themselves, their machine, or how they ' +
+    'like things done, call the remember tool so you keep it. Do not announce that you are ' +
+    'remembering unless it feels natural.'
+  )
+}
+
 function persona(name: string | null, language: string): string {
   const who = name
     ? `Your owner's name is ${name}. Use their first name occasionally and naturally, not in every line.`
@@ -146,7 +182,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
   const { device } = auth
 
-  let body: { messages?: ChatMsg[]; language?: string; system?: string }
+  let body: { messages?: ChatMsg[]; language?: string; system?: string; memories?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -169,8 +205,13 @@ export async function POST(req: Request) {
   // Cap it: this is a summary, not a data dump.
   const system = typeof body.system === 'string' ? body.system.slice(0, 1500) : null
 
+  // What the desktop remembers about this owner — capped per item and in count.
+  const memories = Array.isArray(body.memories)
+    ? body.memories.filter((m): m is string => typeof m === 'string' && !!m.trim()).slice(-40).map((m) => m.slice(0, 300))
+    : []
+
   const result = await llmChatRich({
-    system: persona(name, language) + systemContext(system),
+    system: persona(name, language) + systemContext(system) + memoryContext(memories),
     messages,
     search: true,
     maxTokens: 400,
@@ -189,6 +230,7 @@ export async function POST(req: Request) {
     const args: Record<string, unknown> = {}
     if (typeof call.args?.name === 'string') args.name = call.args.name.slice(0, 60)
     if (typeof call.args?.direction === 'string') args.direction = call.args.direction.slice(0, 10)
+    if (typeof call.args?.fact === 'string') args.fact = call.args.fact.slice(0, 300)
     action = { name: call.name, args }
 
     // The desktop replaces this with the real outcome, but we always have
@@ -205,6 +247,8 @@ export async function POST(req: Request) {
           ? 'Emptying the Recycle Bin.'
           : call.name === 'lock_workstation'
           ? 'Locking your PC.'
+          : call.name === 'remember'
+          ? "Got it, I'll remember that."
           : 'Done.'
     }
   }

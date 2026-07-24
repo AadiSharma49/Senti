@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
@@ -41,6 +41,30 @@ export default function SettingsPanel() {
 
   const [serverInput, setServerInput] = useState(apiOverride())
   const [serverMsg, setServerMsg] = useState<string | null>(null)
+
+  // What Senti remembers about you — loaded fresh whenever the panel opens.
+  const [memories, setMemories] = useState<{ id: string; text: string; createdAt: number }[]>([])
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    window.senti
+      ?.memoryList?.()
+      .then((m) => alive && Array.isArray(m) && setMemories(m))
+      .catch(() => {})
+    return () => {
+      alive = false
+    }
+  }, [open])
+
+  const forgetMemory = async (id: string) => {
+    const m = await window.senti?.memoryForget?.(id)
+    if (Array.isArray(m)) setMemories(m)
+  }
+  const clearAllMemories = async () => {
+    if (!window.confirm('Make Senti forget everything it knows about you?')) return
+    const m = await window.senti?.memoryClear?.()
+    if (Array.isArray(m)) setMemories(m)
+  }
 
   const saveServer = () => {
     setApiBase(serverInput)
@@ -253,6 +277,49 @@ export default function SettingsPanel() {
               </div>
             ))}
           </div>
+        </motion.section>
+
+        <motion.section variants={sectionVariant} initial="hidden" animate="visible">
+          <div className="mb-3 flex items-center justify-between">
+            <div>
+              <h4 className="section-title">What Senti remembers</h4>
+              <p className="section-sub">
+                Facts it keeps about you, so it stops asking twice. Stored only on this PC.
+              </p>
+            </div>
+            {memories.length > 0 && (
+              <button
+                onClick={clearAllMemories}
+                className="shrink-0 rounded-full border border-red-400/30 px-3 py-1 text-xs text-red-300 hover:bg-red-500/10"
+              >
+                Forget all
+              </button>
+            )}
+          </div>
+          {memories.length === 0 ? (
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/45">
+              Nothing yet. Tell Senti something about you or your setup — &ldquo;my main drive
+              is D&rdquo;, &ldquo;I hate apps that auto-start&rdquo; — and it&apos;ll keep it.
+            </div>
+          ) : (
+            <div className="grid gap-2">
+              {memories.map((m) => (
+                <div
+                  key={m.id}
+                  className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <span className="text-sm text-white/85">{m.text}</span>
+                  <button
+                    onClick={() => forgetMemory(m.id)}
+                    className="shrink-0 text-xs text-white/40 hover:text-red-300"
+                    aria-label="Forget this"
+                  >
+                    Forget
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </motion.section>
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">

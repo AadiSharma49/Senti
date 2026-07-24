@@ -53,6 +53,18 @@ interface SentiAPI {
   tokenClear: () => Promise<boolean>
   /** Whether this device is linked. There is no way to READ the token. */
   tokenPresent: () => Promise<boolean>
+
+  /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
+  memoryList: () => Promise<SentiMemory[]>
+  memoryAdd: (text: string) => Promise<SentiMemory[]>
+  memoryForget: (id: string) => Promise<SentiMemory[]>
+  memoryClear: () => Promise<SentiMemory[]>
+}
+
+export interface SentiMemory {
+  id: string
+  text: string
+  createdAt: number
 }
 
 export interface SystemSnapshot {

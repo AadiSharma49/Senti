@@ -23,12 +23,24 @@ export interface Reply {
   action: { name: string; args: Record<string, unknown> } | null
 }
 
+/** The facts Senti keeps about you, pulled in so every reply is informed. */
+async function loadMemories(): Promise<string[]> {
+  try {
+    const mems = await window.senti?.memoryList?.()
+    if (!Array.isArray(mems)) return []
+    return mems.slice(-40).map((m) => m.text).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 export async function askSenti(
   messages: ChatTurn[],
   lang: string,
   /** Plain-text vitals for this machine, so Senti can answer about it. */
   system?: string | null
 ): Promise<Reply> {
+  const memories = await loadMemories()
   const res = await api<{
     reply?: string
     audio?: string
@@ -36,7 +48,7 @@ export async function askSenti(
     error?: string
   }>(CHAT_PATH, {
     method: 'POST',
-    body: { messages, language: lang, system: system || undefined },
+    body: { messages, language: lang, system: system || undefined, memories },
   })
 
   if (!res.ok) {

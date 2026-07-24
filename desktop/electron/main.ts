@@ -161,6 +161,55 @@ function writeSetupFlag(done: boolean): void {
   }
 }
 
+// --- Senti's memory ---------------------------------------------------
+//
+// The facts Senti keeps about you, so it stops asking twice and can act on
+// what it already knows: "my main drive is D", "I hate auto-start apps", your
+// name. Plain text in a local file — no API, no cloud, no embeddings service.
+// The model decides what is worth keeping (the `remember` tool) and the file
+// is read back into every conversation as context. Yours to see and wipe in
+// the Control Center.
+export interface Memory {
+  id: string
+  text: string
+  createdAt: number
+}
+
+const MEMORY_CAP = 200
+const memoryFile = () => path.join(app.getPath('userData'), 'memories.json')
+
+function loadMemories(): Memory[] {
+  try {
+    if (!existsSync(memoryFile())) return []
+    const parsed = JSON.parse(readFileSync(memoryFile(), 'utf8'))
+    return Array.isArray(parsed) ? parsed.filter((m) => m && typeof m.text === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function saveMemories(list: Memory[]): void {
+  try {
+    mkdirSync(path.dirname(memoryFile()), { recursive: true })
+    writeFileSync(memoryFile(), JSON.stringify(list.slice(-MEMORY_CAP)))
+  } catch {
+    // ignore
+  }
+}
+
+/** Add a fact, skipping near-duplicates. Returns the updated list. */
+function addMemory(textRaw: string): Memory[] {
+  const text = String(textRaw || '').trim().slice(0, 300)
+  if (!text) return loadMemories()
+  const list = loadMemories()
+  const norm = text.toLowerCase().replace(/\s+/g, ' ')
+  if (list.some((m) => m.text.toLowerCase().replace(/\s+/g, ' ') === norm)) return list
+  list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text, createdAt: Date.now() })
+  const trimmed = list.slice(-MEMORY_CAP)
+  saveMemories(trimmed)
+  return trimmed
+}
+
 // --- System awareness -------------------------------------------------
 //
 // This is what a cloud chatbot fundamentally cannot do: look at THIS machine.
@@ -838,6 +887,20 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
+
+// Senti's memory — read into every conversation, written by the `remember`
+// tool, and yours to inspect or wipe.
+ipcMain.handle('senti:memory-list', () => loadMemories())
+ipcMain.handle('senti:memory-add', (_e: unknown, text: unknown) => addMemory(String(text ?? '')))
+ipcMain.handle('senti:memory-forget', (_e: unknown, id: unknown) => {
+  const list = loadMemories().filter((m) => m.id !== String(id))
+  saveMemories(list)
+  return list
+})
+ipcMain.handle('senti:memory-clear', () => {
+  saveMemories([])
+  return []
+})
 
 // --- Keep-awake ------------------------------------------------------
 //
