@@ -55,6 +55,15 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'empty_recycle_bin',
+      description:
+        'Permanently empty the Windows Recycle Bin. Use when the user says to empty/clear the recycle bin or trash, or to delete the files already in the recycle bin. This is separate from clean_temp — recycle bin only.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'lock_workstation',
       description:
         'Lock the computer (the real Windows lock). Use for "lock my PC", "lock the computer", "I am stepping away".',
@@ -78,7 +87,7 @@ const TOOLS = [
 ]
 
 /** Actions the desktop knows how to run. */
-const KNOWN_ACTIONS = new Set(['open_app', 'close_app', 'clean_temp', 'lock_workstation', 'set_volume'])
+const KNOWN_ACTIONS = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'set_volume'])
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -192,6 +201,8 @@ export async function POST(req: Request) {
           ? `Closing ${args.name ?? 'that'}.`
           : call.name === 'clean_temp'
           ? 'Cleaning up temporary files.'
+          : call.name === 'empty_recycle_bin'
+          ? 'Emptying the Recycle Bin.'
           : call.name === 'lock_workstation'
           ? 'Locking your PC.'
           : 'Done.'

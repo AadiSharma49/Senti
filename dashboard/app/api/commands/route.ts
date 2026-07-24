@@ -13,7 +13,7 @@ import { dbEnabled, prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 /** Only these can be requested remotely; the desktop enforces its own list too. */
-const ALLOWED = new Set(['open_app', 'close_app', 'clean_temp', 'lock_workstation', 'set_volume'])
+const ALLOWED = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'set_volume'])
 
 export async function POST(req: Request) {
   if (!clerkEnabled || !dbEnabled)

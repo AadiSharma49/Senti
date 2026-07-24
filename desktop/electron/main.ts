@@ -2,7 +2,7 @@ import {
   existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync,
   readdirSync, statSync, rmdirSync,
 } from 'fs'
-import { execFile, spawn } from 'child_process'
+import { execFile, execFileSync, spawn } from 'child_process'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
@@ -376,6 +376,48 @@ function cleanTempDirs(): { freedMB: number; files: number } {
 
   for (const t of targets) walk(t, 0)
   return { freedMB: Math.round(freedBytes / 1024 / 1024), files }
+}
+
+/**
+ * Empty the Windows Recycle Bin — for real, on all drives.
+ *
+ * It counts what's in there first (via the Shell namespace) so Senti can tell
+ * you exactly what it removed — "42 items, 1.3 GB" — instead of a vague "done".
+ * Clear-RecycleBin runs with -Force so it never stops on a confirmation prompt.
+ * Unlike the temp sweep this is genuinely destructive: these are files you
+ * already chose to delete, but it is gated behind the Cleanup permission all
+ * the same, and it only ever empties the bin — it can touch nothing else.
+ */
+function emptyRecycleBin(): { freedMB: number; files: number } {
+  const ps = [
+    "$ErrorActionPreference='SilentlyContinue'",
+    '$sh = New-Object -ComObject Shell.Application',
+    '$bin = $sh.NameSpace(10)', // 0xA = ssfBITBUCKET
+    '$count = 0; $bytes = 0',
+    'foreach ($i in @($bin.Items())) {',
+    '  $count++',
+    "  $s = $i.ExtendedProperty('Size'); if (-not $s) { $s = $i.Size }",
+    '  if ($s) { $bytes += [int64]$s }',
+    '}',
+    'Clear-RecycleBin -Force -ErrorAction SilentlyContinue',
+    "Write-Output ('{0} {1}' -f $count, $bytes)",
+  ].join('; ')
+
+  try {
+    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+      timeout: 30_000,
+      windowsHide: true,
+      encoding: 'utf8',
+    })
+    const line = (out || '').trim().split(/\r?\n/).pop() || ''
+    const [files, bytes] = line.split(/\s+/).map((n) => parseInt(n, 10))
+    return {
+      files: Number.isFinite(files) ? files : 0,
+      freedMB: Number.isFinite(bytes) ? Math.round(bytes / 1024 / 1024) : 0,
+    }
+  } catch {
+    return { freedMB: 0, files: 0 }
+  }
 }
 
 /** Lock the workstation — the real Windows lock, not our window. */
@@ -822,6 +864,7 @@ ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown) => {
 ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
 ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name))
 ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
+ipcMain.handle('senti:empty-recycle-bin', () => emptyRecycleBin())
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
 ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
   const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null

@@ -45,6 +45,16 @@ export async function runAction(action: {
       } by deleting ${res.files} temporary files.`
     }
 
+    case 'empty_recycle_bin': {
+      if (!perms.cleanup) return denied('empty the Recycle Bin')
+      const res = await senti?.emptyRecycleBin?.()
+      if (!res) return "I couldn't empty the Recycle Bin just now."
+      if (res.files === 0) return 'The Recycle Bin is already empty.'
+      return `Done. I emptied the Recycle Bin — ${res.files} ${
+        res.files === 1 ? 'item' : 'items'
+      }${res.freedMB > 0 ? `, freeing ${res.freedMB} megabytes` : ''}.`
+    }
+
     case 'lock_workstation': {
       if (!perms.systemControl) return denied('lock your PC')
       const ok = await senti?.lockWorkstation?.()

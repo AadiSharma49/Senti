@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('senti', {
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),
   closeApp: (name: string) => ipcRenderer.invoke('senti:close-app', name),
   cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
+  emptyRecycleBin: () => ipcRenderer.invoke('senti:empty-recycle-bin'),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 

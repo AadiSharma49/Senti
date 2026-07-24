@@ -42,6 +42,7 @@ interface SentiAPI {
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   cleanTemp: () => Promise<{ freedMB: number; files: number }>
+  emptyRecycleBin: () => Promise<{ freedMB: number; files: number }>
   lockWorkstation: () => Promise<boolean>
   volume: (direction: 'up' | 'down' | 'mute') => Promise<boolean>
 
