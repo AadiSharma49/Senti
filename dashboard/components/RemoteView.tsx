@@ -38,9 +38,43 @@ const dot: Record<string, string> = {
   offline: 'bg-white/25',
 }
 
+/**
+ * One-tap shortcuts. These run on the PC through the SAME permission dial as a
+ * spoken command — if you switched something off in Senti, it refuses here too
+ * and says so.
+ */
+const SHORTCUTS: { label: string; action: string; args?: Record<string, string> }[] = [
+  { label: 'Clean up', action: 'clean_temp' },
+  { label: 'Lock PC', action: 'lock_workstation' },
+  { label: 'VS Code', action: 'open_app', args: { name: 'code' } },
+  { label: 'Chrome', action: 'open_app', args: { name: 'chrome' } },
+  { label: 'Spotify', action: 'open_app', args: { name: 'spotify' } },
+  { label: 'Mute', action: 'set_volume', args: { direction: 'mute' } },
+]
+
 export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
   const [devices, setDevices] = useState<DeviceLive[]>(initial)
   const [, tick] = useState(0)
+  // Per-device note of what we just sent, so a tap gives instant feedback.
+  const [sent, setSent] = useState<Record<string, string>>({})
+
+  const send = async (deviceId: string, label: string, action: string, args?: Record<string, string>) => {
+    setSent((s) => ({ ...s, [deviceId]: `Sending ${label}…` }))
+    try {
+      const res = await fetch('/api/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, action, ...args }),
+      })
+      setSent((s) => ({
+        ...s,
+        [deviceId]: res.ok ? `${label} sent — your PC will pick it up.` : `Could not send ${label}.`,
+      }))
+    } catch {
+      setSent((s) => ({ ...s, [deviceId]: 'No connection.' }))
+    }
+    setTimeout(() => setSent((s) => ({ ...s, [deviceId]: '' })), 6000)
+  }
 
   // Poll the live endpoint, and tick a clock so the "Xs ago" labels stay honest.
   useEffect(() => {
@@ -112,6 +146,32 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
               <div className="shrink-0 text-right text-xs text-white/35">
                 {live ? `updated ${ago(d.reportedAt || d.lastSeen)}` : ''}
               </div>
+            </div>
+
+            {/* One-tap shortcuts — big enough to hit with a thumb. */}
+            <div className="relative mt-4 border-t border-white/5 pt-4">
+              <div className="flex flex-wrap gap-2">
+                {SHORTCUTS.map((s) => (
+                  <button
+                    key={s.label}
+                    onClick={() => send(d.id, s.label, s.action, s.args)}
+                    disabled={!live}
+                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                      live
+                        ? 'border-white/15 bg-white/5 text-white hover:border-accent/40 hover:bg-accent/10'
+                        : 'cursor-not-allowed border-white/5 text-white/25'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+              {sent[d.id] && <div className="mt-3 text-xs text-accent">{sent[d.id]}</div>}
+              {!live && (
+                <div className="mt-3 text-xs text-white/35">
+                  This PC is offline, so it can&apos;t pick up commands right now.
+                </div>
+              )}
             </div>
           </Card>
         )

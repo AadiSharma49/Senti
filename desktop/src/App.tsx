@@ -15,6 +15,7 @@ import { useWakeStore } from './state/wakeStore'
 import { useUiStore } from './state/uiStore'
 import { useGreetingStore } from './state/greetingStore'
 import { startReporting, stopReporting } from './services/statusReporter'
+import { startCommandPolling, stopCommandPolling } from './services/commandPoller'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -69,10 +70,15 @@ function App() {
     else wake.stop()
   }, [signedIn, settings.permissions.alwaysListening])
 
-  // Report live status so you can check this PC from your phone.
+  // Report live status, and watch for commands sent from your phone.
   useEffect(() => {
-    if (signedIn) startReporting()
-    else stopReporting()
+    if (signedIn) {
+      startReporting()
+      startCommandPolling()
+    } else {
+      stopReporting()
+      stopCommandPolling()
+    }
   }, [signedIn])
 
   // Setup wizard — its own full-window flow.

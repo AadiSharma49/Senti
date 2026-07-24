@@ -85,7 +85,31 @@ model Device {
   vitals        String?
   reportedAt    DateTime?
 
-  events UnlockEvent[]
+  events   UnlockEvent[]
+  commands DeviceCommand[]
+}
+
+/// A command sent from the phone/dashboard for a device to run.
+///
+/// The PC pulls these (it is behind NAT, so nothing can push to it), runs them
+/// through the SAME permission dial as a spoken command, and writes back the
+/// result — so the phone can show what actually happened.
+model DeviceCommand {
+  id        String   @id @default(cuid())
+  deviceId  String
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// open_app | close_app | clean_temp | lock_workstation | set_volume
+  action    String
+  /// JSON arguments, e.g. {"name":"code"}
+  args      String   @default("{}")
+  /// pending -> done | failed
+  state     String   @default("pending")
+  /// What the device reported back, shown on the phone.
+  result    String?
+  createdAt DateTime @default(now())
+  ranAt     DateTime?
+
+  @@index([deviceId, state])
 }
 
 /// Security timeline entry.
