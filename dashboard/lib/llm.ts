@@ -155,8 +155,16 @@ async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<ChatResult
   for (const model of [p.model, ...(p.fallbackModels ?? [])]) {
     let r = await callModel(p, model, opts)
 
-    // Models intermittently return NOTHING when tools are attached, which would
-    // turn an ordinary question into an error. Ask again without the tools.
+    // Models intermittently return NOTHING when tools are attached. It's usually
+    // a one-off, so try the exact same call once more before giving up the tool
+    // call — losing the action ("open Chrome" becoming just chatter) is worse
+    // than a second's wait.
+    if (!r.ok && r.reason === 'empty' && opts.tools?.length) {
+      r = await callModel(p, model, opts)
+    }
+
+    // Still empty with tools attached — ask again without them, so an ordinary
+    // question at least gets a spoken answer instead of an error.
     if (!r.ok && r.reason === 'empty' && opts.tools?.length) {
       r = await callModel(p, model, { ...opts, tools: undefined })
     }

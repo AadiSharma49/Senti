@@ -516,6 +516,11 @@ const LOCK_SHORTCUTS = [
 // yourself on your own machine. Kept intentionally obscure.
 const RECOVERY_SHORTCUT = 'CommandOrControl+Alt+Shift+Q'
 
+// Tap-to-talk. Press this anywhere and Senti opens a conversation instantly —
+// no wake word, like holding the button on a walkie-talkie. The surest way to
+// start talking when a room is noisy or you'd rather not say the name.
+const TALK_SHORTCUT = 'CommandOrControl+Shift+Space'
+
 
 function unregisterLockShortcuts(): void {
   for (const accel of LOCK_SHORTCUTS) {
@@ -715,6 +720,16 @@ app.whenReady().then(async () => {
     })
   } catch {
     // ignore if not registrable
+  }
+
+  // Tap-to-talk from anywhere — only meaningful once past the lock.
+  try {
+    globalShortcut.register(TALK_SHORTCUT, () => {
+      if (isLocked) return
+      mainWindow?.webContents.send('senti:talk')
+    })
+  } catch {
+    // ignore if the accelerator is taken by another app
   }
 
   // Start with Windows — but only for a real install. In development this

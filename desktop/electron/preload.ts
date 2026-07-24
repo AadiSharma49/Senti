@@ -29,6 +29,13 @@ contextBridge.exposeInMainWorld('senti', {
     return () => ipcRenderer.removeListener('senti:open-settings', handler)
   },
 
+  /** Tap-to-talk hotkey pressed. Returns an unsubscribe function. */
+  onTalk: (cb: () => void) => {
+    const handler = () => cb()
+    ipcRenderer.on('senti:talk', handler)
+    return () => ipcRenderer.removeListener('senti:talk', handler)
+  },
+
   // Setup-completion flag, persisted to a FILE in main (origin-independent, so
   // it survives a local-server port change). Read synchronously at boot.
   setupCompletedAtBoot: (() => {

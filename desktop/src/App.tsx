@@ -55,6 +55,12 @@ function App() {
     return () => off?.()
   }, [])
 
+  // Tap-to-talk hotkey (Ctrl+Shift+Space): open a conversation from anywhere.
+  useEffect(() => {
+    const off = window.senti?.onTalk?.(() => useWakeStore.getState().engage())
+    return () => off?.()
+  }, [])
+
   // Greet once, when Senti comes online.
   useEffect(() => {
     if (!signedIn) return

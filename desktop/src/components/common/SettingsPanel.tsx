@@ -183,8 +183,8 @@ export default function SettingsPanel() {
             {([
               {
                 key: 'alwaysListening',
-                title: 'Listen for “Senti” anywhere',
-                hint: 'Hands-free from any app. Listening happens only on this PC — audio is never uploaded.',
+                title: 'Talk to Senti anywhere',
+                hint: 'Say its name, say hello, or press Ctrl+Shift+Space — then just talk, like a call. Listening happens only on this PC; audio is never uploaded.',
               },
               { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
@@ -243,9 +243,10 @@ export default function SettingsPanel() {
 
                     <div className="text-white/30">
                       Stays on this PC. If the bar moves but nothing lands here, it can hear
-                      you and can&apos;t make out words. If your words land here but Senti
-                      stayed quiet, it wasn&apos;t addressed — try &ldquo;hey Senti&rdquo;,
-                      &ldquo;wake up&rdquo;, &ldquo;buddy&rdquo;, or just &ldquo;hello&rdquo;.
+                      you and can&apos;t make out words. To start talking, say &ldquo;hey
+                      Senti&rdquo; or just &ldquo;hello&rdquo;, give it an order like
+                      &ldquo;open Chrome&rdquo;, or press Ctrl+Shift+Space — then keep
+                      talking, no name needed. Say &ldquo;stop&rdquo; when you&apos;re done.
                     </div>
                   </div>
                 )}

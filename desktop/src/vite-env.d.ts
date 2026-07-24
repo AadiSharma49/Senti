@@ -29,6 +29,8 @@ interface SentiAPI {
   hudHide: () => Promise<boolean>
   /** Fired from the tray / second launch to open Settings. Returns unsubscribe. */
   onOpenSettings: (cb: () => void) => () => void
+  /** Tap-to-talk hotkey pressed — open a conversation. Returns unsubscribe. */
+  onTalk: (cb: () => void) => () => void
   /** Setup-completion flag read from a file at boot (survives port changes). */
   setupCompletedAtBoot: boolean
   persistSetupCompleted: (done: boolean) => Promise<boolean>
