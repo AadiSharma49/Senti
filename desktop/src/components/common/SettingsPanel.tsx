@@ -91,26 +91,38 @@ export default function SettingsPanel() {
   }
 
   const panel = (
-    <motion.aside
-      initial={{ x: '100%' }}
-      animate={{ x: 0 }}
-      exit={{ x: '100%' }}
-      transition={{ duration: 0.45, ease: 'circOut' }}
-      className="fixed top-0 right-0 h-full w-full md:w-96 z-50 p-6 flex flex-col gap-4 text-white"
-      style={{ pointerEvents: 'auto' }}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.985 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.99 }}
+      transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+      className="fixed inset-0 z-50 flex flex-col text-white"
+      style={{ pointerEvents: 'auto', background: 'radial-gradient(ellipse at 50% -10%, rgba(0,90,120,0.28), transparent 55%), #070a0e' }}
     >
-      <div className="glass-strong p-4 rounded-lg flex items-center justify-between">
-        <div>
-          <div className="section-title text-lg">Control Center</div>
-          <div className="section-sub">Senti — Settings</div>
+      {/* Home header */}
+      <div className="flex items-center justify-between border-b border-white/10 px-7 py-5">
+        <div className="flex items-center gap-3">
+          <span className="relative flex h-9 w-9 items-center justify-center">
+            <span className="absolute inset-0 rounded-full border border-accent/50" />
+            <span className="h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_12px_rgba(0,212,255,0.9)]" />
+          </span>
+          <div>
+            <div className="font-display text-lg font-semibold tracking-[0.14em] text-white">SENTI</div>
+            <div className="text-[0.6rem] uppercase tracking-[0.3em] text-accent/80">Control Center</div>
+          </div>
         </div>
-        <button onClick={close} className="px-3 py-1 rounded-md glass-hoverable">Close</button>
+        <button
+          onClick={close}
+          className="rounded-full border border-white/10 px-4 py-1.5 text-sm text-white/80 transition hover:bg-white/10"
+        >
+          Done
+        </button>
       </div>
 
-      <div className="flex-1 overflow-auto pr-2 space-y-4 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
+      <div className="mx-auto w-full max-w-2xl flex-1 space-y-5 overflow-auto px-7 py-7 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">Voice Unlock</h4>
-          <p className="section-sub mb-3">Your voice unlocks Senti. Enroll or re-enroll here.</p>
+          <h4 className="section-title">Your voice</h4>
+          <p className="section-sub mb-3">Senti signs you in by your voice. Enroll or re-enroll here.</p>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between">
               <div>
@@ -153,7 +165,7 @@ export default function SettingsPanel() {
             )}
           </div>
           <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
-            <div className="font-semibold text-white">PIN Unlock</div>
+            <div className="font-semibold text-white">PIN</div>
             <div className="text-xs text-green-400">Configured · fallback</div>
           </div>
         </motion.section>
@@ -303,24 +315,8 @@ export default function SettingsPanel() {
           </button>
         </motion.section>
       </div>
-    </motion.aside>
+    </motion.div>
   )
 
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className="fixed inset-0 bg-black/40 z-40"
-            onClick={close}
-          />
-          {panel}
-        </>
-      )}
-    </AnimatePresence>
-  )
+  return <AnimatePresence>{open && panel}</AnimatePresence>
 }
