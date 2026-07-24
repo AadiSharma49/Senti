@@ -7,10 +7,13 @@
  * you're left wondering whether the mic is broken.
  *
  * The rule is deliberately loose. You should not have to remember a magic
- * phrase — "hey Senti", "wake up", "buddy", or just "hello" all work. What it
- * will NOT do is treat every sentence in the room as a command: something has
- * to be aimed at Senti, or a private conversation would be transcribed and
- * sent off to answer a question nobody asked.
+ * phrase — "hey Senti", "wake up", "buddy", or just "hello" all work, and a
+ * plain order like "open Chrome" or "can you clean my system" works with no
+ * address at all, because nobody says that to a person in the room.
+ *
+ * What it will NOT do is answer ordinary questions or chit-chat without being
+ * addressed — "how are you", "what time is it" — or a private conversation
+ * would be transcribed and sent off to answer something nobody asked Senti.
  */
 
 /** The name, plus the ways Whisper mishears it. */
@@ -38,13 +41,24 @@ const FILLERS = ['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh', 'er', 'so
 const GREETINGS = ['hey', 'hi', 'hello', 'yo']
 
 /**
- * Imperatives that only make sense aimed at a machine, so "hello, clean my
- * system" works without the name. Question words are deliberately absent —
- * "hello, how are you" is how you greet a person, not Senti.
+ * Polite wrappers people put in front of a command: "CAN YOU open Chrome",
+ * "COULD YOU clean my system". Stripped so what's left starts with the verb.
+ */
+const POLITE_LEADS = [
+  'can you', 'could you', 'would you', 'will you', 'can u', 'could u',
+  'i want to', 'i need to', 'i want you to', 'i need you to', 'lets', "let's", 'go',
+]
+
+/**
+ * Imperatives that only make sense aimed at a machine. A sentence that STARTS
+ * with one of these is treated as a command even with no address — "open
+ * Chrome", "lock my PC". Question words are deliberately absent: "how are you"
+ * and "what time is it" are chit-chat and stay ignored unless Senti is named.
  */
 const COMMAND_VERBS = [
   'open', 'close', 'clean', 'delete', 'lock', 'unlock', 'mute', 'unmute',
-  'launch', 'quit', 'shut', 'empty', 'free', 'turn', 'kill',
+  'launch', 'quit', 'shut', 'empty', 'free', 'turn', 'kill', 'restart',
+  'reboot', 'minimize', 'maximize', 'pull', 'bring',
 ]
 
 /** Lowercase, letters and digits only — how we compare a spoken word. */
@@ -84,15 +98,30 @@ export function parseWake(textRaw: string): WakeMatch {
     return 0
   }
 
-  // Eat the run-up and every way you addressed it: "hey senti buddy, ...".
+  /** Length of a polite wrapper at `at` ("can you", "i want you to"), or 0. */
+  const politeAt = (at: number): number => {
+    for (const len of [4, 3, 2, 1]) {
+      const phrase = norm.slice(at, at + len).join(' ')
+      if (phrase && POLITE_LEADS.includes(phrase)) return len
+    }
+    return 0
+  }
+
+  // Eat the run-up, every way you addressed it, and any polite wrapper:
+  // "hey senti buddy, can you ...".
   let i = 0
   let woke = false
   let greeted = false
   while (i < norm.length) {
-    const len = addressAt(i)
-    if (len) {
-      i += len
+    const a = addressAt(i)
+    if (a) {
+      i += a
       woke = true
+      continue
+    }
+    const p = politeAt(i)
+    if (p) {
+      i += p
       continue
     }
     if (FILLERS.includes(norm[i])) {
@@ -105,12 +134,15 @@ export function parseWake(textRaw: string): WakeMatch {
 
   const command = words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '').trim()
 
+  // Named or greeted Senti outright.
+  if (woke) return { woke: true, command }
+
   // "Hello." on its own is aimed at Senti — nothing else is left for it to be.
-  if (!woke && greeted && i >= norm.length) return { woke: true, command: '' }
+  if (greeted && i >= norm.length) return { woke: true, command: '' }
 
-  // "Hello, clean my system" — an order like that is meant for the machine.
-  if (!woke && greeted && COMMAND_VERBS.includes(norm[i])) return { woke: true, command }
+  // A bare imperative — "open Chrome", "can you clean my system" — is a command
+  // no matter how it's dressed, because you don't say that to a person nearby.
+  if (COMMAND_VERBS.includes(norm[i])) return { woke: true, command }
 
-  if (!woke) return { woke: false, command: '' }
-  return { woke: true, command }
+  return { woke: false, command: '' }
 }
