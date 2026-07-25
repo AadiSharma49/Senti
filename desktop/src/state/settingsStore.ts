@@ -29,6 +29,8 @@ export interface SettingsState {
     closeApps: boolean
     /** Delete temp files to free disk space. */
     cleanup: boolean
+    /** Open your files and folders (read-only: opens them, never edits/deletes). */
+    files: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
     /**
@@ -95,6 +97,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   openApps: true,
   closeApps: false,
   cleanup: false,
+  files: true,
   systemControl: true,
   alwaysListening: true,
 }

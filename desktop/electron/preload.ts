@@ -63,6 +63,9 @@ contextBridge.exposeInMainWorld('senti', {
   closeApp: (name: string) => ipcRenderer.invoke('senti:close-app', name),
   cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
   emptyRecycleBin: () => ipcRenderer.invoke('senti:empty-recycle-bin'),
+  openFolder: (name: string) => ipcRenderer.invoke('senti:open-folder', name),
+  openFile: (query: string) => ipcRenderer.invoke('senti:open-file', query),
+  webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 

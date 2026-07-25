@@ -369,6 +369,146 @@ function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: strin
   }
 }
 
+// --- Files & folders --------------------------------------------------
+//
+// "Open my downloads", "show me my documents", "find that invoice". Senti
+// resolves a spoken place-name to a REAL folder on this machine and opens it
+// in Explorer — it never builds a path out of the model's words, so there is
+// nothing to inject.
+
+/** Spoken folder names → the real path, resolved from the OS at call time. */
+function resolveFolder(nameRaw: unknown): { path?: string; shell?: string; label: string } | null {
+  if (typeof nameRaw !== 'string') return null
+  const name = nameRaw
+    .toLowerCase()
+    .trim()
+    .replace(/^(open|show|go to|reveal)\s+/, '')
+    .replace(/^(my|the)\s+/, '')
+    .replace(/\s+(folder|directory)$/, '')
+    .trim()
+
+  // Special shell locations that aren't plain paths.
+  const special: Record<string, { shell: string; label: string }> = {
+    'recycle bin': { shell: 'shell:RecycleBinFolder', label: 'Recycle Bin' },
+    trash: { shell: 'shell:RecycleBinFolder', label: 'Recycle Bin' },
+    'this pc': { shell: 'shell:MyComputerFolder', label: 'This PC' },
+    'my computer': { shell: 'shell:MyComputerFolder', label: 'This PC' },
+    computer: { shell: 'shell:MyComputerFolder', label: 'This PC' },
+  }
+  if (special[name]) return special[name]
+
+  // Real user folders, resolved live from the OS (never a hardcoded C:\Users).
+  const known: Record<string, { key: Parameters<typeof app.getPath>[0]; label: string }> = {
+    documents: { key: 'documents', label: 'Documents' },
+    docs: { key: 'documents', label: 'Documents' },
+    downloads: { key: 'downloads', label: 'Downloads' },
+    download: { key: 'downloads', label: 'Downloads' },
+    desktop: { key: 'desktop', label: 'Desktop' },
+    pictures: { key: 'pictures', label: 'Pictures' },
+    photos: { key: 'pictures', label: 'Pictures' },
+    images: { key: 'pictures', label: 'Pictures' },
+    music: { key: 'music', label: 'Music' },
+    videos: { key: 'videos', label: 'Videos' },
+    movies: { key: 'videos', label: 'Videos' },
+    home: { key: 'home', label: 'your home folder' },
+    user: { key: 'home', label: 'your home folder' },
+  }
+  const hit = known[name]
+  if (hit) {
+    try {
+      return { path: app.getPath(hit.key), label: hit.label }
+    } catch {
+      return null
+    }
+  }
+  return null
+}
+
+function openFolder(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
+  const hit = resolveFolder(nameRaw)
+  if (!hit) return { ok: false, error: 'unknown' }
+  try {
+    if (hit.shell) {
+      spawn('explorer.exe', [hit.shell], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    } else if (hit.path) {
+      void shell.openPath(hit.path)
+    }
+    return { ok: true, label: hit.label }
+  } catch {
+    return { ok: false, error: 'launch-failed' }
+  }
+}
+
+/**
+ * Find a file by name across your real folders and open the best match with
+ * its default app. The search reads filenames off disk and only ever opens a
+ * path it actually found — the model's words are used to FILTER, never to
+ * build a path or a command.
+ */
+const FIND_MAX_MS = 8_000
+const FIND_MAX_HITS = 40
+
+function openFile(queryRaw: unknown): { ok: boolean; label?: string; count?: number; error?: string } {
+  const q = String(queryRaw ?? '').toLowerCase().trim()
+  if (!q) return { ok: false, error: 'empty' }
+
+  const roots = (['desktop', 'documents', 'downloads', 'pictures', 'videos', 'music'] as const)
+    .map((k) => {
+      try {
+        return app.getPath(k)
+      } catch {
+        return null
+      }
+    })
+    .filter((p): p is string => !!p)
+
+  const started = Date.now()
+  const skip = /^(node_modules|\.git|\$recycle|appdata|windows|program files)/i
+  const hits: { name: string; path: string }[] = []
+
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 4 || Date.now() - started > FIND_MAX_MS || hits.length >= FIND_MAX_HITS) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      if (Date.now() - started > FIND_MAX_MS || hits.length >= FIND_MAX_HITS) return
+      if (e.name.startsWith('.') || skip.test(e.name)) continue
+      const full = path.join(dir, e.name)
+      try {
+        if (e.isSymbolicLink()) continue
+        if (e.isDirectory()) walk(full, depth + 1)
+        else if (e.isFile() && e.name.toLowerCase().includes(q)) hits.push({ name: e.name, path: full })
+      } catch {
+        // unreadable — skip
+      }
+    }
+  }
+  for (const r of roots) walk(r, 0)
+
+  if (hits.length === 0) return { ok: false, error: 'not-found', count: 0 }
+
+  // Rank: exact name (minus extension) first, then shortest name (closest match).
+  hits.sort((a, b) => {
+    const an = a.name.toLowerCase()
+    const bn = b.name.toLowerCase()
+    const aExact = an === q || an.replace(/\.[^.]+$/, '') === q
+    const bExact = bn === q || bn.replace(/\.[^.]+$/, '') === q
+    if (aExact !== bExact) return aExact ? -1 : 1
+    return a.name.length - b.name.length
+  })
+
+  try {
+    void shell.openPath(hits[0].path)
+    return { ok: true, label: hits[0].name, count: hits.length }
+  } catch {
+    return { ok: false, error: 'launch-failed' }
+  }
+}
+
 // --- Cleanup ----------------------------------------------------------
 //
 // The other half of system awareness: Senti already tells you the disk is full
@@ -928,6 +1068,15 @@ ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
 ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name))
 ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
 ipcMain.handle('senti:empty-recycle-bin', () => emptyRecycleBin())
+ipcMain.handle('senti:open-folder', (_e: unknown, name: unknown) => openFolder(name))
+ipcMain.handle('senti:open-file', (_e: unknown, query: unknown) => openFile(query))
+ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
+  const q = String(query ?? '').trim().slice(0, 200)
+  if (!q) return { ok: false }
+  // encodeURIComponent makes this a URL parameter, never a shell argument.
+  void shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(q)}`)
+  return { ok: true }
+})
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
 ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
   const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null

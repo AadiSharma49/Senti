@@ -211,6 +211,7 @@ export default function SettingsPanel() {
                 hint: 'Say its name, say hello, or press Ctrl+Shift+Space — then just talk, like a call. Listening happens only on this PC; audio is never uploaded.',
               },
               { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
+              { key: 'files', title: 'Open files and folders', hint: '“Open my downloads”, “find my resume”. Opens them — never edits or deletes.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
               { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },
               { key: 'cleanup', title: 'Delete temporary files', hint: 'Frees disk space. Off by default.' },

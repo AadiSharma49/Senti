@@ -45,6 +45,34 @@ export async function runAction(action: {
       } by deleting ${res.files} temporary files.`
     }
 
+    case 'open_folder': {
+      if (!perms.files) return denied('open your files and folders')
+      const res = await senti?.openFolder?.(target)
+      if (res?.ok) return `Opening ${res.label ?? target}.`
+      if (res?.error === 'unknown') return `I'm not sure which folder you mean by ${target}.`
+      return `I couldn't open ${target}.`
+    }
+
+    case 'open_file': {
+      if (!perms.files) return denied('open your files and folders')
+      const query = String(action.args?.query ?? action.args?.name ?? '')
+      const res = await senti?.openFile?.(query)
+      if (res?.ok) {
+        const more = res.count && res.count > 1 ? ` I found ${res.count}; say "next" for another.` : ''
+        return `Opening ${res.label}.${more}`
+      }
+      if (res?.error === 'not-found') return `I couldn't find a file matching "${query}" in your folders.`
+      return `I couldn't open that file.`
+    }
+
+    case 'web_search': {
+      // Opening a search page is harmless; no permission gate.
+      const query = String(action.args?.query ?? '')
+      if (!query) return null
+      await senti?.webSearch?.(query)
+      return `I've opened a search for ${query}.`
+    }
+
     case 'remember': {
       // Not a system action — just saving a fact. No permission gate; it only
       // ever writes to Senti's local memory file, nothing on the machine.
