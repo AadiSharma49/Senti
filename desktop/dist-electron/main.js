@@ -1,11 +1,11 @@
-import { existsSync as w, readFileSync as M, mkdirSync as L, writeFileSync as G, unlinkSync as Q, readdirSync as Z, rmdirSync as ce, statSync as ue } from "fs";
-import { spawn as R, execFileSync as de, execFile as ee } from "child_process";
+import { existsSync as w, readFileSync as P, mkdirSync as L, writeFileSync as G, unlinkSync as Q, readdirSync as Z, rmdirSync as ce, statSync as ue } from "fs";
+import { spawn as M, execFileSync as de, execFile as ee } from "child_process";
 import te from "http";
 import m from "os";
 import pe from "electron";
 import f from "path";
 import { fileURLToPath as fe } from "url";
-const { app: u, BrowserWindow: re, screen: ne, ipcMain: l, globalShortcut: C, safeStorage: _, session: z, shell: B, Tray: he, Menu: me, nativeImage: V, powerSaveBlocker: W } = pe, ge = fe(import.meta.url), N = f.dirname(ge), F = process.env.VITE_DEV_SERVER_URL, oe = "http://localhost:5173";
+const { app: u, BrowserWindow: re, screen: ne, ipcMain: l, globalShortcut: C, safeStorage: T, session: z, shell: R, Tray: he, Menu: me, nativeImage: V, powerSaveBlocker: W } = pe, ge = fe(import.meta.url), N = f.dirname(ge), _ = process.env.VITE_DEV_SERVER_URL, oe = "http://localhost:5173";
 let r = null, j = "";
 const ye = {
   ".html": "text/html",
@@ -36,7 +36,7 @@ function ke(t) {
           a.writeHead(404), a.end("Not found");
           return;
         }
-        const g = M(p);
+        const g = P(p);
         a.writeHead(200, {
           "Content-Type": ye[f.extname(p).toLowerCase()] || "application/octet-stream",
           "Cache-Control": "no-store"
@@ -54,14 +54,14 @@ function ke(t) {
 const k = () => f.join(u.getPath("userData"), "device.token");
 function we(t) {
   try {
-    return L(f.dirname(k()), { recursive: !0 }), _.isEncryptionAvailable() ? (G(k(), _.encryptString(t)), !0) : !1;
+    return L(f.dirname(k()), { recursive: !0 }), T.isEncryptionAvailable() ? (G(k(), T.encryptString(t)), !0) : !1;
   } catch {
     return !1;
   }
 }
 function se() {
   try {
-    return !w(k()) || !_.isEncryptionAvailable() ? null : _.decryptString(M(k()));
+    return !w(k()) || !T.isEncryptionAvailable() ? null : T.decryptString(P(k()));
   } catch {
     return null;
   }
@@ -72,26 +72,26 @@ function Se() {
   } catch {
   }
 }
-const D = () => f.join(u.getPath("userData"), "setup.json");
+const F = () => f.join(u.getPath("userData"), "setup.json");
 function Ce() {
   var t;
   try {
-    return w(D()) ? ((t = JSON.parse(M(D(), "utf8"))) == null ? void 0 : t.setupCompleted) === !0 : !1;
+    return w(F()) ? ((t = JSON.parse(P(F(), "utf8"))) == null ? void 0 : t.setupCompleted) === !0 : !1;
   } catch {
     return !1;
   }
 }
 function xe(t) {
   try {
-    L(f.dirname(D()), { recursive: !0 }), G(D(), JSON.stringify({ setupCompleted: !!t }));
+    L(f.dirname(F()), { recursive: !0 }), G(F(), JSON.stringify({ setupCompleted: !!t }));
   } catch {
   }
 }
-const ae = 200, $ = () => f.join(u.getPath("userData"), "memories.json");
-function A() {
+const ae = 200, D = () => f.join(u.getPath("userData"), "memories.json");
+function $() {
   try {
-    if (!w($())) return [];
-    const t = JSON.parse(M($(), "utf8"));
+    if (!w(D())) return [];
+    const t = JSON.parse(P(D(), "utf8"));
     return Array.isArray(t) ? t.filter((e) => e && typeof e.text == "string") : [];
   } catch {
     return [];
@@ -99,20 +99,20 @@ function A() {
 }
 function H(t) {
   try {
-    L(f.dirname($()), { recursive: !0 }), G($(), JSON.stringify(t.slice(-ae)));
+    L(f.dirname(D()), { recursive: !0 }), G(D(), JSON.stringify(t.slice(-ae)));
   } catch {
   }
 }
 function ve(t) {
   const e = String(t || "").trim().slice(0, 300);
-  if (!e) return A();
-  const n = A(), o = e.toLowerCase().replace(/\s+/g, " ");
+  if (!e) return $();
+  const n = $(), o = e.toLowerCase().replace(/\s+/g, " ");
   if (n.some((i) => i.text.toLowerCase().replace(/\s+/g, " ") === o)) return n;
   n.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), text: e, createdAt: Date.now() });
   const s = n.slice(-ae);
   return H(s), s;
 }
-let v = null;
+let x = null;
 const Ee = 2e4;
 function Te() {
   var o, s;
@@ -206,7 +206,7 @@ function De(t) {
   const e = Fe(t);
   if (!e) return { ok: !1, error: "unknown" };
   try {
-    return e.kind === "url" ? B.openExternal(e.target) : R("cmd", ["/c", "start", "", e.target], {
+    return e.kind === "url" ? R.openExternal(e.target) : M("cmd", ["/c", "start", "", e.target], {
       detached: !0,
       stdio: "ignore",
       windowsHide: !0
@@ -252,7 +252,7 @@ function Ae(t) {
   const e = $e(t);
   if (!e) return { ok: !1, error: "unknown" };
   try {
-    return e.shell ? R("explorer.exe", [e.shell], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref() : e.path && B.openPath(e.path), { ok: !0, label: e.label };
+    return e.shell ? M("explorer.exe", [e.shell], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref() : e.path && R.openPath(e.path), { ok: !0, label: e.label };
   } catch {
     return { ok: !1, error: "launch-failed" };
   }
@@ -293,7 +293,7 @@ function Pe(t) {
     return g !== le ? g ? -1 : 1 : a.name.length - d.name.length;
   });
   try {
-    return B.openPath(i[0].path), { ok: !0, label: i[0].name, count: i.length };
+    return R.openPath(i[0].path), { ok: !0, label: i[0].name, count: i.length };
   } catch {
     return { ok: !1, error: "launch-failed" };
   }
@@ -363,7 +363,7 @@ function Re() {
 }
 function Be() {
   try {
-    return R("rundll32.exe", ["user32.dll,LockWorkStation"], { detached: !0, stdio: "ignore" }).unref(), !0;
+    return M("rundll32.exe", ["user32.dll,LockWorkStation"], { detached: !0, stdio: "ignore" }).unref(), !0;
   } catch {
     return !1;
   }
@@ -395,13 +395,13 @@ function Ie(t) {
   const e = je[t.toLowerCase().trim()];
   if (!e) return { ok: !1, error: "unknown" };
   try {
-    return R("taskkill", ["/IM", e.proc, "/F"], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref(), { ok: !0, label: e.label };
+    return M("taskkill", ["/IM", e.proc, "/F"], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref(), { ok: !0, label: e.label };
   } catch {
     return { ok: !1, error: "failed" };
   }
 }
 async function Le() {
-  if (v && Date.now() - v.at < Ee) return v.data;
+  if (x && Date.now() - x.at < Ee) return x.data;
   const t = Te();
   let e = {};
   if (process.platform === "win32")
@@ -410,7 +410,7 @@ async function Le() {
     } catch {
     }
   const n = { ...t, ...e };
-  return v = { at: Date.now(), data: n }, n;
+  return x = { at: Date.now(), data: n }, n;
 }
 async function Ge(t) {
   const { baseUrl: e, path: n, method: o = "GET", body: s, auth: i = !0 } = t;
@@ -437,7 +437,7 @@ async function Ge(t) {
     };
   }
 }
-let P = !0;
+let A = !0;
 const Ne = [
   "Alt+Tab",
   "Alt+F4",
@@ -457,7 +457,7 @@ function qe() {
     }
 }
 function b(t) {
-  P = t, qe();
+  A = t, qe();
 }
 function ze(t, e = 15e3) {
   return new Promise((n, o) => {
@@ -498,13 +498,13 @@ function ie() {
       // while it sits quietly in the corner, so throttling stays OFF.
       backgroundThrottling: !1
     }
-  }), r.setVisibleOnAllWorkspaces(!0), r.setMenuBarVisibility(!1), r.setAlwaysOnTop(!0, "screen-saver"), F ? r.loadURL(oe).catch((o) => {
+  }), r.setVisibleOnAllWorkspaces(!0), r.setMenuBarVisibility(!1), r.setAlwaysOnTop(!0, "screen-saver"), _ ? r.loadURL(oe).catch((o) => {
     console.error("[Electron] Failed to load dev server:", o.message);
   }) : j ? r.loadURL(j).catch((o) => {
     console.error("[Electron] Failed to load prod server:", o.message);
   }) : console.error("[Electron] Static server not started; cannot load UI."), r.webContents.on("did-finish-load", () => {
     var o, s;
-    r == null || r.show(), r == null || r.focus(), F && ((s = (o = r == null ? void 0 : r.webContents) == null ? void 0 : o.openDevTools) == null || s.call(o));
+    r == null || r.show(), r == null || r.focus(), _ && ((s = (o = r == null ? void 0 : r.webContents) == null ? void 0 : o.openDevTools) == null || s.call(o));
   }), r.webContents.on("did-fail-load", (o, s, i, c, a) => {
     console.error("[Electron] Renderer load failed:", { errorCode: s, errorDescription: i, validatedURL: c, isMainFrame: a });
   }), r.webContents.on("console-message", (o, s, i) => {
@@ -515,14 +515,14 @@ function ie() {
   }), r.webContents.on("unresponsive", () => {
     console.error("[Electron] Renderer unresponsive");
   }), r.on("close", (o) => {
-    O || (o.preventDefault(), r == null || r.hide());
+    B || (o.preventDefault(), r == null || r.hide());
   });
 }
 u.requestSingleInstanceLock() ? u.on("second-instance", () => {
   r && !r.isDestroyed() && I();
 }) : u.quit();
 u.whenReady().then(async () => {
-  if (F)
+  if (_)
     try {
       await ze(oe);
     } catch (e) {
@@ -532,7 +532,7 @@ u.whenReady().then(async () => {
   const t = (e) => e === "media" || e === "microphone" || e === "audioCapture";
   if (z.defaultSession.setPermissionRequestHandler((e, n, o) => {
     o(t(n));
-  }), z.defaultSession.setPermissionCheckHandler((e, n) => t(n)), !F)
+  }), z.defaultSession.setPermissionCheckHandler((e, n) => t(n)), !_)
     try {
       j = await ke(f.join(N, "../dist"));
     } catch (e) {
@@ -542,13 +542,13 @@ u.whenReady().then(async () => {
   ie(), b(!0);
   try {
     C.register(He, () => {
-      P = !1, u.exit(0);
+      A = !1, u.exit(0);
     });
   } catch {
   }
   try {
     C.register(Ue, () => {
-      P || r == null || r.webContents.send("senti:talk");
+      A || r == null || r.webContents.send("senti:talk");
     });
   } catch {
   }
@@ -558,10 +558,10 @@ u.on("activate", () => {
   re.getAllWindows().length === 0 ? ie() : (r == null || r.show(), r == null || r.focus());
 });
 u.on("window-all-closed", () => {
-  O && process.platform !== "darwin" && u.quit();
+  B && process.platform !== "darwin" && u.quit();
 });
 u.on("before-quit", () => {
-  O = !0;
+  B = !0;
 });
 u.on("before-quit", () => {
   r = null;
@@ -577,10 +577,10 @@ l.on("senti:get-setup", (t) => {
 });
 l.handle("senti:set-setup", (t, e) => (xe(!!e), !0));
 l.handle("senti:system-info", () => Le());
-l.handle("senti:memory-list", () => A());
+l.handle("senti:memory-list", () => $());
 l.handle("senti:memory-add", (t, e) => ve(String(e ?? "")));
 l.handle("senti:memory-forget", (t, e) => {
-  const n = A().filter((o) => o.id !== String(e));
+  const n = $().filter((o) => o.id !== String(e));
   return H(n), n;
 });
 l.handle("senti:memory-clear", () => (H([]), []));
@@ -600,7 +600,7 @@ l.handle("senti:open-folder", (t, e) => Ae(e));
 l.handle("senti:open-file", (t, e) => Pe(e));
 l.handle("senti:web-search", (t, e) => {
   const n = String(e ?? "").trim().slice(0, 200);
-  return n ? (B.openExternal(`https://www.google.com/search?q=${encodeURIComponent(n)}`), { ok: !0 }) : { ok: !1 };
+  return n ? (R.openExternal(`https://www.google.com/search?q=${encodeURIComponent(n)}`), { ok: !0 }) : { ok: !1 };
 });
 l.handle("senti:lock-workstation", () => Be());
 l.handle("senti:volume", (t, e) => {
@@ -625,24 +625,24 @@ l.handle("senti:device-info", () => ({
 l.handle("senti:set-lock-state", (t, e) => {
   b(!!e);
 });
-let U = "signin", S = null, O = !1;
-const E = 380, T = 132;
+let U = "signin", S = null, B = !1;
+const v = 380, E = 132;
 function q(t) {
   if (!r || r.isDestroyed()) return;
   const { workArea: e } = ne.getPrimaryDisplay();
   t ? r.setBounds({
-    x: Math.round(e.x + (e.width - E) / 2),
-    y: Math.round(e.y + (e.height - E) / 2 - e.height * 0.06),
+    x: Math.round(e.x + (e.width - v) / 2),
+    y: Math.round(e.y + (e.height - v) / 2 - e.height * 0.06),
+    width: v,
+    height: v
+  }) : r.setBounds({
+    x: Math.round(e.x + e.width - E - 18),
+    y: Math.round(e.y + e.height - E - 18),
     width: E,
     height: E
-  }) : r.setBounds({
-    x: Math.round(e.x + e.width - T - 18),
-    y: Math.round(e.y + e.height - T - 18),
-    width: T,
-    height: T
   });
 }
-function x(t) {
+function O(t) {
   !r || r.isDestroyed() || (U = t, t === "hud" ? (b(!1), r.setFullScreen(!1), r.setResizable(!1), r.setSkipTaskbar(!0), r.setAlwaysOnTop(!0, "screen-saver"), r.setIgnoreMouseEvents(!0, { forward: !0 }), q(!1), r.showInactive()) : t === "setup" ? (b(!1), r.setIgnoreMouseEvents(!1), r.setAlwaysOnTop(!1), r.setFullScreen(!1), r.setResizable(!0), r.setSkipTaskbar(!1), r.setSize(980, 760), r.center(), r.show()) : t === "panel" ? (b(!1), r.setIgnoreMouseEvents(!1), r.setAlwaysOnTop(!1), r.setFullScreen(!1), r.setResizable(!1), r.setSkipTaskbar(!1), r.setSize(760, 840), r.center(), r.show(), r.focus()) : (b(!0), r.setIgnoreMouseEvents(!1), r.setFullScreen(!1), r.setAlwaysOnTop(!1), r.setResizable(!1), r.setSkipTaskbar(!1), r.setSize(680, 780), r.center(), r.show(), r.focus()));
 }
 function Ve() {
@@ -667,7 +667,7 @@ function Je() {
   return V.createEmpty();
 }
 function I() {
-  !r || r.isDestroyed() || (r.webContents.send("senti:open-settings"), x("panel"), r.show(), r.focus());
+  !r || r.isDestroyed() || (r.webContents.send("senti:open-settings"), O("panel"), r.show(), r.focus());
 }
 function Ye() {
   if (!S)
@@ -675,12 +675,11 @@ function Ye() {
       S = new he(Je()), S.setToolTip("Senti — listening for you"), S.setContextMenu(
         me.buildFromTemplate([
           { label: "Open Senti (Settings)", click: () => I() },
-          { label: "Sign in again", click: () => x("signin") },
           { type: "separator" },
           {
             label: "Quit Senti",
             click: () => {
-              O = !0, u.quit();
+              B = !0, u.quit();
             }
           }
         ])
@@ -689,13 +688,13 @@ function Ye() {
     }
 }
 function Ke(t) {
-  x(t ? "setup" : "signin");
+  O(t ? "setup" : "signin");
 }
 l.handle("senti:set-setup-mode", (t, e) => (Ke(!!e), !0));
-l.handle("senti:set-window-mode", (t, e) => e === "signin" || e === "setup" || e === "hud" || e === "panel" ? (x(e), e === "hud" && Ye(), !0) : !1);
+l.handle("senti:set-window-mode", (t, e) => e === "signin" || e === "setup" || e === "hud" || e === "panel" ? (O(e), e === "hud" && Ye(), !0) : !1);
 l.handle("senti:hud-show", () => (Ve(), !0));
 l.handle("senti:hud-hide", () => (We(), !0));
 l.handle("senti:lock", () => {
-  x("signin");
+  O("signin");
 });
-l.handle("senti:quit", () => P ? !1 : (u.quit(), !0));
+l.handle("senti:quit", () => A ? !1 : (u.quit(), !0));

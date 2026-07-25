@@ -1,13 +1,7 @@
 import { useEffect } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import LockScreen from './components/lockscreen/LockScreen'
 import SetupWizard from './components/onboarding/SetupWizard'
 import WakeHud from './components/assistant/WakeHud'
 import SettingsPanel from './components/common/SettingsPanel'
-import AudioCaptureTest from './components/debug/AudioCaptureTest'
-import VADTest from './components/debug/VADTest'
-import UtteranceTest from './components/debug/UtteranceTest'
-import VoiceAuthTest from './components/debug/VoiceAuthTest'
 import { useSettingsStore } from './state/settingsStore'
 import { useLockStore } from './state/lockStore'
 import { useWakeStore } from './state/wakeStore'
@@ -18,36 +12,31 @@ import { startCommandPolling, stopCommandPolling } from './services/commandPolle
 
 function App() {
   const settings = useSettingsStore((s) => s)
-  const lockState = useLockStore((s) => s.state)
   const settingsOpen = useUiStore((s) => s.settingsOpen)
   const securityConfigured = settings.security.pin.trim().length >= 4
   const needsSetup = !settings.setupCompleted || !securityConfigured
-  const requireSignIn = settings.requireSignIn
-  const unlocked = lockState === 'unlocked'
 
-  // Returning users go STRAIGHT to Senti — no sign-in gate every launch, unless
-  // they explicitly asked for one. Signing in once (at setup) is enough.
+  // Senti is NOT a lock screen. Once first-time setup is done, you're in — no
+  // sign-in gate, ever. We still tell the main process we're "unlocked" so it
+  // releases its window hardening (escape-hotkey swallowing, close-block).
   useEffect(() => {
-    if (!needsSetup && !requireSignIn && !unlocked) {
-      useLockStore.getState().authSuccess()
-    }
-  }, [needsSetup, requireSignIn, unlocked])
+    if (!needsSetup) useLockStore.getState().authSuccess()
+  }, [needsSetup])
 
-  const signedIn = !needsSetup && (unlocked || !requireSignIn)
+  const signedIn = !needsSetup
 
   /**
    * Window modes:
-   *   setup  — first run, a normal window
-   *   signin — the once-per-launch "it's me" screen (only if requireSignIn)
-   *   panel  — a normal window showing Settings (reachable from the tray/orb)
-   *   hud    — the floating orb; listening
+   *   setup — first run, a normal window
+   *   panel — a normal window showing the Control Center (from tray/orb)
+   *   hud   — the floating orb; listening
    */
   useEffect(() => {
-    const mode = needsSetup ? 'setup' : !signedIn ? 'signin' : settingsOpen ? 'panel' : 'hud'
+    const mode = needsSetup ? 'setup' : settingsOpen ? 'panel' : 'hud'
     void window.senti?.setWindowMode?.(mode)
     // The orb window is transparent; nothing may paint a background over it.
     document.documentElement.classList.toggle('orb-mode', mode === 'hud')
-  }, [needsSetup, signedIn, settingsOpen])
+  }, [needsSetup, settingsOpen])
 
   // The tray "Open Senti" opens the control center.
   useEffect(() => {
@@ -97,23 +86,10 @@ function App() {
   }
 
   // Signed in: the orb (hidden while the control center is open), plus Settings.
-  if (signedIn) {
-    return (
-      <div className="relative h-full w-full overflow-hidden">
-        {!settingsOpen && <WakeHud />}
-        <SettingsPanel />
-      </div>
-    )
-  }
-
-  // Once-per-launch sign-in (only when the user opted into it).
   return (
-    <div className="relative w-full h-full overflow-hidden">
-      <LockScreen />
-      <AudioCaptureTest />
-      <VADTest />
-      <UtteranceTest />
-      <VoiceAuthTest />
+    <div className="relative h-full w-full overflow-hidden">
+      {!settingsOpen && <WakeHud />}
+      <SettingsPanel />
     </div>
   )
 }

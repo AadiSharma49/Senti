@@ -1251,7 +1251,6 @@ function buildTray(): void {
     tray.setContextMenu(
       Menu.buildFromTemplate([
         { label: 'Open Senti (Settings)', click: () => openSettingsWindow() },
-        { label: 'Sign in again', click: () => setWindowMode('signin') },
         { type: 'separator' },
         {
           label: 'Quit Senti',
