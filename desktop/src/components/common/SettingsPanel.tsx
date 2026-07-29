@@ -10,6 +10,7 @@ import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSyn
 import { apiBase, apiOverride, setApiBase } from '../../config'
 import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
+import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 
 /**
  * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
@@ -56,6 +57,60 @@ export default function SettingsPanel() {
       alive = false
     }
   }, [open])
+
+  // My Devices — every machine on this account, controllable from right here.
+  const [peers, setPeers] = useState<PeerDevice[]>([])
+  const [peerMsg, setPeerMsg] = useState<Record<string, string>>({})
+  const [watchingId, setWatchingId] = useState<string | null>(null)
+  const [watchFrame, setWatchFrame] = useState<string | null>(null)
+  useEffect(() => {
+    if (!open || !deviceLinked) return
+    let alive = true
+    const poll = async () => {
+      const list = await listPeers()
+      if (alive) setPeers(list)
+    }
+    void poll()
+    const t = setInterval(() => void poll(), 5000)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [open, deviceLinked])
+
+  // Watch a sibling's screen: pull its newest frame about as fast as it uploads.
+  useEffect(() => {
+    if (!open || !watchingId) {
+      setWatchFrame(null)
+      return
+    }
+    let alive = true
+    const pull = async () => {
+      const s = await peerScreen(watchingId)
+      if (alive) setWatchFrame(s.frame)
+    }
+    void pull()
+    const t = setInterval(() => void pull(), 1200)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [open, watchingId])
+
+  const sendToPeer = async (
+    d: PeerDevice,
+    label: string,
+    action: string,
+    args?: Record<string, string | boolean>
+  ) => {
+    setPeerMsg((m) => ({ ...m, [d.id]: `Sending ${label}…` }))
+    const ok = await commandPeer(d.id, action, args)
+    setPeerMsg((m) => ({
+      ...m,
+      [d.id]: ok ? `${label} sent — ${d.name} will pick it up in a few seconds.` : `Couldn't send ${label}.`,
+    }))
+    setTimeout(() => setPeerMsg((m) => ({ ...m, [d.id]: '' })), 6000)
+  }
 
   const forgetMemory = async (id: string) => {
     const m = await window.senti?.memoryForget?.(id)
@@ -346,6 +401,120 @@ export default function SettingsPanel() {
             </div>
           )}
         </motion.section>
+
+        {deviceLinked && (
+          <motion.section variants={sectionVariant} initial="hidden" animate="visible">
+            <h4 className="section-title">My devices</h4>
+            <p className="section-sub mb-3">
+              Every machine on your account — watch and control them from right here. Install
+              Senti on your laptop, link the same account, and it shows up too.
+            </p>
+            {peers.length <= 1 ? (
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/45">
+                {peers.length === 0
+                  ? 'Loading your devices…'
+                  : 'Just this machine so far. Install Senti on another device and link the same account to control it from here.'}
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {peers.map((d) => {
+                  const t = d.reportedAt || d.lastSeen
+                  const live = !!t && Date.now() - new Date(t).getTime() < 90_000
+                  return (
+                    <div key={d.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={`h-2 w-2 shrink-0 rounded-full ${
+                                live ? (d.status === 'working' ? 'bg-accent' : 'bg-green-400') : 'bg-white/25'
+                              }`}
+                            />
+                            <span className="truncate font-semibold text-white">{d.name}</span>
+                            <span className="text-xs text-white/35">{d.os}</span>
+                            {d.self && (
+                              <span className="rounded-full border border-accent/40 px-2 py-0.5 text-[0.6rem] uppercase tracking-wider text-accent">
+                                This PC
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-1 truncate text-xs text-white/50">
+                            {live ? d.activity || 'Idle' : 'Offline'}
+                            {live && d.vitals ? ` · ${d.vitals}` : ''}
+                          </div>
+                        </div>
+                      </div>
+
+                      {!d.self && (
+                        <>
+                          <div className="mt-3 flex flex-wrap gap-2 border-t border-white/5 pt-3">
+                            {([
+                              { label: 'Lock', action: 'lock_workstation' },
+                              { label: 'Sleep', action: 'power', args: { mode: 'sleep' } },
+                              { label: 'Restart', action: 'power', args: { mode: 'restart' } },
+                              { label: 'Shut down', action: 'power', args: { mode: 'shutdown' } },
+                              { label: 'Clean up', action: 'clean_temp' },
+                              {
+                                label: 'Share screen',
+                                action: 'screen_share',
+                                args: { on: true },
+                              },
+                            ] as { label: string; action: string; args?: Record<string, string | boolean> }[]).map(
+                              (s) => (
+                                <button
+                                  key={s.label}
+                                  onClick={() => void sendToPeer(d, s.label, s.action, s.args)}
+                                  disabled={!live}
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                    live
+                                      ? 'border-white/15 bg-white/5 text-white hover:border-accent/40 hover:bg-accent/10'
+                                      : 'cursor-not-allowed border-white/5 text-white/25'
+                                  }`}
+                                >
+                                  {s.label}
+                                </button>
+                              )
+                            )}
+                            <button
+                              onClick={() => setWatchingId(watchingId === d.id ? null : d.id)}
+                              disabled={!live}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                !live
+                                  ? 'cursor-not-allowed border-white/5 text-white/25'
+                                  : watchingId === d.id
+                                  ? 'border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                                  : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'
+                              }`}
+                            >
+                              {watchingId === d.id ? 'Stop watching' : 'Watch screen'}
+                            </button>
+                          </div>
+                          {peerMsg[d.id] && <div className="mt-2 text-xs text-accent">{peerMsg[d.id]}</div>}
+                          {watchingId === d.id && (
+                            <div className="mt-3">
+                              {watchFrame ? (
+                                <img
+                                  src={watchFrame}
+                                  alt={`${d.name} screen`}
+                                  className="w-full rounded-lg border border-white/10"
+                                />
+                              ) : (
+                                <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-white/10 text-xs text-white/30">
+                                  Waiting for {d.name}&apos;s screen — tap &ldquo;Share screen&rdquo; first if
+                                  it isn&apos;t streaming yet.
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </motion.section>
+        )}
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <h4 className="section-title">Account</h4>
