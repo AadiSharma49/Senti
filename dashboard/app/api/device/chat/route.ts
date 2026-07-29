@@ -402,8 +402,27 @@ export async function POST(req: Request) {
     }
   }
 
+  // No reply and no action usually means a bare "hello" confused the
+  // tool-augmented model into returning nothing (or a bogus tool call). Don't
+  // show a scary error for that — ask once more with NO tools to force a plain,
+  // conversational answer.
+  if (!reply && !action) {
+    const rescue = await llmChatRich({
+      system: persona(name, language) + systemContext(system) + memoryContext(memories),
+      messages,
+      maxTokens: 200,
+      temperature: 0.7,
+    })
+    if (rescue?.text) reply = rescue.text
+  }
+
   if (!reply) {
-    reply = "I'm having trouble reaching my brain right now — check the assistant connection and try again."
+    // Keep it human. "Check your connection" reads as broken for what's usually
+    // just the model having an off moment — and the backend was clearly reached.
+    reply =
+      result === null
+        ? "I'm here, but my thinking's running slow right now — give me a second and try again."
+        : "I'm here — what do you need?"
   }
 
   const audio = await generateSpeech(reply)
