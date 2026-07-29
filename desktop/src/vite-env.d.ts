@@ -49,6 +49,7 @@ interface SentiAPI {
   openFile: (query: string) => Promise<{ ok: boolean; label?: string; count?: number; error?: string }>
   webSearch: (query: string) => Promise<{ ok: boolean }>
   lockWorkstation: () => Promise<boolean>
+  power: (mode: string) => Promise<boolean>
   volume: (direction: 'up' | 'down' | 'mute') => Promise<boolean>
 
   /** Call the backend from the main process (token attached there). */

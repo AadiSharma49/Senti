@@ -711,6 +711,33 @@ function lockWorkstation(): boolean {
   }
 }
 
+/**
+ * Sleep / restart / shut down the machine — including from your phone.
+ *
+ * A short delay on restart/shutdown gives Senti a beat to speak the
+ * confirmation first. Note: nothing here can turn the PC back ON — waking a
+ * powered-off machine needs Wake-on-LAN set up in the BIOS/router, which
+ * software alone can't do.
+ */
+function powerAction(modeRaw: unknown): boolean {
+  const mode = String(modeRaw ?? '').toLowerCase().trim()
+  try {
+    if (mode === 'sleep') {
+      // Suspend to RAM. (Hibernates instead if hibernation is enabled.)
+      execFile('rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0'], { windowsHide: true })
+    } else if (mode === 'restart' || mode === 'reboot') {
+      spawn('shutdown', ['/r', '/t', '4'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    } else if (mode === 'shutdown' || mode === 'shut down' || mode === 'off') {
+      spawn('shutdown', ['/s', '/t', '4'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    } else {
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 /** Volume via media-key virtual codes: simple, no extra dependency. */
 function changeVolume(direction: 'up' | 'down' | 'mute'): boolean {
   const key = direction === 'up' ? 175 : direction === 'down' ? 174 : 173
@@ -1182,6 +1209,7 @@ ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
   return { ok: true }
 })
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
+ipcMain.handle('senti:power', (_e: unknown, mode: unknown) => powerAction(mode))
 ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
   const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null
   return d ? changeVolume(d) : false

@@ -104,6 +104,18 @@ export async function runAction(action: {
       }${res.freedMB > 0 ? `, freeing ${res.freedMB} megabytes` : ''}.`
     }
 
+    case 'power': {
+      if (!perms.systemControl) return denied('power off or restart your PC')
+      const mode = String(action.args?.mode ?? '').toLowerCase()
+      const ok = await senti?.power?.(mode)
+      if (!ok) return "I couldn't do that just now."
+      return mode === 'sleep'
+        ? 'Putting your PC to sleep.'
+        : mode === 'restart' || mode === 'reboot'
+        ? 'Restarting your PC now.'
+        : 'Shutting your PC down now. Heads up — I can’t turn it back on remotely.'
+    }
+
     case 'lock_workstation': {
       if (!perms.systemControl) return denied('lock your PC')
       const ok = await senti?.lockWorkstation?.()

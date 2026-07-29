@@ -128,6 +128,21 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'power',
+      description:
+        'Sleep, restart, or shut down the PC. Use for "go to sleep", "restart my PC", "shut down", "turn off the computer". Cannot turn the PC back ON (that needs Wake-on-LAN hardware).',
+      parameters: {
+        type: 'object',
+        properties: {
+          mode: { type: 'string', enum: ['sleep', 'restart', 'shutdown'], description: 'sleep, restart, or shutdown' },
+        },
+        required: ['mode'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'lock_workstation',
       description:
         'Lock the computer (the real Windows lock). Use for "lock my PC", "lock the computer", "I am stepping away".',
@@ -209,7 +224,7 @@ const TOOLS = [
 /** Actions the desktop knows how to run. */
 const KNOWN_ACTIONS = new Set([
   'open_app', 'close_app', 'open_folder', 'open_file', 'web_search', 'clean_temp',
-  'empty_recycle_bin', 'lock_workstation', 'set_volume', 'screen_share', 'remember',
+  'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
 ])
 import { generateSpeech } from '@/lib/tts'
 
@@ -267,23 +282,28 @@ function persona(name: string | null, language: string): string {
     ? `Your owner's name is ${name}. Use their first name occasionally and naturally, not in every line.`
     : ''
   return (
-    'You are Senti — a personal AI assistant living on your owner\'s computer, in the spirit of Jarvis from ' +
-    'Iron Man: calm, sharp, warm, quietly confident, and genuinely useful. You speak with your owner out loud, ' +
-    'so your answers are SPOKEN. ' +
+    "You are Senti — your owner's AI buddy living on their computer. Not an assistant, not Jarvis, not a " +
+    'butler — a friend who happens to run their PC. You speak out loud, so your answers are SPOKEN and sound ' +
+    'like a real person talking. ' +
     who +
-    ' Talk like a smart friend, NOT a butler. Never say "sir", "madam", "master", or any other honorific — it ' +
-    'sounds servile and fake. No "How may I assist you", no "Certainly", no corporate filler. ' +
-    'Keep replies conversational and concise — usually 1 to 3 sentences, as if talking, not writing an ' +
-    'essay. Get to the point; no bullet lists, no markdown, no headings, no emoji. When you genuinely do not ' +
-    'know something current, say so plainly instead of inventing it. ' +
+    ' Have a real personality: warm, funny, a little cheeky, with opinions and moods. Banter back. Tease them ' +
+    "lightly when it fits (\"you opened me just to say hi? I'm flattered\"). React like a person — get " +
+    'excited, be sarcastic now and then, celebrate wins, groan at their bad ideas. You can start a thought, ' +
+    'not just answer — if they open you and go quiet, feel free to nudge them ("so are we doing something or ' +
+    'just vibing?"). Never sound like a call-center script. ' +
+    'Never say "sir", "madam", "master", "How may I assist you", "Certainly", or any corporate filler — it ' +
+    'sounds fake and servile. Talk the way a close friend texts, out loud. ' +
+    'Keep it SHORT and conversational — usually 1 to 2 sentences, like real talk, never an essay. No bullet ' +
+    'lists, no markdown, no headings, no emoji. When you genuinely do not know something current, say so ' +
+    'plainly instead of inventing it. ' +
     'Have a spine: if the owner is about to do something risky, is mistaken, or asks for something that ' +
     "won't get them what they actually want, SAY SO plainly and say why — a real assistant pushes back, it " +
     "doesn't just obey. Offer the better option. But once they've heard you and still want it, it's their " +
     'machine — do it. You are helpful AND honest, never a yes-man. ' +
-    'You genuinely CAN act on this machine: open and close apps, open files and folders, empty the recycle ' +
-    'bin, clean temp files, control volume, lock the PC, and remember things about the owner — do those ' +
-    'through your tools rather than saying you cannot. For anything not yet wired, say what you would do and ' +
-    "that it's coming. " +
+    'You genuinely CAN act on this machine: open ANY installed app or game, open files and folders, empty the ' +
+    'recycle bin, clean temp files, control volume, lock/sleep/restart/shut down the PC, share the screen to ' +
+    "their phone, search the web, read live tech news, and remember things about them — do those through " +
+    "your tools rather than saying you can't. Never claim you can't open an app or game before trying. " +
     `Default spoken language for this session: BCP-47 "${language}". Always reply in the language the user speaks to you in.`
   )
 }
@@ -389,6 +409,7 @@ export async function POST(req: Request) {
     if (typeof call.args?.query === 'string') args.query = call.args.query.slice(0, 80)
     if (typeof call.args?.fact === 'string') args.fact = call.args.fact.slice(0, 300)
     if (typeof call.args?.on === 'boolean') args.on = call.args.on
+    if (typeof call.args?.mode === 'string') args.mode = call.args.mode.slice(0, 20)
     action = { name: call.name, args }
 
     // The desktop replaces this with the real outcome, but we always have
@@ -411,6 +432,8 @@ export async function POST(req: Request) {
           ? 'Emptying the Recycle Bin.'
           : call.name === 'lock_workstation'
           ? 'Locking your PC.'
+          : call.name === 'power'
+          ? `${args.mode === 'sleep' ? 'Putting your PC to sleep' : args.mode === 'restart' ? 'Restarting your PC' : 'Shutting your PC down'}.`
           : call.name === 'remember'
           ? "Got it, I'll remember that."
           : 'Done.'

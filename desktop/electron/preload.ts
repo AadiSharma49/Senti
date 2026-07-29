@@ -70,6 +70,7 @@ contextBridge.exposeInMainWorld('senti', {
   openFile: (query: string) => ipcRenderer.invoke('senti:open-file', query),
   webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
+  power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 
   // Backend access — the token is attached in main, never exposed here.

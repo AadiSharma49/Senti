@@ -46,9 +46,11 @@ const dot: Record<string, string> = {
 const SHORTCUTS: { label: string; action: string; args?: Record<string, string> }[] = [
   { label: 'Clean up', action: 'clean_temp' },
   { label: 'Lock PC', action: 'lock_workstation' },
+  { label: 'Sleep', action: 'power', args: { mode: 'sleep' } },
+  { label: 'Restart', action: 'power', args: { mode: 'restart' } },
+  { label: 'Shut down', action: 'power', args: { mode: 'shutdown' } },
   { label: 'VS Code', action: 'open_app', args: { name: 'code' } },
   { label: 'Chrome', action: 'open_app', args: { name: 'chrome' } },
-  { label: 'Spotify', action: 'open_app', args: { name: 'spotify' } },
   { label: 'Mute', action: 'set_volume', args: { direction: 'mute' } },
 ]
 

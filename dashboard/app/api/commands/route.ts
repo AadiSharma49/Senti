@@ -13,7 +13,7 @@ import { dbEnabled, prisma } from '@/lib/prisma'
 export const runtime = 'nodejs'
 
 /** Only these can be requested remotely; the desktop enforces its own list too. */
-const ALLOWED = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'set_volume', 'screen_share'])
+const ALLOWED = new Set(['open_app', 'close_app', 'clean_temp', 'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share'])
 
 export async function POST(req: Request) {
   if (!clerkEnabled || !dbEnabled)
@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   const args: Record<string, string | boolean> = {}
   if (typeof body.name === 'string') args.name = body.name.slice(0, 60)
   if (typeof body.direction === 'string') args.direction = body.direction.slice(0, 10)
+  if (typeof body.mode === 'string') args.mode = body.mode.slice(0, 20)
   if (typeof body.on === 'boolean') args.on = body.on
   else if (body.on === 'true' || body.on === 'false') args.on = body.on === 'true'
 
