@@ -9,6 +9,7 @@ import { syncPolicyFromDashboard } from '../../services/policySync'
 import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
 import { apiBase, apiOverride, setApiBase } from '../../config'
 import VoiceEnrollment from '../onboarding/VoiceEnrollment'
+import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
 
 /**
  * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
@@ -27,6 +28,8 @@ export default function SettingsPanel() {
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
   const [enrolling, setEnrolling] = useState(false)
+  const [screenSharing, setScreenSharing] = useState(false)
+  useEffect(() => onScreenShareChange(setScreenSharing), [])
 
   // Note: we only ever know WHETHER this device is linked. The pairing token
   // lives in the Electron main process, encrypted by the OS keystore, and is
@@ -271,6 +274,28 @@ export default function SettingsPanel() {
                       Senti&rdquo; or just &ldquo;hello&rdquo;, give it an order like
                       &ldquo;open Chrome&rdquo;, or press Ctrl+Shift+Space — then keep
                       talking, no name needed. Say &ldquo;stop&rdquo; when you&apos;re done.
+                    </div>
+                  </div>
+                )}
+
+                {/* A real click here, so starting the stream never depends on
+                    the OS honoring a request that came from voice or the phone. */}
+                {p.key === 'screenShare' && permissions.screenShare && (
+                  <div className="mt-3 border-t border-white/5 pt-3">
+                    <button
+                      onClick={() => void (screenSharing ? stopScreenShare() : startScreenShare())}
+                      className={`w-full rounded-xl px-3 py-2 text-sm font-medium transition ${
+                        screenSharing
+                          ? 'border border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                          : 'border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'
+                      }`}
+                    >
+                      {screenSharing ? 'Stop sharing' : 'Share my screen now'}
+                    </button>
+                    <div className="mt-2 text-xs text-white/30">
+                      Starting it here always works. Starting it by voice or from your phone
+                      usually does too, but Windows can occasionally require a direct click —
+                      if that happens, tap this button instead.
                     </div>
                   </div>
                 )}

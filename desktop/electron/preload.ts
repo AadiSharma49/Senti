@@ -59,7 +59,7 @@ contextBridge.exposeInMainWorld('senti', {
   memoryForget: (id: string) => ipcRenderer.invoke('senti:memory-forget', id),
   memoryClear: () => ipcRenderer.invoke('senti:memory-clear'),
   /** Hold the machine awake while a monitored task runs. */
-  keepAwake: (on: boolean) => ipcRenderer.invoke('senti:keep-awake', on),
+  keepAwake: (on: boolean, holder: string) => ipcRenderer.invoke('senti:keep-awake', on, holder),
 
   /** OS actions. All whitelisted or scoped in main — never a raw command. */
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),

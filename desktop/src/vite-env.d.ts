@@ -39,7 +39,9 @@ interface SentiAPI {
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => Promise<{ id: string; name: string }[]>
   /** Hold the machine awake while a monitored task runs. */
-  keepAwake: (on: boolean) => Promise<boolean>
+  /** `holder` is a caller id — the lock is ref-counted so independent callers (a
+   * running task, screen share) don't turn off each other's hold on it. */
+  keepAwake: (on: boolean, holder: string) => Promise<boolean>
   /** OS actions (whitelisted or scoped in main). */
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>

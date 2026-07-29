@@ -1042,6 +1042,16 @@ app.whenReady().then(async () => {
   })
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => isMedia(permission))
 
+  // Screen share needs its own handler (getDisplayMedia, not getUserMedia) —
+  // Electron requires this or the capture silently fails with no prompt at all
+  // to fall back on. We hand back the primary screen with no picker UI, since
+  // the whole point is "start when I say so", not a dialog to click through.
+  session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
+    void desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }).then((sources) => {
+      callback(sources[0] ? { video: sources[0] } : {})
+    })
+  })
+
   // Packaged app: serve the built UI over local HTTP so the ML models load.
   if (!VITE_DEV_SERVER_URL) {
     try {
@@ -1176,14 +1186,22 @@ ipcMain.handle('senti:memory-clear', () => {
 // --- Keep-awake ------------------------------------------------------
 //
 // If you're monitoring a long task from your phone and the PC sleeps, Senti
-// goes dark and you lose the thread. While a task is running, hold the machine
-// awake. Released the moment it's idle again, so we don't drain the battery.
+// goes dark and you lose the thread; same story while your screen is being
+// shared. Multiple INDEPENDENT callers can want this at once (status
+// reporting, screen share), so it's ref-counted by caller id rather than a
+// single on/off — one finishing must never turn off another's lock. Released
+// the moment nobody needs it any more, so we don't drain the battery.
 let awakeBlockerId: number | null = null
-ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown) => {
+const awakeHolders = new Set<string>()
+ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown, holder: unknown) => {
   try {
-    if (on && awakeBlockerId === null) {
+    const key = typeof holder === 'string' && holder ? holder : 'default'
+    if (on) awakeHolders.add(key)
+    else awakeHolders.delete(key)
+
+    if (awakeHolders.size > 0 && awakeBlockerId === null) {
       awakeBlockerId = powerSaveBlocker.start('prevent-display-sleep')
-    } else if (!on && awakeBlockerId !== null) {
+    } else if (awakeHolders.size === 0 && awakeBlockerId !== null) {
       powerSaveBlocker.stop(awakeBlockerId)
       awakeBlockerId = null
     }

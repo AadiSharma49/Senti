@@ -41,7 +41,7 @@ export function reportActivity(activity: string, isWorking = false): void {
     working = isWorking
     // Keep the machine awake while there's active work to watch remotely.
     try {
-      void window.senti?.keepAwake?.(isWorking)
+      void window.senti?.keepAwake?.(isWorking, 'activity')
     } catch {}
   }
   void push()
@@ -61,6 +61,6 @@ export function stopReporting(): void {
   }
   working = false
   try {
-    void window.senti?.keepAwake?.(false)
+    void window.senti?.keepAwake?.(false, 'activity')
   } catch {}
 }
