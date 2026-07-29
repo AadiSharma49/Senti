@@ -87,6 +87,20 @@ model Device {
 
   events   UnlockEvent[]
   commands DeviceCommand[]
+  screen   ScreenFrame?
+}
+
+/// The latest screen frame the PC is streaming, so you can watch it live from
+/// your phone or laptop. One row per device, overwritten each frame — we keep
+/// only the newest picture, never a history. `sharing` flips off when the PC
+/// stops streaming so the viewer knows the feed went cold.
+model ScreenFrame {
+  deviceId  String   @id
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// data: URI of a downscaled JPEG (base64). Overwritten every frame.
+  data      String
+  sharing   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
 }
 
 /// A command sent from the phone/dashboard for a device to run.

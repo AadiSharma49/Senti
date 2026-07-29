@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import SetupWizard from './components/onboarding/SetupWizard'
 import WakeHud from './components/assistant/WakeHud'
+import ScreenShareIndicator from './components/assistant/ScreenShareIndicator'
 import SettingsPanel from './components/common/SettingsPanel'
 import { useSettingsStore } from './state/settingsStore'
 import { useLockStore } from './state/lockStore'
@@ -89,6 +90,7 @@ function App() {
   return (
     <div className="relative h-full w-full overflow-hidden">
       {!settingsOpen && <WakeHud />}
+      <ScreenShareIndicator />
       <SettingsPanel />
     </div>
   )

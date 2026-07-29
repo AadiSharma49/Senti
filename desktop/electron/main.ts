@@ -7,7 +7,7 @@ import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -1027,6 +1027,18 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
+
+// Screen sources for the live remote view. Returns the primary screen's source
+// id, which the renderer feeds to getUserMedia to capture the desktop without a
+// picker dialog. No frame ever touches main — the renderer captures and uploads.
+ipcMain.handle('senti:screen-sources', async () => {
+  try {
+    const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
+    return sources.map((s) => ({ id: s.id, name: s.name }))
+  } catch {
+    return []
+  }
+})
 
 // Senti's memory — read into every conversation, written by the `remember`
 // tool, and yours to inspect or wipe.

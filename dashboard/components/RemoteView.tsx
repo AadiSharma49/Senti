@@ -57,6 +57,8 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
   const [, tick] = useState(0)
   // Per-device note of what we just sent, so a tap gives instant feedback.
   const [sent, setSent] = useState<Record<string, string>>({})
+  // Live screen per device: the latest frame and whether the PC is still sharing.
+  const [screens, setScreens] = useState<Record<string, { frame: string | null; sharing: boolean }>>({})
 
   const send = async (deviceId: string, label: string, action: string, args?: Record<string, string>) => {
     setSent((s) => ({ ...s, [deviceId]: `Sending ${label}…` }))
@@ -98,6 +100,29 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
       clearInterval(c)
     }
   }, [])
+
+  // Pull the live screen frame for every device, ~once a second — matching the
+  // rate the PC uploads. Cheap because it's one small JPEG per tick.
+  useEffect(() => {
+    let alive = true
+    const pull = async () => {
+      for (const d of devices) {
+        try {
+          const res = await fetch(`/api/screen?deviceId=${d.id}`, { cache: 'no-store' })
+          if (!res.ok || !alive) continue
+          const data = await res.json()
+          setScreens((s) => ({ ...s, [d.id]: { frame: data.frame ?? null, sharing: !!data.sharing } }))
+        } catch {
+          // keep the last frame
+        }
+      }
+    }
+    const t = setInterval(pull, 1200)
+    return () => {
+      alive = false
+      clearInterval(t)
+    }
+  }, [devices])
 
   if (devices.length === 0) {
     return (
@@ -170,6 +195,44 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
               {!live && (
                 <div className="mt-3 text-xs text-white/35">
                   This PC is offline, so it can&apos;t pick up commands right now.
+                </div>
+              )}
+            </div>
+
+            {/* Live screen — watch this PC from here. */}
+            <div className="relative mt-4 border-t border-white/5 pt-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-xs uppercase tracking-[0.2em] text-white/45">Live screen</span>
+                <button
+                  onClick={() =>
+                    send(
+                      d.id,
+                      screens[d.id]?.sharing ? 'Stop screen' : 'Share screen',
+                      'screen_share',
+                      { on: screens[d.id]?.sharing ? 'false' : 'true' }
+                    )
+                  }
+                  disabled={!live}
+                  className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                    !live
+                      ? 'cursor-not-allowed border-white/5 text-white/25'
+                      : screens[d.id]?.sharing
+                      ? 'border-red-400/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                      : 'border-accent/40 bg-accent/10 text-accent hover:bg-accent/20'
+                  }`}
+                >
+                  {screens[d.id]?.sharing ? 'Stop' : 'Share screen'}
+                </button>
+              </div>
+              {screens[d.id]?.frame ? (
+                <img
+                  src={screens[d.id].frame as string}
+                  alt="Live screen"
+                  className="w-full rounded-lg border border-white/10"
+                />
+              ) : (
+                <div className="flex aspect-video w-full items-center justify-center rounded-lg border border-dashed border-white/10 text-xs text-white/30">
+                  {live ? 'Tap “Share screen” to see this PC live.' : 'PC offline.'}
                 </div>
               )}
             </div>

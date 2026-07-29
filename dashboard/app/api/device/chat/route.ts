@@ -175,6 +175,20 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'screen_share',
+      description:
+        "Start or stop streaming this PC's screen so the owner can watch it live from their phone or laptop. Use for \"share my screen\", \"let me see my screen on my phone\", \"stop sharing my screen\".",
+      parameters: {
+        type: 'object',
+        properties: {
+          on: { type: 'boolean', description: 'true to start sharing, false to stop' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'remember',
       description:
         "Save a durable fact about the owner or their machine to Senti's long-term memory, so you don't forget it or ask again next time. Use it when they tell you a preference, a name, how their setup is arranged, or how they like things done — e.g. \"my main drive is D\", \"call me Aditya\", \"I hate apps that auto-start\". Do NOT use it for one-off requests or passing chit-chat.",
@@ -195,7 +209,7 @@ const TOOLS = [
 /** Actions the desktop knows how to run. */
 const KNOWN_ACTIONS = new Set([
   'open_app', 'close_app', 'open_folder', 'open_file', 'web_search', 'clean_temp',
-  'empty_recycle_bin', 'lock_workstation', 'set_volume', 'remember',
+  'empty_recycle_bin', 'lock_workstation', 'set_volume', 'screen_share', 'remember',
 ])
 import { generateSpeech } from '@/lib/tts'
 
@@ -374,6 +388,7 @@ export async function POST(req: Request) {
     if (typeof call.args?.direction === 'string') args.direction = call.args.direction.slice(0, 10)
     if (typeof call.args?.query === 'string') args.query = call.args.query.slice(0, 80)
     if (typeof call.args?.fact === 'string') args.fact = call.args.fact.slice(0, 300)
+    if (typeof call.args?.on === 'boolean') args.on = call.args.on
     action = { name: call.name, args }
 
     // The desktop replaces this with the real outcome, but we always have

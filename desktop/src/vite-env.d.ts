@@ -36,6 +36,8 @@ interface SentiAPI {
   persistSetupCompleted: (done: boolean) => Promise<boolean>
   /** Real vitals for this machine (memory, disk, top processes, startup apps). */
   systemInfo: () => Promise<SystemSnapshot>
+  /** Desktop capture source ids for the live remote screen view. */
+  screenSources: () => Promise<{ id: string; name: string }[]>
   /** Hold the machine awake while a monitored task runs. */
   keepAwake: (on: boolean) => Promise<boolean>
   /** OS actions (whitelisted or scoped in main). */

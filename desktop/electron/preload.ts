@@ -50,6 +50,9 @@ contextBridge.exposeInMainWorld('senti', {
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
 
+  /** Desktop capture source ids for the live remote screen view. */
+  screenSources: () => ipcRenderer.invoke('senti:screen-sources'),
+
   /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
   memoryList: () => ipcRenderer.invoke('senti:memory-list'),
   memoryAdd: (text: string) => ipcRenderer.invoke('senti:memory-add', text),

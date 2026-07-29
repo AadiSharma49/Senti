@@ -26,6 +26,8 @@ export interface SettingsState {
     cleanup: boolean
     /** Open your files and folders (read-only: opens them, never edits/deletes). */
     files: boolean
+    /** Stream this PC's screen to your own phone/laptop for a live remote view. */
+    screenShare: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
     /**
@@ -92,6 +94,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   closeApps: false,
   cleanup: false,
   files: true,
+  screenShare: true,
   systemControl: true,
   alwaysListening: true,
 }

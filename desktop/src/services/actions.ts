@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../state/settingsStore'
+import { startScreenShare, stopScreenShare } from './screenShare'
 
 /**
  * Carry out an action the model asked for.
@@ -63,6 +64,17 @@ export async function runAction(action: {
       }
       if (res?.error === 'not-found') return `I couldn't find a file matching "${query}" in your folders.`
       return `I couldn't open that file.`
+    }
+
+    case 'screen_share': {
+      if (!perms.screenShare) return denied('share your screen')
+      const on = action.args?.on !== false // default to starting
+      if (on) {
+        const ok = await startScreenShare()
+        return ok ? 'Sharing your screen — you can watch it from your phone now.' : "I couldn't start screen sharing."
+      }
+      await stopScreenShare()
+      return 'Stopped sharing your screen.'
     }
 
     case 'web_search': {
