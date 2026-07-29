@@ -41,7 +41,7 @@ const TOOLS = [
     function: {
       name: 'open_app',
       description:
-        "Open an application or website on the user's computer. Use this whenever they ask to open, launch, start, run, pull up, bring up, or go to something — e.g. \"open Chrome\", \"launch Spotify\", \"pull up YouTube\", \"go to GitHub\".",
+        "Open ANY installed application, GAME, or website on the user's computer. Use this whenever they ask to open, launch, start, run, play, pull up, bring up, or go to something — e.g. \"open Chrome\", \"launch Spotify\", \"play Spider-Man\", \"open Rockstar Games\", \"pull up YouTube\". The PC searches everything actually installed, so ALWAYS try this for any app or game name rather than saying you can't — never claim you can't open something before trying.",
       parameters: {
         type: 'object',
         properties: {

@@ -349,24 +349,116 @@ function resolveApp(nameRaw: unknown): AppTarget | null {
   return null
 }
 
+// --- Installed-app discovery ------------------------------------------
+//
+// The whitelist covers the common apps, but you also want "open Spider-Man" or
+// "open Rockstar" to just work. So we scan the Start Menu for whatever is
+// ACTUALLY installed and match the spoken name against it. This is still just
+// launching a real shortcut Windows already created — never an arbitrary
+// command the model made up.
+interface InstalledApp {
+  name: string
+  path: string
+}
+let installedCache: InstalledApp[] | null = null
+let installedScannedAt = 0
+const APP_STOPWORDS = new Set([
+  'game', 'games', 'app', 'application', 'launcher', 'the', 'my', 'a', 'open',
+  'launch', 'start', 'play', 'run', 'up',
+])
+
+function norm(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '')
+}
+
+/** The Start Menu folders where Windows keeps every installed app's shortcut. */
+function startMenuDirs(): string[] {
+  const dirs: string[] = []
+  if (process.env.ProgramData)
+    dirs.push(path.join(process.env.ProgramData, 'Microsoft', 'Windows', 'Start Menu', 'Programs'))
+  if (process.env.APPDATA)
+    dirs.push(path.join(process.env.APPDATA, 'Microsoft', 'Windows', 'Start Menu', 'Programs'))
+  return dirs
+}
+
+/** Every .lnk in the Start Menu = an installed app. Cached for 5 minutes. */
+function scanInstalledApps(): InstalledApp[] {
+  const now = Date.now()
+  if (installedCache && now - installedScannedAt < 5 * 60_000) return installedCache
+  const found: InstalledApp[] = []
+  const started = now
+  const walk = (dir: string, depth: number): void => {
+    if (depth > 4 || Date.now() - started > 4000) return
+    let entries: import('fs').Dirent[]
+    try {
+      entries = readdirSync(dir, { withFileTypes: true })
+    } catch {
+      return
+    }
+    for (const e of entries) {
+      const full = path.join(dir, e.name)
+      if (e.isDirectory()) walk(full, depth + 1)
+      else if (e.isFile() && e.name.toLowerCase().endsWith('.lnk')) found.push({ name: e.name.slice(0, -4), path: full })
+    }
+  }
+  for (const d of startMenuDirs()) walk(d, 0)
+  installedCache = found
+  installedScannedAt = now
+  return found
+}
+
+/** Match a spoken name ("spider man", "rockstar") to a real installed app. */
+function resolveInstalledApp(nameRaw: unknown): InstalledApp | null {
+  if (typeof nameRaw !== 'string') return null
+  const query = nameRaw.toLowerCase().replace(/^(open|launch|start|run|play)\s+/, '').trim()
+  const qNorm = norm(query)
+  const qTokens = query.split(/\s+/).map(norm).filter((t) => t.length >= 2 && !APP_STOPWORDS.has(t))
+  if (!qNorm && !qTokens.length) return null
+
+  let best: { app: InstalledApp; score: number } | null = null
+  for (const app of scanInstalledApps()) {
+    const nNorm = norm(app.name)
+    let score = 0
+    if (nNorm === qNorm) score = 100
+    else if (qNorm.length >= 3 && nNorm.includes(qNorm)) score = 60 - Math.min(25, nNorm.length - qNorm.length)
+    else {
+      let hits = 0
+      for (const t of qTokens) if (t.length >= 3 && nNorm.includes(t)) hits++
+      if (hits) score = 20 + hits * 12 - Math.min(15, Math.floor(nNorm.length / 6))
+    }
+    if (score > 0 && (!best || score > best.score)) best = { app, score }
+  }
+  return best && best.score >= 20 ? best.app : null
+}
+
 function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
   const hit = resolveApp(nameRaw)
-  if (!hit) return { ok: false, error: 'unknown' }
-  try {
-    if (hit.kind === 'url') {
-      void shell.openExternal(hit.target)
-    } else {
-      // `target` comes from OUR table, never from the model.
-      spawn('cmd', ['/c', 'start', '', hit.target], {
-        detached: true,
-        stdio: 'ignore',
-        windowsHide: true,
-      }).unref()
+  if (hit) {
+    try {
+      if (hit.kind === 'url') {
+        void shell.openExternal(hit.target)
+      } else {
+        // `target` comes from OUR table, never from the model.
+        spawn('cmd', ['/c', 'start', '', hit.target], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+      }
+      return { ok: true, label: hit.label }
+    } catch {
+      return { ok: false, error: 'launch-failed' }
     }
-    return { ok: true, label: hit.label }
-  } catch {
-    return { ok: false, error: 'launch-failed' }
   }
+
+  // Not in the curated list — try whatever is actually installed (games too).
+  const installed = resolveInstalledApp(nameRaw)
+  if (installed) {
+    try {
+      void shell.openPath(installed.path)
+      return { ok: true, label: installed.name }
+    } catch {
+      return { ok: false, error: 'launch-failed' }
+    }
+  }
+
+  return { ok: false, error: 'unknown' }
 }
 
 // --- Files & folders --------------------------------------------------
