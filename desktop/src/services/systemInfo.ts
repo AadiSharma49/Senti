@@ -14,7 +14,16 @@ import type { SystemSnapshot } from '../vite-env'
 export async function getSystemSnapshot(): Promise<SystemSnapshot | null> {
   try {
     const snap = await window.senti?.systemInfo?.()
-    return snap ?? null
+    if (!snap) return null
+    // Fetched alongside, not inside, systemInfo: it shells out to PowerShell
+    // and shouldn't be able to delay or fail the vitals everything else needs.
+    try {
+      const win = await window.senti?.activeWindow?.()
+      if (win) snap.activeWindow = win
+    } catch {
+      // Not knowing the focused window is survivable.
+    }
+    return snap
   } catch {
     return null
   }
@@ -44,6 +53,11 @@ export function describeSystem(s: SystemSnapshot): string {
   }
   if (typeof s.startupApps === 'number') {
     lines.push(`Startup apps: ${s.startupApps}`)
+  }
+  // What they're actually looking at, so "what am I doing?" and "why is my PC
+  // slow?" can be answered about the real, current situation.
+  if (s.activeWindow) {
+    lines.push(`Focused right now: "${s.activeWindow.title}" (${s.activeWindow.process})`)
   }
 
   return lines.join('\n')

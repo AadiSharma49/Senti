@@ -104,8 +104,9 @@ export async function startViewerPeer(
   let stopPoll: (() => void) | null = null
   let channelOpen = false
 
-  // We only receive video; we never send our own screen back.
+  // We only receive; we never send our own screen or mic back.
   pc.addTransceiver('video', { direction: 'recvonly' })
+  pc.addTransceiver('audio', { direction: 'recvonly' })
   const channel = pc.createDataChannel('input', { ordered: true })
   channel.onopen = () => {
     channelOpen = true
@@ -165,7 +166,29 @@ export async function startHostPeer(
   onConnected: (ok: boolean) => void
 ): Promise<PeerHandle> {
   const pc = new RTCPeerConnection(ICE)
-  for (const track of screen.getVideoTracks()) pc.addTrack(track, screen)
+  const videoSenders: RTCRtpSender[] = []
+  for (const track of screen.getVideoTracks()) videoSenders.push(pc.addTrack(track, screen))
+  // System audio, when the OS allowed us to capture it.
+  for (const track of screen.getAudioTracks()) pc.addTrack(track, screen)
+
+  // Left alone, WebRTC targets a conservative bitrate and will happily halve
+  // the frame rate to protect image detail — which is exactly wrong for a
+  // moving screen. Ask for a high ceiling and tell it to sacrifice sharpness
+  // before smoothness.
+  for (const sender of videoSenders) {
+    try {
+      const params = sender.getParameters()
+      if (!params.encodings || !params.encodings.length) params.encodings = [{}]
+      params.encodings[0].maxBitrate = 12_000_000 // 12 Mbps: comfortable 1080p
+      params.encodings[0].maxFramerate = 60
+      // Not in the DOM types across versions, but honoured by Chromium.
+      ;(params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
+        'maintain-framerate'
+      await sender.setParameters(params)
+    } catch {
+      // Older/odd builds: the defaults still work, just less smoothly.
+    }
+  }
 
   pc.ondatachannel = (e) => {
     const ch = e.channel

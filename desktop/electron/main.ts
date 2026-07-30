@@ -1188,6 +1188,10 @@ function createWindow(): void {
       // stalls the always-listening audio loop. Senti has to keep hearing you
       // while it sits quietly in the corner, so throttling stays OFF.
       backgroundThrottling: false,
+      // Remote control plays the other machine's system audio. Chromium's
+      // default policy blocks sound until the user clicks the page, which
+      // would silently mute a session that looks like it's working.
+      autoplayPolicy: 'no-user-gesture-required',
     },
   })
 

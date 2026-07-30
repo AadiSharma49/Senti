@@ -151,7 +151,10 @@ export default function RemoteControlWindow({
 
   const onMove = (e: React.MouseEvent) => {
     const now = Date.now()
-    if (now - lastMove.current < 50) return // ~20/s is plenty; the rest is noise
+    // Over a direct connection there's no HTTP round trip, so we can sample at
+    // ~60Hz and the pointer feels attached to your hand. On the relay path
+    // that rate would just queue up requests, so stay at ~20Hz there.
+    if (now - lastMove.current < (direct ? 16 : 50)) return
     lastMove.current = now
     const p = norm(e)
     if (p) sendEvent({ t: 'move', x: p.x, y: p.y })
@@ -208,11 +211,12 @@ export default function RemoteControlWindow({
           onWheel={(e) => sendEvent({ t: 'scroll', d: e.deltaY })}
         >
           {/* Direct video: full size, smooth. */}
+          {/* NOT muted: the target's system audio rides the same connection,
+              so game and video sound come through here too. */}
           <video
             ref={videoRef}
             autoPlay
             playsInline
-            muted
             className={`h-full w-full cursor-crosshair select-none object-contain ${direct ? '' : 'hidden'}`}
           />
           {/* Fallback still frames until (or unless) the direct link comes up. */}

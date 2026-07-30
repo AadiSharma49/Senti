@@ -5,7 +5,7 @@ import y from "os";
 import ke from "electron";
 import p from "path";
 import { fileURLToPath as $e } from "url";
-const { app: d, BrowserWindow: ce, screen: ue, ipcMain: c, globalShortcut: v, safeStorage: D, session: H, shell: C, Tray: xe, Menu: ve, nativeImage: ee, powerSaveBlocker: te, desktopCapturer: de, clipboard: pe } = ke, Ce = $e(import.meta.url), Z = p.dirname(Ce), _ = process.env.VITE_DEV_SERVER_URL, fe = "http://localhost:5173";
+const { app: d, BrowserWindow: ce, screen: ue, ipcMain: c, globalShortcut: v, safeStorage: D, session: q, shell: C, Tray: xe, Menu: ve, nativeImage: ee, powerSaveBlocker: te, desktopCapturer: de, clipboard: pe } = ke, Ce = $e(import.meta.url), Z = p.dirname(Ce), _ = process.env.VITE_DEV_SERVER_URL, fe = "http://localhost:5173";
 let r = null, V = "";
 const Pe = {
   ".html": "text/html",
@@ -202,7 +202,7 @@ function Oe(t) {
   const e = t.toLowerCase().trim().replace(/^(open|launch|start)\s+/, "");
   return e ? ne[e] ? ne[e] : /^[a-z0-9-]+(\.[a-z]{2,})+$/i.test(e) ? { kind: "url", target: `https://${e}`, label: e } : null : null;
 }
-let q = null, re = 0;
+let H = null, re = 0;
 const Le = /* @__PURE__ */ new Set([
   "game",
   "games",
@@ -228,7 +228,7 @@ function je() {
 }
 function Ne() {
   const t = Date.now();
-  if (q && t - re < 5 * 6e4) return q;
+  if (H && t - re < 5 * 6e4) return H;
   const e = [], n = t, o = (s, a) => {
     if (a > 4 || Date.now() - n > 4e3) return;
     let l;
@@ -243,7 +243,7 @@ function Ne() {
     }
   };
   for (const s of je()) o(s, 0);
-  return q = e, re = t, e;
+  return H = e, re = t, e;
 }
 function Ue(t) {
   if (typeof t != "string") return null;
@@ -281,7 +281,7 @@ function Ge(t) {
     }
   return { ok: !1, error: "unknown" };
 }
-function He(t) {
+function qe(t) {
   if (typeof t != "string") return null;
   const e = t.toLowerCase().trim().replace(/^(open|show|go to|reveal)\s+/, "").replace(/^(my|the)\s+/, "").replace(/\s+(folder|directory)$/, "").trim(), n = {
     temp: { shell: y.tmpdir(), label: "your Temp folder" },
@@ -317,8 +317,8 @@ function He(t) {
     }
   return null;
 }
-function qe(t) {
-  const e = He(t);
+function He(t) {
+  const e = qe(t);
   if (!e) return { ok: !1, error: "unknown" };
   try {
     return e.shell ? b("explorer.exe", [e.shell], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref() : e.path && C.openPath(e.path), { ok: !0, label: e.label };
@@ -774,7 +774,11 @@ function ye() {
       // CRITICAL: Windows throttles hidden/occluded windows to ~1fps, which
       // stalls the always-listening audio loop. Senti has to keep hearing you
       // while it sits quietly in the corner, so throttling stays OFF.
-      backgroundThrottling: !1
+      backgroundThrottling: !1,
+      // Remote control plays the other machine's system audio. Chromium's
+      // default policy blocks sound until the user clicks the page, which
+      // would silently mute a session that looks like it's working.
+      autoplayPolicy: "no-user-gesture-required"
     }
   }), r.setVisibleOnAllWorkspaces(!0), r.setMenuBarVisibility(!1), r.setAlwaysOnTop(!0, "screen-saver"), _ ? r.loadURL(fe).catch((o) => {
     console.error("[Electron] Failed to load dev server:", o.message);
@@ -808,9 +812,9 @@ d.whenReady().then(async () => {
       return;
     }
   const t = (e) => e === "media" || e === "microphone" || e === "audioCapture";
-  if (H.defaultSession.setPermissionRequestHandler((e, n, o) => {
+  if (q.defaultSession.setPermissionRequestHandler((e, n, o) => {
     o(t(n));
-  }), H.defaultSession.setPermissionCheckHandler((e, n) => t(n)), H.defaultSession.setDisplayMediaRequestHandler((e, n) => {
+  }), q.defaultSession.setPermissionCheckHandler((e, n) => t(n)), q.defaultSession.setDisplayMediaRequestHandler((e, n) => {
     de.getSources({ types: ["screen"], thumbnailSize: { width: 0, height: 0 } }).then((o) => {
       n(o[0] ? { video: o[0] } : {});
     });
@@ -901,7 +905,7 @@ c.handle("senti:open-app", (t, e) => Ge(e));
 c.handle("senti:close-app", (t, e) => st(e));
 c.handle("senti:clean-temp", () => Ve());
 c.handle("senti:empty-recycle-bin", () => ze());
-c.handle("senti:open-folder", (t, e) => qe(e));
+c.handle("senti:open-folder", (t, e) => He(e));
 c.handle("senti:open-file", (t, e) => We(e));
 c.handle("senti:web-search", (t, e) => {
   const n = String(e ?? "").trim().slice(0, 200);

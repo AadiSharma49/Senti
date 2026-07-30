@@ -1,5 +1,5 @@
 import { api } from './api'
-import { startScreenShare, setFastFrames, getScreenStream } from './screenShare'
+import { startScreenShare, setFastFrames, getScreenStream, pauseFrameUpload } from './screenShare'
 import { startHostPeer, type PeerHandle } from './webrtc'
 
 /**
@@ -84,6 +84,7 @@ async function tick(): Promise<void> {
     if (events.length) await window.senti?.remoteInput?.(events)
 
     // A direct connection carries the video, so uploading JPEGs is pure waste.
+    pauseFrameUpload(peerConnected)
     setFastFrames(!peerConnected)
     // With a peer up, the HTTP queue is only a fallback — poll it lazily.
     nextDelay = peerConnected ? 1000 : POLL_MS
@@ -126,6 +127,9 @@ function closePeer(): void {
   }
   peer = null
   peerConnected = false
+  // The fallback path has to come back to life, or losing the peer would
+  // leave the viewer staring at a frozen picture.
+  pauseFrameUpload(false)
 }
 
 /** Tear down the controlled state on this side. */

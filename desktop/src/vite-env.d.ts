@@ -94,6 +94,8 @@ export interface SystemSnapshot {
   disks?: { drive: string; totalGB: number; freeGB: number; usedPct: number }[]
   topProcesses?: { name: string; memMB: number }[]
   startupApps?: number
+  /** The window in the foreground, so Senti knows what you're actually doing. */
+  activeWindow?: { title: string; process: string } | null
 }
 
 declare global {

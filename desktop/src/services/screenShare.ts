@@ -35,6 +35,8 @@ let timer: number | null = null
 let running = false
 let consecutiveFailures = 0
 let inFlight = false
+/** True while a direct peer connection is carrying the video instead. */
+let uploadPaused = false
 /** Notified when sharing starts/stops, so the UI can show the indicator. */
 const listeners = new Set<(on: boolean) => void>()
 
@@ -70,6 +72,10 @@ export async function getScreenStream(): Promise<MediaStream | null> {
 }
 
 async function captureFrame(): Promise<void> {
+  // A direct peer connection is already carrying the video; encoding and
+  // uploading JPEGs on top of that is pure waste — CPU on this machine and
+  // bandwidth that the video stream could be using instead.
+  if (uploadPaused) return
   // Skip a tick rather than pile up requests if the network is slow.
   if (inFlight) return
   if (!video || !canvas || video.videoWidth === 0) return
@@ -113,13 +119,35 @@ export async function startScreenShare(): Promise<boolean> {
     // getDisplayMedia is the modern, reliable desktop-capture API. Paired with
     // main's setDisplayMediaRequestHandler, it hands back the primary screen
     // with no OS picker dialog to click through — it just starts.
-    stream = await navigator.mediaDevices.getDisplayMedia({
-      video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 5 } },
-      audio: false,
-    })
+    //
+    // 60fps at 1080p is asked for because this stream now feeds WebRTC, where
+    // frame rate IS the experience. (The JPEG fallback samples it far more
+    // slowly on its own timer, so a high capture rate costs it nothing.)
+    //
+    // Audio comes along too: on Windows getDisplayMedia can capture system
+    // loopback, so game and video sound reach the controlling machine. Some
+    // setups refuse it, which is why the whole call retries without audio
+    // rather than leaving you with no picture at all.
+    const video = { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60, max: 60 } }
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: true })
+    } catch {
+      stream = await navigator.mediaDevices.getDisplayMedia({ video, audio: false })
+    }
   } catch {
     stream = null
     return false
+  }
+
+  // Tell the encoder this is moving imagery, not a static document. Without
+  // it Chromium optimises for text sharpness and drops frame rate to keep
+  // detail — exactly backwards for watching a game.
+  for (const t of stream.getVideoTracks()) {
+    try {
+      ;(t as MediaStreamTrack & { contentHint: string }).contentHint = 'motion'
+    } catch {
+      // hint unsupported — the stream still works
+    }
   }
 
   video = document.createElement('video')
@@ -152,6 +180,16 @@ export async function startScreenShare(): Promise<boolean> {
  * session we push to ~5 fps, which is choppy but honest to work with, and drop
  * back the moment the session ends.
  */
+/**
+ * Stop uploading JPEGs while a direct connection carries the video.
+ *
+ * Capture keeps running (the peer is using that same stream) — only the
+ * encode-and-upload work stops, which is the expensive half.
+ */
+export function pauseFrameUpload(paused: boolean): void {
+  uploadPaused = paused
+}
+
 export function setFastFrames(fast: boolean): void {
   const next = fast ? FAST_FRAME_MS : FRAME_INTERVAL_MS
   if (next === currentInterval) return
