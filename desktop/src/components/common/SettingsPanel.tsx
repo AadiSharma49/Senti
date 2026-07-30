@@ -13,6 +13,7 @@ import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../se
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 import { api } from '../../services/api'
 import { AudioCapture } from '../../services/audioCapture'
+import { reflect } from '../../services/reflection'
 import RemoteControlWindow from '../remote/RemoteControlWindow'
 
 /**
@@ -189,6 +190,28 @@ export default function SettingsPanel() {
     const m = await window.senti?.memoryForget?.(id)
     if (Array.isArray(m)) setMemories(m)
   }
+  // Reflect on demand, so you can watch it learn instead of waiting hours.
+  const [learning, setLearning] = useState(false)
+  const [learnMsg, setLearnMsg] = useState('')
+  const learnNow = async () => {
+    setLearning(true)
+    setLearnMsg('')
+    try {
+      const facts = await reflect(true)
+      const m = await window.senti?.memoryList?.()
+      if (Array.isArray(m)) setMemories(m)
+      setLearnMsg(
+        facts.length
+          ? `Learned ${facts.length} new thing${facts.length === 1 ? '' : 's'} about you.`
+          : "Nothing new yet — Senti needs more time watching how you work."
+      )
+    } catch {
+      setLearnMsg("Couldn't reflect just now.")
+    }
+    setLearning(false)
+    setTimeout(() => setLearnMsg(''), 8000)
+  }
+
   const clearAllMemories = async () => {
     if (!window.confirm('Make Senti forget everything it knows about you?')) return
     const m = await window.senti?.memoryClear?.()
@@ -458,22 +481,33 @@ export default function SettingsPanel() {
             <div>
               <h4 className="section-title">What Senti remembers</h4>
               <p className="section-sub">
-                Facts it keeps about you, so it stops asking twice. Stored only on this PC.
+                Facts it keeps about you, so it stops asking twice — some you told it, some it
+                worked out from how you actually use this PC. All stored only on this machine.
               </p>
             </div>
-            {memories.length > 0 && (
+            <div className="flex shrink-0 gap-2">
               <button
-                onClick={clearAllMemories}
-                className="shrink-0 rounded-full border border-red-400/30 px-3 py-1 text-xs text-red-300 hover:bg-red-500/10"
+                onClick={() => void learnNow()}
+                className="rounded-full border border-accent/40 bg-accent/10 px-3 py-1 text-xs text-accent hover:bg-accent/20"
               >
-                Forget all
+                {learning ? 'Thinking…' : 'Learn from my habits'}
               </button>
-            )}
+              {memories.length > 0 && (
+                <button
+                  onClick={clearAllMemories}
+                  className="rounded-full border border-red-400/30 px-3 py-1 text-xs text-red-300 hover:bg-red-500/10"
+                >
+                  Forget all
+                </button>
+              )}
+            </div>
           </div>
+          {learnMsg && <div className="mb-2 text-xs text-accent">{learnMsg}</div>}
           {memories.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/45">
               Nothing yet. Tell Senti something about you or your setup — &ldquo;my main drive
               is D&rdquo;, &ldquo;I hate apps that auto-start&rdquo; — and it&apos;ll keep it.
+              It also works this out on its own over time from how you actually use the PC.
             </div>
           ) : (
             <div className="grid gap-2">

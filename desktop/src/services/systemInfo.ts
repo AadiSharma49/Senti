@@ -1,4 +1,5 @@
 import type { SystemSnapshot } from '../vite-env'
+import { habitsContext } from './reflection'
 
 /**
  * systemInfo — a factual snapshot of THIS machine, gathered in the Electron
@@ -22,6 +23,12 @@ export async function getSystemSnapshot(): Promise<SystemSnapshot | null> {
       if (win) snap.activeWindow = win
     } catch {
       // Not knowing the focused window is survivable.
+    }
+    try {
+      const habits = await habitsContext()
+      if (habits) snap.habits = habits
+    } catch {
+      // No journal yet, or it failed to read — Senti just knows less.
     }
     return snap
   } catch {
@@ -58,6 +65,9 @@ export function describeSystem(s: SystemSnapshot): string {
   // slow?" can be answered about the real, current situation.
   if (s.activeWindow) {
     lines.push(`Focused right now: "${s.activeWindow.title}" (${s.activeWindow.process})`)
+  }
+  if (s.habits) {
+    lines.push('', s.habits)
   }
 
   return lines.join('\n')

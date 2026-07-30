@@ -75,12 +75,26 @@ interface SentiAPI {
   memoryAdd: (text: string) => Promise<SentiMemory[]>
   memoryForget: (id: string) => Promise<SentiMemory[]>
   memoryClear: () => Promise<SentiMemory[]>
+
+  /** The local, aggregated activity journal Senti learns your habits from. */
+  activityRecord: (process: string, title: string, minutes: number) => Promise<ActivityBucket[]>
+  activityList: () => Promise<ActivityBucket[]>
+  activityClear: () => Promise<ActivityBucket[]>
 }
 
 export interface SentiMemory {
   id: string
   text: string
   createdAt: number
+}
+
+/** One aggregated slice of how you spent time — never a raw activity log. */
+export interface ActivityBucket {
+  day: string
+  process: string
+  part: string
+  minutes: number
+  samples: string[]
 }
 
 export interface SystemSnapshot {
@@ -96,6 +110,8 @@ export interface SystemSnapshot {
   startupApps?: number
   /** The window in the foreground, so Senti knows what you're actually doing. */
   activeWindow?: { title: string; process: string } | null
+  /** What Senti has noticed about your habits, from the local journal. */
+  habits?: string
 }
 
 declare global {

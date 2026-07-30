@@ -3,6 +3,7 @@ import { getSystemSnapshot, describeSystem } from './systemInfo'
 import { say, deviceLang } from './greetingService'
 import { useWakeStore } from '../state/wakeStore'
 import { useSettingsStore } from '../state/settingsStore'
+import { reflect } from './reflection'
 
 /**
  * Senti speaking first.
@@ -70,8 +71,17 @@ async function tick(): Promise<void> {
     const now = Date.now()
     if (now - startedAt < WARMUP_MS) return
 
+    // Reflect on the journal now and then — this is Senti forming its own
+    // sense of you rather than waiting to be told things.
+    void reflect().catch(() => {})
+
     const win = await window.senti?.activeWindow?.()
     if (!win || isBoring(win)) return
+
+    // Every tick you stay put is time spent on that app; fold it in.
+    if (current && current.title === win.title && current.process === win.process) {
+      void window.senti?.activityRecord?.(win.process, win.title, CHECK_MS / 60_000)
+    }
 
     // Track how long this window has held focus.
     if (!current || current.title !== win.title || current.process !== win.process) {

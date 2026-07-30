@@ -197,6 +197,89 @@ function saveMemories(list: Memory[]): void {
   }
 }
 
+// --- Activity journal -------------------------------------------------
+//
+// How Senti comes to know you without being told: a rolling, AGGREGATED
+// record of which apps you use, when, and for how long. "VS Code, 4.2 hours,
+// mostly evenings" — not a transcript of your day.
+//
+// Aggregation is the privacy design, not a shortcut. Storing every window
+// title with a timestamp would be a surveillance log of everything you opened,
+// which is exactly what this must never be. Buckets are per app, per day, per
+// rough time-of-day, and old days are dropped entirely.
+//
+// This file never leaves the machine. Only the short summary Senti reflects on
+// (see `remember`) is ever sent anywhere.
+export interface ActivityBucket {
+  /** YYYY-MM-DD */
+  day: string
+  process: string
+  /** morning | afternoon | evening | night */
+  part: string
+  minutes: number
+  /** A few representative titles, for flavour — capped hard. */
+  samples: string[]
+}
+
+const JOURNAL_DAYS = 21
+const MAX_SAMPLES = 3
+const journalFile = () => path.join(app.getPath('userData'), 'activity.json')
+
+function loadJournal(): ActivityBucket[] {
+  try {
+    if (!existsSync(journalFile())) return []
+    const parsed = JSON.parse(readFileSync(journalFile(), 'utf8'))
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function saveJournal(list: ActivityBucket[]): void {
+  try {
+    mkdirSync(path.dirname(journalFile()), { recursive: true })
+    writeFileSync(journalFile(), JSON.stringify(list))
+  } catch {
+    // ignore
+  }
+}
+
+function partOfDay(d: Date): string {
+  const h = d.getHours()
+  if (h < 6) return 'night'
+  if (h < 12) return 'morning'
+  if (h < 18) return 'afternoon'
+  return 'evening'
+}
+
+/** Fold one observation into the aggregate, and prune anything old. */
+function recordActivity(processRaw: unknown, titleRaw: unknown, minutesRaw: unknown): ActivityBucket[] {
+  const process = String(processRaw ?? '').slice(0, 60).toLowerCase()
+  const title = String(titleRaw ?? '').slice(0, 120)
+  const minutes = Math.max(0, Math.min(120, Number(minutesRaw) || 0))
+  if (!process || !minutes) return loadJournal()
+
+  const now = new Date()
+  const day = now.toISOString().slice(0, 10)
+  const part = partOfDay(now)
+
+  const cutoff = new Date(now.getTime() - JOURNAL_DAYS * 86_400_000).toISOString().slice(0, 10)
+  const list = loadJournal().filter((b) => b.day >= cutoff)
+
+  let bucket = list.find((b) => b.day === day && b.process === process && b.part === part)
+  if (!bucket) {
+    bucket = { day, process, part, minutes: 0, samples: [] }
+    list.push(bucket)
+  }
+  bucket.minutes = Math.round((bucket.minutes + minutes) * 10) / 10
+  if (title && !bucket.samples.includes(title) && bucket.samples.length < MAX_SAMPLES) {
+    bucket.samples.push(title)
+  }
+
+  saveJournal(list)
+  return list
+}
+
 /** Add a fact, skipping near-duplicates. Returns the updated list. */
 function addMemory(textRaw: string): Memory[] {
   const text = String(textRaw || '').trim().slice(0, 300)
@@ -1464,6 +1547,16 @@ ipcMain.handle('senti:memory-forget', (_e: unknown, id: unknown) => {
 })
 ipcMain.handle('senti:memory-clear', () => {
   saveMemories([])
+  return []
+})
+
+// The activity journal Senti learns your habits from. Local, aggregated.
+ipcMain.handle('senti:activity-record', (_e: unknown, p: unknown, t: unknown, m: unknown) =>
+  recordActivity(p, t, m)
+)
+ipcMain.handle('senti:activity-list', () => loadJournal())
+ipcMain.handle('senti:activity-clear', () => {
+  saveJournal([])
   return []
 })
 

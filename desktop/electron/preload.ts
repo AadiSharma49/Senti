@@ -62,6 +62,12 @@ contextBridge.exposeInMainWorld('senti', {
   memoryAdd: (text: string) => ipcRenderer.invoke('senti:memory-add', text),
   memoryForget: (id: string) => ipcRenderer.invoke('senti:memory-forget', id),
   memoryClear: () => ipcRenderer.invoke('senti:memory-clear'),
+
+  /** The local, aggregated activity journal Senti learns your habits from. */
+  activityRecord: (process: string, title: string, minutes: number) =>
+    ipcRenderer.invoke('senti:activity-record', process, title, minutes),
+  activityList: () => ipcRenderer.invoke('senti:activity-list'),
+  activityClear: () => ipcRenderer.invoke('senti:activity-clear'),
   /** Hold the machine awake while a monitored task runs. */
   keepAwake: (on: boolean, holder: string) => ipcRenderer.invoke('senti:keep-awake', on, holder),
 
