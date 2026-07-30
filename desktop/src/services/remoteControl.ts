@@ -1,5 +1,6 @@
 import { api } from './api'
 import { peerScreen } from './peers'
+import { startViewerPeer, type PeerHandle } from './webrtc'
 
 /**
  * Driving another machine — the sending half of remote control.
@@ -34,6 +35,9 @@ let queue: RemoteEvent[] = []
 let pendingMove: RemoteEvent | null = null
 let flushTimer: number | null = null
 let beatTimer: number | null = null
+/** Direct connection to the target, when one comes up. */
+let peer: PeerHandle | null = null
+let peerLive = false
 
 export function currentSession(): string | null {
   return sessionId
@@ -92,6 +96,13 @@ export async function endSession(): Promise<void> {
   queue = []
   pendingMove = null
   stopPumps()
+  try {
+    peer?.close()
+  } catch {
+    // already closed
+  }
+  peer = null
+  peerLive = false
   if (id) {
     try {
       await api(SESSION_PATH, { method: 'POST', body: { action: 'end', id } })
@@ -116,11 +127,51 @@ async function flush(): Promise<void> {
   pendingMove = null
   queue = []
   if (!batch.length) return
+
+  // Straight down the data channel when it's up — no HTTP round trip, which
+  // is what makes clicking feel immediate instead of ~150ms behind.
+  if (peerLive && peer?.send(batch)) return
+
   try {
     await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
   } catch {
     // Dropped input is better than a growing backlog of stale clicks.
   }
+}
+
+/**
+ * Try for a direct connection to the target. Resolves true once video is
+ * actually flowing; on failure the caller keeps using the frame path, so a
+ * network that won't allow peer-to-peer degrades instead of going black.
+ */
+export async function connectPeer(onStream: (s: MediaStream) => void): Promise<boolean> {
+  if (!sessionId) return false
+  try {
+    peer = await startViewerPeer(
+      sessionId,
+      onStream,
+      (ok) => {
+        peerLive = ok
+      }
+    )
+  } catch {
+    peer = null
+    peerLive = false
+    return false
+  }
+
+  // Give ICE a fair chance before declaring it a lost cause.
+  const deadline = Date.now() + 15_000
+  while (Date.now() < deadline) {
+    if (peerLive) return true
+    if (!sessionId) return false
+    await new Promise((r) => setTimeout(r, 400))
+  }
+  return false
+}
+
+export function isPeerLive(): boolean {
+  return peerLive
 }
 
 function startPumps(): void {

@@ -75,6 +75,8 @@ contextBridge.exposeInMainWorld('senti', {
   webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
+  /** The foreground window's title + process, so Senti can speak up about it. */
+  activeWindow: () => ipcRenderer.invoke('senti:active-window'),
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => ipcRenderer.invoke('senti:remote-input', events),
   remoteInputStop: () => ipcRenderer.invoke('senti:remote-input-stop'),

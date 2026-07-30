@@ -1,5 +1,6 @@
 import { api } from './api'
-import { startScreenShare, setFastFrames } from './screenShare'
+import { startScreenShare, setFastFrames, getScreenStream } from './screenShare'
+import { startHostPeer, type PeerHandle } from './webrtc'
 
 /**
  * Being controlled — the receiving half of remote control.
@@ -25,6 +26,9 @@ let busy = false
 /** Explicit, so a tick already in flight when we stop can't reschedule itself. */
 let hostRunning = false
 let activeSessionId: string | null = null
+/** The direct peer connection, when one is up. */
+let peer: PeerHandle | null = null
+let peerConnected = false
 const listeners = new Set<(on: boolean) => void>()
 
 /** Notified when this machine starts/stops being remotely controlled. */
@@ -70,12 +74,19 @@ async function tick(): Promise<void> {
       void startScreenShare()
       void window.senti?.keepAwake?.(true, 'remoteControl')
       emit()
+      void openPeer(session.id)
     }
 
+    // Keep draining the HTTP queue even with a peer up: it's the fallback
+    // path, and anything already queued there still deserves to be applied.
     const inp = await api<{ events?: unknown[] }>(INPUT_PATH)
     const events = inp.ok ? inp.data?.events ?? [] : []
     if (events.length) await window.senti?.remoteInput?.(events)
-    nextDelay = POLL_MS
+
+    // A direct connection carries the video, so uploading JPEGs is pure waste.
+    setFastFrames(!peerConnected)
+    // With a peer up, the HTTP queue is only a fallback — poll it lazily.
+    nextDelay = peerConnected ? 1000 : POLL_MS
   } catch {
     // Offline — fall back to the idle cadence and try again.
   } finally {
@@ -84,9 +95,43 @@ async function tick(): Promise<void> {
   }
 }
 
+/**
+ * Offer this machine's screen over a direct connection, and take input back on
+ * the data channel. If it never connects, the frame + HTTP path is still
+ * running underneath, so control degrades instead of breaking.
+ */
+async function openPeer(sessionId: string): Promise<void> {
+  closePeer()
+  try {
+    const screen = await getScreenStream()
+    if (!screen) return
+    peer = await startHostPeer(
+      sessionId,
+      screen,
+      (events) => void window.senti?.remoteInput?.(events),
+      (ok) => {
+        peerConnected = ok
+      }
+    )
+  } catch {
+    closePeer()
+  }
+}
+
+function closePeer(): void {
+  try {
+    peer?.close()
+  } catch {
+    // already gone
+  }
+  peer = null
+  peerConnected = false
+}
+
 /** Tear down the controlled state on this side. */
 async function endLocally(): Promise<void> {
   activeSessionId = null
+  closePeer()
   setFastFrames(false)
   void window.senti?.remoteInputStop?.()
   void window.senti?.keepAwake?.(false, 'remoteControl')

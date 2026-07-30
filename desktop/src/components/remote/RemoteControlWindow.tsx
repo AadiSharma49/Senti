@@ -5,6 +5,7 @@ import {
   endSession,
   sendEvent,
   targetFrame,
+  connectPeer,
   type StartResult,
 } from '../../services/remoteControl'
 
@@ -30,7 +31,10 @@ export default function RemoteControlWindow({
   const [message, setMessage] = useState('')
   const [pin, setPin] = useState('')
   const [frame, setFrame] = useState<string | null>(null)
+  /** True once video is flowing peer-to-peer; false means the frame fallback. */
+  const [direct, setDirect] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
   const lastMove = useRef(0)
 
   // Open the session as soon as the window appears.
@@ -53,9 +57,28 @@ export default function RemoteControlWindow({
     }
   }, [deviceId, deviceName])
 
-  // Pull the target's screen once we're live.
+  // Once we're live, try for a DIRECT connection — real video, real-time
+  // input. The frame path keeps running underneath until it succeeds, so
+  // there's never a black screen while ICE negotiates.
   useEffect(() => {
     if (phase !== 'live') return
+    let alive = true
+    void (async () => {
+      const ok = await connectPeer((stream) => {
+        if (!alive) return
+        const v = videoRef.current
+        if (v && v.srcObject !== stream) v.srcObject = stream
+      })
+      if (alive && ok) setDirect(true)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [phase])
+
+  // Frame fallback: only while the direct connection isn't carrying video.
+  useEffect(() => {
+    if (phase !== 'live' || direct) return
     let alive = true
     const pull = async () => {
       const f = await targetFrame(deviceId)
@@ -67,7 +90,7 @@ export default function RemoteControlWindow({
       alive = false
       clearInterval(t)
     }
-  }, [phase, deviceId])
+  }, [phase, direct, deviceId])
 
   // Keyboard goes to the target while we're live. Capture phase so the app's
   // own shortcuts don't swallow keys meant for the other machine.
@@ -94,16 +117,36 @@ export default function RemoteControlWindow({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [phase, onClose])
 
-  /** Where the pointer is inside the IMAGE, 0..1 — never window pixels. */
+  /**
+   * Where the pointer is on the REMOTE screen, 0..1.
+   *
+   * The element is letterboxed: `object-contain` fits the picture inside the
+   * box and leaves bars on two sides. Measuring against the element's bounding
+   * rect would therefore be wrong everywhere except a perfect aspect match —
+   * clicks would drift steadily worse the more the aspect ratios differ. So we
+   * work out where the picture ACTUALLY sits inside the box first.
+   */
   const norm = (e: React.MouseEvent): { x: number; y: number } | null => {
-    const el = imgRef.current
+    const el = direct ? videoRef.current : imgRef.current
     if (!el) return null
     const r = el.getBoundingClientRect()
     if (!r.width || !r.height) return null
-    return {
-      x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-      y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
-    }
+
+    const iw = direct ? videoRef.current?.videoWidth ?? 0 : imgRef.current?.naturalWidth ?? 0
+    const ih = direct ? videoRef.current?.videoHeight ?? 0 : imgRef.current?.naturalHeight ?? 0
+    if (!iw || !ih) return null
+
+    const scale = Math.min(r.width / iw, r.height / ih)
+    const shownW = iw * scale
+    const shownH = ih * scale
+    const offX = (r.width - shownW) / 2
+    const offY = (r.height - shownH) / 2
+
+    const x = (e.clientX - r.left - offX) / shownW
+    const y = (e.clientY - r.top - offY) / shownH
+    // A click in the letterbox bar isn't on the remote screen at all.
+    if (x < 0 || x > 1 || y < 0 || y > 1) return null
+    return { x, y }
   }
 
   const onMove = (e: React.MouseEvent) => {
@@ -141,7 +184,11 @@ export default function RemoteControlWindow({
           <span className={`h-2 w-2 rounded-full ${phase === 'live' ? 'bg-green-400' : 'bg-amber-400'}`} />
           <span className="font-semibold">{deviceName}</span>
           <span className="text-white/40">
-            {phase === 'live' ? 'connected — your mouse and keyboard control this machine' : 'connecting'}
+            {phase !== 'live'
+              ? 'connecting'
+              : direct
+              ? 'direct connection — smooth, your mouse and keyboard control this machine'
+              : 'connected via relay — negotiating a direct link for smoother video'}
           </span>
         </div>
         <button
@@ -153,22 +200,34 @@ export default function RemoteControlWindow({
       </div>
 
       {phase === 'live' ? (
-        <div className="flex flex-1 items-center justify-center overflow-hidden bg-black">
-          {frame ? (
-            <img
-              ref={imgRef}
-              src={frame}
-              alt={`${deviceName} screen`}
-              draggable={false}
-              onMouseMove={onMove}
-              onMouseDown={onClick}
-              onContextMenu={(e) => e.preventDefault()}
-              onWheel={(e) => sendEvent({ t: 'scroll', d: e.deltaY })}
-              className="max-h-full max-w-full cursor-crosshair select-none"
-            />
-          ) : (
-            <div className="text-sm text-white/40">Waiting for {deviceName}&apos;s screen…</div>
-          )}
+        <div
+          className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
+          onMouseMove={onMove}
+          onMouseDown={onClick}
+          onContextMenu={(e) => e.preventDefault()}
+          onWheel={(e) => sendEvent({ t: 'scroll', d: e.deltaY })}
+        >
+          {/* Direct video: full size, smooth. */}
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`h-full w-full cursor-crosshair select-none object-contain ${direct ? '' : 'hidden'}`}
+          />
+          {/* Fallback still frames until (or unless) the direct link comes up. */}
+          {!direct &&
+            (frame ? (
+              <img
+                ref={imgRef}
+                src={frame}
+                alt={`${deviceName} screen`}
+                draggable={false}
+                className="h-full w-full cursor-crosshair select-none object-contain"
+              />
+            ) : (
+              <div className="text-sm text-white/40">Waiting for {deviceName}&apos;s screen…</div>
+            ))}
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center px-6">

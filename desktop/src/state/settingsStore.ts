@@ -35,6 +35,12 @@ export interface SettingsState {
      * Off by default — and even on, nothing connects without the remote PIN.
      */
     remoteControl: boolean
+    /**
+     * Let Senti start conversations — notice what you're doing and say
+     * something unprompted. It reads the foreground window's TITLE only, on
+     * this machine; screen contents are never captured or sent.
+     */
+    proactive: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
     /**
@@ -106,6 +112,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   // Someone driving your mouse and keyboard is the biggest permission here —
   // it stays off until you deliberately turn it on and set a PIN.
   remoteControl: false,
+  proactive: true,
   systemControl: true,
   alwaysListening: true,
 }

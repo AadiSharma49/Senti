@@ -58,6 +58,17 @@ export function isSharing(): boolean {
   return running
 }
 
+/**
+ * The live capture, for WebRTC to send directly to the controlling machine.
+ * Starts capture if it isn't already running, so a peer connection never has
+ * to care whether frame-uploading happened to be on.
+ */
+export async function getScreenStream(): Promise<MediaStream | null> {
+  if (stream) return stream
+  const ok = await startScreenShare()
+  return ok ? stream : null
+}
+
 async function captureFrame(): Promise<void> {
   // Skip a tick rather than pile up requests if the network is slow.
   if (inFlight) return

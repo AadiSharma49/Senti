@@ -704,6 +704,62 @@ function emptyRecycleBin(): { freedMB: number; files: number } {
   }
 }
 
+// --- What you're doing right now --------------------------------------
+//
+// The foreground window's title and process — "Marvel's Spider-Man",
+// "main.ts - Senti - Visual Studio Code", "Some Video - YouTube - Chrome".
+//
+// This is deliberately the TITLE BAR and nothing else. Senti does not read
+// your screen: it can tell you're in VS Code, or which video is playing,
+// because Windows already puts that in the title. Reading screen CONTENT
+// would be a different thing entirely — that's surveillance, and it isn't
+// built. Everything here stays on the machine and is never uploaded raw.
+const ACTIVE_WINDOW_PS = `
+$ErrorActionPreference='SilentlyContinue'
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public class SentiWin {
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
+  [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
+}
+"@
+$h = [SentiWin]::GetForegroundWindow()
+$sb = New-Object Text.StringBuilder 512
+[void][SentiWin]::GetWindowText($h, $sb, 512)
+$pid2 = 0
+[void][SentiWin]::GetWindowThreadProcessId($h, [ref]$pid2)
+$proc = (Get-Process -Id $pid2).ProcessName
+[Console]::Out.Write((ConvertTo-Json @{ title = $sb.ToString(); process = $proc } -Compress))
+`
+
+function activeWindow(): Promise<{ title: string; process: string } | null> {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', ACTIVE_WINDOW_PS],
+        { timeout: 5000, windowsHide: true },
+        (err, stdout) => {
+          if (err || !stdout) return resolve(null)
+          try {
+            const parsed = JSON.parse(stdout.trim())
+            const title = String(parsed.title || '').slice(0, 200)
+            const proc = String(parsed.process || '').slice(0, 60)
+            resolve(title || proc ? { title, process: proc } : null)
+          } catch {
+            resolve(null)
+          }
+        }
+      )
+    } catch {
+      resolve(null)
+    }
+  })
+}
+
 // --- Remote input injection -------------------------------------------
 //
 // Driving this machine from another one: real mouse moves, clicks, scrolls and
@@ -1432,6 +1488,9 @@ ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
 })
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
 ipcMain.handle('senti:power', (_e: unknown, mode: unknown) => powerAction(mode))
+
+// What you're focused on — so Senti can speak up about it. Title bar only.
+ipcMain.handle('senti:active-window', () => activeWindow())
 
 // Remote control: apply input from the machine driving this one.
 ipcMain.handle('senti:remote-input', (_e: unknown, events: unknown) => injectInput(events))

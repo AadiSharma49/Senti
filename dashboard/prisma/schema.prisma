@@ -119,9 +119,33 @@ model RemoteSession {
   heartbeatAt    DateTime @default(now())
   endedAt        DateTime?
 
-  events RemoteInput[]
+  events  RemoteInput[]
+  signals RemoteSignal[]
 
   @@index([targetDeviceId, state])
+}
+
+/// WebRTC handshake traffic for a session: offers, answers, ICE candidates.
+///
+/// Only the introduction goes through here. Once the two machines have found
+/// each other, the screen video and your keystrokes flow directly between them
+/// and never touch this server again — which is both far faster and far more
+/// private than relaying frames through a database.
+///
+/// Rows are deleted as soon as they're read; a used handshake is worthless.
+model RemoteSignal {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   RemoteSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// Which end sent it, so each side only ever picks up the other's messages.
+  fromViewer Boolean
+  /// offer | answer | ice
+  kind      String
+  /// JSON payload (SDP or an ICE candidate).
+  payload   String
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, fromViewer, createdAt])
 }
 
 /// One queued input event (a move, click, scroll, or keystroke) travelling

@@ -54,6 +54,37 @@ export class AudioCapture {
     this.config = { ...DEFAULT_CONFIG, ...config }
   }
 
+  /** The microphone the user picked, or '' to follow the Windows default. */
+  static preferredDeviceId(): string {
+    try {
+      return localStorage.getItem('senti:micDeviceId') || ''
+    } catch {
+      return ''
+    }
+  }
+
+  /** Remember which microphone to use. Empty clears the preference. */
+  static setPreferredDeviceId(id: string): void {
+    try {
+      if (id) localStorage.setItem('senti:micDeviceId', id)
+      else localStorage.removeItem('senti:micDeviceId')
+    } catch {
+      // storage unavailable — we'll just use the default
+    }
+  }
+
+  /** Input devices, for the picker. Labels need permission to have been given. */
+  static async listInputs(): Promise<{ id: string; label: string }[]> {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices()
+      return devices
+        .filter((d) => d.kind === 'audioinput')
+        .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }))
+    } catch {
+      return []
+    }
+  }
+
   // --- Public API ---------------------------------------------------
 
   /** Request microphone permission without starting capture */
@@ -78,8 +109,22 @@ export class AudioCapture {
     try {
       this.setState('requesting')
 
-      // Request microphone access
-      this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      // Request microphone access.
+      //
+      // Honouring a SAVED device is the fix for the most common "Senti can't
+      // hear me": Windows' default input is often the wrong one (a webcam mic,
+      // a disconnected headset, a virtual cable), and no amount of tuning the
+      // wake word helps when the audio is coming from a dead device. If the
+      // saved one is gone, fall back to the default rather than failing shut.
+      const preferred = AudioCapture.preferredDeviceId()
+      try {
+        this.stream = await navigator.mediaDevices.getUserMedia({
+          audio: preferred ? { deviceId: { exact: preferred } } : true,
+        })
+      } catch (e) {
+        if (!preferred) throw e
+        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      }
       this.deviceLabel = this.stream.getAudioTracks()[0]?.label || null
 
       // Create audio context

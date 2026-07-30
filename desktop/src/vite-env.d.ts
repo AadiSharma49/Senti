@@ -55,6 +55,8 @@ interface SentiAPI {
   webSearch: (query: string) => Promise<{ ok: boolean }>
   lockWorkstation: () => Promise<boolean>
   power: (mode: string) => Promise<boolean>
+  /** The foreground window's title + process, so Senti can speak up about it. */
+  activeWindow: () => Promise<{ title: string; process: string } | null>
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => Promise<boolean>
   remoteInputStop: () => Promise<boolean>

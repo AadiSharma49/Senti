@@ -12,6 +12,7 @@ import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 import { api } from '../../services/api'
+import { AudioCapture } from '../../services/audioCapture'
 import RemoteControlWindow from '../remote/RemoteControlWindow'
 
 /**
@@ -59,6 +60,32 @@ export default function SettingsPanel() {
       alive = false
     }
   }, [open])
+
+  // Microphone choice. Windows' default input is frequently the wrong device,
+  // and that — not the wake word — is usually why Senti "can't hear you".
+  const [micList, setMicList] = useState<{ id: string; label: string }[]>([])
+  const [micId, setMicId] = useState(AudioCapture.preferredDeviceId())
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    void AudioCapture.listInputs().then((l) => alive && setMicList(l))
+    return () => {
+      alive = false
+    }
+  }, [open])
+
+  const changeMic = async (id: string) => {
+    setMicId(id)
+    AudioCapture.setPreferredDeviceId(id)
+    // Re-open the mic on the new device so the change takes effect now,
+    // not on the next restart.
+    const wake = useWakeStore.getState()
+    if (wake.enabled) {
+      wake.stop()
+      await new Promise((r) => setTimeout(r, 300))
+      void wake.start()
+    }
+  }
 
   // The PIN another device must enter to drive THIS machine. We only ever
   // learn whether one is set — never what it is.
@@ -317,6 +344,7 @@ export default function SettingsPanel() {
               { key: 'screenShare', title: 'Share screen to my devices', hint: 'Stream this PC live to your own phone/laptop. Shows a red badge while active.' },
               { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Senti devices.' },
               { key: 'remoteControl', title: 'Allow remote control of this PC', hint: 'Let another of your devices drive this mouse and keyboard. Needs a remote PIN below. A banner shows the whole time, and you can stop it instantly.' },
+              { key: 'proactive', title: 'Let Senti talk to me first', hint: 'It notices what you’re doing and speaks up now and then. Reads the window title only — never your screen — and stays quiet for long stretches.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
               { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },
               { key: 'cleanup', title: 'Delete temporary files', hint: 'Frees disk space. Off by default.' },
@@ -351,6 +379,24 @@ export default function SettingsPanel() {
                       <span className={wakeStatus === 'Listening.' ? 'text-green-400' : 'text-amber-300'}>
                         {wakeStatus}
                       </span>
+                    </div>
+
+                    {/* Which microphone. The usual cause of "it can't hear me"
+                        is Windows defaulting to the wrong input entirely. */}
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-white/35">Input</span>
+                      <select
+                        value={micId}
+                        onChange={(e) => void changeMic(e.target.value)}
+                        className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-accent/60"
+                      >
+                        <option value="">Windows default</option>
+                        {micList.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
                     {/* Talk and watch it move: separates a dead mic from a misheard name. */}

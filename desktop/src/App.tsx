@@ -13,6 +13,7 @@ import { startReporting, stopReporting } from './services/statusReporter'
 import { startCommandPolling, stopCommandPolling } from './services/commandPoller'
 import { startClipboardSync, stopClipboardSync } from './services/clipboardSync'
 import { startRemoteHost, stopRemoteHost } from './services/remoteHost'
+import { startProactive, stopProactive } from './services/proactive'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -91,6 +92,12 @@ function App() {
     if (signedIn && settings.permissions.remoteControl) startRemoteHost()
     else stopRemoteHost()
   }, [signedIn, settings.permissions.remoteControl])
+
+  // Let Senti notice what you're up to and speak first now and then.
+  useEffect(() => {
+    if (signedIn && settings.permissions.proactive) startProactive()
+    else stopProactive()
+  }, [signedIn, settings.permissions.proactive])
 
   // Setup wizard — its own full-window flow.
   if (needsSetup) {
