@@ -14,6 +14,8 @@ import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../servi
 import { api } from '../../services/api'
 import { AudioCapture } from '../../services/audioCapture'
 import { reflect } from '../../services/reflection'
+import { LANGUAGES, savedLang, setLang } from '../../services/greetingService'
+import { getTurn, setTurn } from '../../services/webrtc'
 import RemoteControlWindow from '../remote/RemoteControlWindow'
 import RemoteFiles from '../remote/RemoteFiles'
 
@@ -65,6 +67,7 @@ export default function SettingsPanel() {
 
   // Microphone choice. Windows' default input is frequently the wrong device,
   // and that — not the wake word — is usually why Senti "can't hear you".
+  const [lang, setLangState] = useState(savedLang())
   const [micList, setMicList] = useState<{ id: string; label: string }[]>([])
   const [micId, setMicId] = useState(AudioCapture.preferredDeviceId())
   useEffect(() => {
@@ -128,6 +131,25 @@ export default function SettingsPanel() {
       setPinMsg('Remote control turned off for this PC.')
       setTimeout(() => setPinMsg(''), 6000)
     }
+  }
+
+  // Optional TURN relay for networks that block a direct peer connection.
+  const [turnUrls, setTurnUrls] = useState(getTurn()?.urls ?? '')
+  const [turnUser, setTurnUser] = useState(getTurn()?.username ?? '')
+  const [turnPass, setTurnPass] = useState(getTurn()?.credential ?? '')
+  const [turnMsg, setTurnMsg] = useState('')
+  const saveTurn = () => {
+    setTurn(turnUrls ? { urls: turnUrls, username: turnUser, credential: turnPass } : null)
+    setTurnMsg(turnUrls ? 'Relay saved — it will be used on the next connection.' : 'Relay cleared.')
+    setTimeout(() => setTurnMsg(''), 6000)
+  }
+  const clearTurn = () => {
+    setTurn(null)
+    setTurnUrls('')
+    setTurnUser('')
+    setTurnPass('')
+    setTurnMsg('Relay cleared.')
+    setTimeout(() => setTurnMsg(''), 6000)
   }
 
   // Which device we're driving right now (opens the control window).
@@ -424,6 +446,26 @@ export default function SettingsPanel() {
                       </select>
                     </div>
 
+                    {/* Speech is transcribed on-device and auto-detects the
+                        language; this is which one Senti replies in. */}
+                    <div className="flex items-center gap-2">
+                      <span className="shrink-0 text-white/35">Language</span>
+                      <select
+                        value={lang}
+                        onChange={(e) => {
+                          setLangState(e.target.value)
+                          setLang(e.target.value)
+                        }}
+                        className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-accent/60"
+                      >
+                        {LANGUAGES.map((l) => (
+                          <option key={l.tag} value={l.tag}>
+                            {l.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     {/* Talk and watch it move: separates a dead mic from a misheard name. */}
                     <div className="flex items-center gap-2">
                       <span className="text-white/35">Mic</span>
@@ -707,6 +749,54 @@ export default function SettingsPanel() {
                 )}
               </div>
               {pinMsg && <div className="mt-2 text-xs text-accent">{pinMsg}</div>}
+            </div>
+
+            {/* TURN relay, for networks where a direct link can't form. */}
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="font-semibold text-white">TURN relay (optional)</div>
+              <p className="mt-1 text-xs text-secondary">
+                Remote control connects the two machines directly, which works on most home
+                networks. Some networks won&apos;t allow it and it falls back to slow video —
+                if that keeps happening, paste TURN credentials here to route around it.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                <input
+                  value={turnUrls}
+                  onChange={(e) => setTurnUrls(e.target.value)}
+                  placeholder="turn:host:3478"
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs outline-none focus:border-accent/60"
+                />
+                <input
+                  value={turnUser}
+                  onChange={(e) => setTurnUser(e.target.value)}
+                  placeholder="username"
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs outline-none focus:border-accent/60"
+                />
+                <input
+                  type="password"
+                  value={turnPass}
+                  onChange={(e) => setTurnPass(e.target.value)}
+                  placeholder="credential"
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs outline-none focus:border-accent/60"
+                />
+              </div>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={saveTurn}
+                  className="rounded-full bg-accent px-4 py-2 text-xs font-semibold text-black hover:brightness-110"
+                >
+                  Save relay
+                </button>
+                {turnUrls && (
+                  <button
+                    onClick={clearTurn}
+                    className="rounded-full border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/10"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              {turnMsg && <div className="mt-2 text-xs text-accent">{turnMsg}</div>}
             </div>
           </motion.section>
         )}

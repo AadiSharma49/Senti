@@ -10,13 +10,60 @@ import { api } from './api'
  */
 const GREETING_PATH = '/api/device/greeting'
 
+const LANG_KEY = 'senti:language'
+
+/**
+ * The language Senti speaks and listens in.
+ *
+ * A saved choice wins over the OS locale, because the two often disagree:
+ * plenty of people run Windows in English but would rather be spoken to in
+ * their own language. Empty means "follow the system".
+ */
 export function deviceLang(): string {
+  try {
+    const saved = localStorage.getItem(LANG_KEY)
+    if (saved) return saved
+  } catch {
+    // storage unavailable — fall through to the system locale
+  }
   try {
     return navigator.language || 'en-US'
   } catch {
     return 'en-US'
   }
 }
+
+export function savedLang(): string {
+  try {
+    return localStorage.getItem(LANG_KEY) || ''
+  } catch {
+    return ''
+  }
+}
+
+export function setLang(tag: string): void {
+  try {
+    if (tag) localStorage.setItem(LANG_KEY, tag)
+    else localStorage.removeItem(LANG_KEY)
+  } catch {
+    // ignore — the system locale still applies
+  }
+}
+
+/** Offered in the Control Center. Whisper handles all of these on-device. */
+export const LANGUAGES: { tag: string; label: string }[] = [
+  { tag: '', label: 'Follow system' },
+  { tag: 'en-US', label: 'English' },
+  { tag: 'hi-IN', label: 'हिन्दी / Hindi' },
+  { tag: 'es-ES', label: 'Español' },
+  { tag: 'fr-FR', label: 'Français' },
+  { tag: 'de-DE', label: 'Deutsch' },
+  { tag: 'pt-BR', label: 'Português' },
+  { tag: 'ja-JP', label: '日本語' },
+  { tag: 'zh-CN', label: '中文' },
+  { tag: 'ar-SA', label: 'العربية' },
+  { tag: 'ru-RU', label: 'Русский' },
+]
 
 function timeOfDay(): string {
   const h = new Date().getHours()

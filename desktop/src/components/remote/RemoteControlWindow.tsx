@@ -8,6 +8,7 @@ import {
   connectPeer,
   type StartResult,
 } from '../../services/remoteControl'
+import { QUALITY, type QualityPreset } from '../../services/screenShare'
 
 /**
  * Driving another machine: its screen fills this window, and your mouse and
@@ -40,6 +41,7 @@ export default function RemoteControlWindow({
    * difference between "watchable" and "playable".
    */
   const [locked, setLocked] = useState(false)
+  const [quality, setQuality] = useState<QualityPreset>('balanced')
   const imgRef = useRef<HTMLImageElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
@@ -233,6 +235,25 @@ export default function RemoteControlWindow({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {phase === 'live' && direct && (
+            <select
+              value={quality}
+              onChange={(e) => {
+                const p = e.target.value as QualityPreset
+                setQuality(p)
+                // The host owns the capture, so the choice travels to it.
+                sendEvent({ t: 'quality', preset: p } as never)
+              }}
+              title="More pixels or more frames — a fixed connection can't give you both"
+              className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white outline-none focus:border-accent/60"
+            >
+              {(Object.keys(QUALITY) as QualityPreset[]).map((k) => (
+                <option key={k} value={k}>
+                  {QUALITY[k].label}
+                </option>
+              ))}
+            </select>
+          )}
           {phase === 'live' && (
             <button
               onClick={toggleLock}

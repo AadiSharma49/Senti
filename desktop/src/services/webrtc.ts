@@ -12,14 +12,56 @@ import { api } from './api'
  * Input rides a data channel rather than HTTP, which removes the ~150ms poll
  * from every click — the single biggest reason the old path felt laggy.
  *
- * Honest limitation: this uses public STUN and no TURN relay. On most home
- * networks the direct connection succeeds; behind a symmetric NAT (some
- * corporate and mobile networks) it can't, and the caller falls back to the
- * frame path rather than leaving you with a black screen.
+ * Honest limitation: with STUN alone, most home networks connect directly but
+ * a symmetric NAT (some corporate and mobile networks) can't. Add TURN
+ * credentials in the Control Center to cover that case; without them the
+ * caller falls back to the frame path rather than showing a black screen.
  */
 const SIGNAL_PATH = '/api/device/remote/signal'
-const ICE: RTCConfiguration = {
-  iceServers: [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }],
+
+/**
+ * STUN lets two machines discover each other's public address; that's enough
+ * on most home networks. Behind a symmetric NAT it isn't, and the only fix is
+ * a TURN relay — which costs money to run, so there's no free default. Paste
+ * credentials in the Control Center and they're used automatically.
+ */
+const TURN_KEY = 'senti:turn'
+
+export interface TurnConfig {
+  urls: string
+  username?: string
+  credential?: string
+}
+
+export function getTurn(): TurnConfig | null {
+  try {
+    const raw = localStorage.getItem(TURN_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return typeof parsed?.urls === 'string' && parsed.urls ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+export function setTurn(cfg: TurnConfig | null): void {
+  try {
+    if (cfg?.urls) localStorage.setItem(TURN_KEY, JSON.stringify(cfg))
+    else localStorage.removeItem(TURN_KEY)
+  } catch {
+    // storage unavailable — STUN-only for this session
+  }
+}
+
+function iceConfig(): RTCConfiguration {
+  const servers: RTCIceServer[] = [
+    { urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] },
+  ]
+  const turn = getTurn()
+  if (turn) {
+    servers.push({ urls: turn.urls, username: turn.username, credential: turn.credential })
+  }
+  return { iceServers: servers }
 }
 const POLL_MS = 700
 /** If the peers can't connect in this long, the caller falls back. */
@@ -100,7 +142,7 @@ export async function startViewerPeer(
   onStream: (stream: MediaStream) => void,
   onConnected: (ok: boolean) => void
 ): Promise<PeerHandle> {
-  const pc = new RTCPeerConnection(ICE)
+  const pc = new RTCPeerConnection(iceConfig())
   let stopPoll: (() => void) | null = null
   let channelOpen = false
 
@@ -180,7 +222,7 @@ export async function startHostPeer(
   onInput: (events: unknown[]) => void,
   onConnected: (ok: boolean) => void
 ): Promise<PeerHandle> {
-  const pc = new RTCPeerConnection(ICE)
+  const pc = new RTCPeerConnection(iceConfig())
   const videoSenders: RTCRtpSender[] = []
   for (const track of screen.getVideoTracks()) videoSenders.push(pc.addTrack(track, screen))
   // System audio, when the OS allowed us to capture it.

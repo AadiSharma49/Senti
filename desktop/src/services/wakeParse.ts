@@ -34,11 +34,30 @@ const ADDRESS_PATTERNS = [
  */
 const BARE_ONLY_PATTERNS = ['send it', 'set me', 'sent it', 'sent me']
 
-/** Run-up that can precede the name: "HEY Senti", "OK Senti, um, open Chrome". */
-const FILLERS = ['hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh', 'er', 'so', 'please']
+/**
+ * Run-up that can precede the name: "HEY Senti", "OK Senti, um, open Chrome".
+ *
+ * Non-English greetings are here too, because transcription already handles
+ * any language — Whisper auto-detects — so the only thing standing between a
+ * Hindi or Spanish speaker and a working assistant was this list. Addressing
+ * Senti by name works in every language; bare imperatives ("open Chrome" with
+ * no name) are still English-only, since those verbs are matched literally.
+ */
+const FILLERS = [
+  'hey', 'hi', 'hello', 'yo', 'ok', 'okay', 'um', 'uh', 'er', 'so', 'please',
+  // hi / es / fr / de / pt / ja / zh / ar / ru
+  'namaste', 'namaskar', 'suno', 'arre',
+  'hola', 'oye', 'bonjour', 'salut', 'hallo', 'olá', 'ola',
+  'moshi', 'konnichiwa', 'nihao', 'wei',
+  'marhaba', 'salam', 'privet', 'zdravstvuyte',
+]
 
 /** A greeting on its own is addressed to Senti; "ok" or "um" on its own is not. */
-const GREETINGS = ['hey', 'hi', 'hello', 'yo']
+const GREETINGS = [
+  'hey', 'hi', 'hello', 'yo',
+  'namaste', 'namaskar', 'hola', 'oye', 'bonjour', 'salut', 'hallo',
+  'olá', 'ola', 'konnichiwa', 'nihao', 'marhaba', 'salam', 'privet',
+]
 
 /**
  * Polite wrappers people put in front of a command: "CAN YOU open Chrome",
@@ -107,8 +126,12 @@ export function parseWake(textRaw: string): WakeMatch {
     return 0
   }
 
-  // Eat the run-up, every way you addressed it, and any polite wrapper:
-  // "hey senti buddy, can you ...".
+  // Eat the run-up and every way you addressed it: "hey senti buddy, ...".
+  //
+  // Politeness is deliberately NOT eaten here. It's only looked past further
+  // down, to spot a verb hiding behind "can you". Consuming it would mangle
+  // ordinary speech — "hey Senti, can you hear me" would arrive as "hear me",
+  // which is a different question.
   let i = 0
   let woke = false
   let greeted = false
@@ -117,11 +140,6 @@ export function parseWake(textRaw: string): WakeMatch {
     if (a) {
       i += a
       woke = true
-      continue
-    }
-    const p = politeAt(i)
-    if (p) {
-      i += p
       continue
     }
     if (FILLERS.includes(norm[i])) {
@@ -142,7 +160,13 @@ export function parseWake(textRaw: string): WakeMatch {
 
   // A bare imperative — "open Chrome", "can you clean my system" — is a command
   // no matter how it's dressed, because you don't say that to a person nearby.
-  if (COMMAND_VERBS.includes(norm[i])) return { woke: true, command }
+  // Politeness is stepped OVER to find the verb, but stays in the command:
+  // the assistant reads "can you open Chrome" perfectly well, and trimming it
+  // only risks mangling a sentence that wasn't an order at all.
+  const afterPolite = i + politeAt(i)
+  if (COMMAND_VERBS.includes(norm[i]) || COMMAND_VERBS.includes(norm[afterPolite])) {
+    return { woke: true, command }
+  }
 
   return { woke: false, command: '' }
 }

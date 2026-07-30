@@ -22,6 +22,50 @@ const FRAME_INTERVAL_MS = 1000
 /** While someone is actively driving this machine, ~5 fps instead of 1. */
 const FAST_FRAME_MS = 200
 let currentInterval = FRAME_INTERVAL_MS
+
+/**
+ * How to spend a limited connection.
+ *
+ * There's a real trade here and no universally right answer: at a fixed
+ * bandwidth you can have more pixels or more frames, not both. Text stays
+ * readable at 30fps; a game does not. So the viewer picks.
+ */
+export type QualityPreset = 'smooth' | 'balanced' | 'sharp'
+
+export const QUALITY: Record<QualityPreset, { width: number; height: number; fps: number; bitrate: number; label: string }> = {
+  // Fewer pixels, every frame — what a game needs.
+  smooth: { width: 1280, height: 720, fps: 60, bitrate: 8_000_000, label: '720p60 — smoothest' },
+  balanced: { width: 1920, height: 1080, fps: 30, bitrate: 8_000_000, label: '1080p30 — balanced' },
+  // Everything, if the link can carry it.
+  sharp: { width: 1920, height: 1080, fps: 60, bitrate: 12_000_000, label: '1080p60 — sharpest' },
+}
+
+let quality: QualityPreset = 'balanced'
+
+export function getQuality(): QualityPreset {
+  return quality
+}
+
+/**
+ * Change quality on a LIVE stream — applyConstraints re-negotiates the capture
+ * without tearing the session down, so the picture doesn't blank while you
+ * try a setting.
+ */
+export async function setQuality(next: QualityPreset): Promise<void> {
+  quality = next
+  const q = QUALITY[next]
+  for (const track of stream?.getVideoTracks() ?? []) {
+    try {
+      await track.applyConstraints({
+        width: { ideal: q.width },
+        height: { ideal: q.height },
+        frameRate: { ideal: q.fps, max: q.fps },
+      })
+    } catch {
+      // The camera/capture refused — keep whatever it was already doing.
+    }
+  }
+}
 /** Downscale so a frame stays small (~30-80 KB) and uploads quickly. */
 const MAX_WIDTH = 1280
 const JPEG_QUALITY = 0.5

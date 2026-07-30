@@ -1,4 +1,5 @@
 import { api } from './api'
+import { rankMemories } from './memoryRecall'
 
 /**
  * assistantService — sends the running conversation to Senti's brain
@@ -23,12 +24,19 @@ export interface Reply {
   action: { name: string; args: Record<string, unknown> } | null
 }
 
-/** The facts Senti keeps about you, pulled in so every reply is informed. */
-async function loadMemories(): Promise<string[]> {
+/**
+ * The facts Senti keeps about you, narrowed to the ones that bear on what was
+ * just said. Sending all of them buries the relevant ones once there are more
+ * than a handful — see memoryRecall for how they're ranked.
+ */
+async function loadMemories(query: string): Promise<string[]> {
   try {
     const mems = await window.senti?.memoryList?.()
     if (!Array.isArray(mems)) return []
-    return mems.slice(-40).map((m) => m.text).filter(Boolean)
+    return rankMemories(
+      mems.filter((m) => m?.text),
+      query
+    )
   } catch {
     return []
   }
@@ -40,7 +48,9 @@ export async function askSenti(
   /** Plain-text vitals for this machine, so Senti can answer about it. */
   system?: string | null
 ): Promise<Reply> {
-  const memories = await loadMemories()
+  // Rank against the newest user turn — that's what the reply must serve.
+  const latest = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+  const memories = await loadMemories(latest)
   const res = await api<{
     reply?: string
     audio?: string

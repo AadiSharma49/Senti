@@ -13,7 +13,9 @@
     "dist": "tsc && vite build && electron-builder --win nsis",
     "electron:build": "vite build && electron-builder",
     "setup:voice": "node scripts/setup-voice-model.mjs",
-    "make:icon": "node scripts/make-icon.mjs"
+    "make:icon": "node scripts/make-icon.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "build": {
     "appId": "com.senti.desktop",
@@ -77,6 +79,7 @@
     "vite": "^5.4.0",
     "vite-plugin-electron": "^0.28.0",
     "vite-plugin-electron-renderer": "^0.14.5",
+    "vitest": "^2.1.9",
     "wait-on": "^7.2.0"
   }
 }
