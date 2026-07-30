@@ -5,9 +5,13 @@ import g from "os";
 import Pe from "electron";
 import d from "path";
 import { fileURLToPath as Ie } from "url";
-const { app: p, BrowserWindow: he, screen: me, ipcMain: c, globalShortcut: I, safeStorage: R, session: z, shell: x, Tray: Fe, Menu: Ee, nativeImage: se, powerSaveBlocker: ie, desktopCapturer: ye, clipboard: ge } = Pe, Te = Ie(import.meta.url), ee = d.dirname(Te), B = process.env.VITE_DEV_SERVER_URL, be = "http://localhost:5173";
+function Fe(t, e) {
+  const n = d.resolve(t), r = d.resolve(n, e || ""), s = n.endsWith(d.sep) ? n : n + d.sep;
+  return r !== n && !r.startsWith(s) ? null : r;
+}
+const { app: p, BrowserWindow: he, screen: me, ipcMain: c, globalShortcut: I, safeStorage: R, session: z, shell: x, Tray: Ee, Menu: Te, nativeImage: se, powerSaveBlocker: ie, desktopCapturer: ye, clipboard: ge } = Pe, Ae = Ie(import.meta.url), ee = d.dirname(Ae), B = process.env.VITE_DEV_SERVER_URL, be = "http://localhost:5173";
 let o = null, K = "";
-const Ae = {
+const _e = {
   ".html": "text/html",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
@@ -24,8 +28,8 @@ const Ae = {
   ".woff2": "font/woff2",
   ".txt": "text/plain",
   ".map": "application/json"
-}, _e = 47615;
-function De(t) {
+}, De = 47615;
+function Me(t) {
   return new Promise((e, n) => {
     const r = fe.createServer((l, a) => {
       try {
@@ -38,21 +42,21 @@ function De(t) {
         }
         const m = C(f);
         a.writeHead(200, {
-          "Content-Type": Ae[d.extname(f).toLowerCase()] || "application/octet-stream",
+          "Content-Type": _e[d.extname(f).toLowerCase()] || "application/octet-stream",
           "Cache-Control": "no-store"
         }), a.end(m);
       } catch {
         a.writeHead(500), a.end("Error");
       }
     });
-    let s = _e, i = 0;
+    let s = De, i = 0;
     r.on("error", (l) => {
       l.code === "EADDRINUSE" && i < 12 ? (i++, s++, setTimeout(() => r.listen(s, "127.0.0.1"), 40)) : n(l);
     }), r.on("listening", () => e(`http://127.0.0.1:${s}`)), r.listen(s, "127.0.0.1");
   });
 }
 const v = () => d.join(p.getPath("userData"), "device.token");
-function Me(t) {
+function Oe(t) {
   try {
     return F(d.dirname(v()), { recursive: !0 }), R.isEncryptionAvailable() ? (E(v(), R.encryptString(t)), !0) : !1;
   } catch {
@@ -66,14 +70,14 @@ function we() {
     return null;
   }
 }
-function Oe() {
+function Re() {
   try {
     S(v()) && pe(v());
   } catch {
   }
 }
 const N = () => d.join(p.getPath("userData"), "setup.json");
-function Re() {
+function Be() {
   var t;
   try {
     return S(N()) ? ((t = JSON.parse(C(N(), "utf8"))) == null ? void 0 : t.setupCompleted) === !0 : !1;
@@ -81,7 +85,7 @@ function Re() {
     return !1;
   }
 }
-function Be(t) {
+function Ne(t) {
   try {
     F(d.dirname(N()), { recursive: !0 }), E(N(), JSON.stringify({ setupCompleted: !!t }));
   } catch {
@@ -103,7 +107,7 @@ function te(t) {
   } catch {
   }
 }
-const Ne = 21, Le = 3, W = () => d.join(p.getPath("userData"), "activity.json");
+const Le = 21, je = 3, W = () => d.join(p.getPath("userData"), "activity.json");
 function Y() {
   try {
     if (!S(W())) return [];
@@ -119,18 +123,18 @@ function ke(t) {
   } catch {
   }
 }
-function je(t) {
+function We(t) {
   const e = t.getHours();
   return e < 6 ? "night" : e < 12 ? "morning" : e < 18 ? "afternoon" : "evening";
 }
-function We(t, e, n) {
+function Ue(t, e, n) {
   const r = String(t ?? "").slice(0, 60).toLowerCase(), s = String(e ?? "").slice(0, 120), i = Math.max(0, Math.min(120, Number(n) || 0));
   if (!r || !i) return Y();
-  const l = /* @__PURE__ */ new Date(), a = l.toISOString().slice(0, 10), u = je(l), h = new Date(l.getTime() - Ne * 864e5).toISOString().slice(0, 10), f = Y().filter((b) => b.day >= h);
+  const l = /* @__PURE__ */ new Date(), a = l.toISOString().slice(0, 10), u = We(l), h = new Date(l.getTime() - Le * 864e5).toISOString().slice(0, 10), f = Y().filter((b) => b.day >= h);
   let m = f.find((b) => b.day === a && b.process === r && b.part === u);
-  return m || (m = { day: a, process: r, part: u, minutes: 0, samples: [] }, f.push(m)), m.minutes = Math.round((m.minutes + i) * 10) / 10, s && !m.samples.includes(s) && m.samples.length < Le && m.samples.push(s), ke(f), f;
+  return m || (m = { day: a, process: r, part: u, minutes: 0, samples: [] }, f.push(m)), m.minutes = Math.round((m.minutes + i) * 10) / 10, s && !m.samples.includes(s) && m.samples.length < je && m.samples.push(s), ke(f), f;
 }
-function Ue(t) {
+function Ge(t) {
   const e = String(t || "").trim().slice(0, 300);
   if (!e) return j();
   const n = j(), r = e.toLowerCase().replace(/\s+/g, " ");
@@ -140,8 +144,8 @@ function Ue(t) {
   return te(s), s;
 }
 let A = null;
-const Ge = 2e4;
-function He() {
+const He = 2e4;
+function qe() {
   var r, s;
   const t = g.totalmem() / 1073741824, e = g.freemem() / 1024 ** 3, n = t - e;
   return {
@@ -154,7 +158,7 @@ function He() {
     uptimeHours: +(g.uptime() / 3600).toFixed(1)
   };
 }
-function qe() {
+function ze() {
   const t = `
 $ErrorActionPreference='SilentlyContinue'
 $d = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
@@ -224,13 +228,13 @@ const ae = {
   whatsapp: { kind: "url", target: "https://web.whatsapp.com", label: "WhatsApp" },
   maps: { kind: "url", target: "https://maps.google.com", label: "Maps" }
 };
-function ze(t) {
+function Ve(t) {
   if (typeof t != "string") return null;
   const e = t.toLowerCase().trim().replace(/^(open|launch|start)\s+/, "");
   return e ? ae[e] ? ae[e] : /^[a-z0-9-]+(\.[a-z]{2,})+$/i.test(e) ? { kind: "url", target: `https://${e}`, label: e } : null : null;
 }
 let V = null, le = 0;
-const Ve = /* @__PURE__ */ new Set([
+const Ze = /* @__PURE__ */ new Set([
   "game",
   "games",
   "app",
@@ -249,11 +253,11 @@ const Ve = /* @__PURE__ */ new Set([
 function Z(t) {
   return t.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
-function Ze() {
+function Je() {
   const t = [];
   return process.env.ProgramData && t.push(d.join(process.env.ProgramData, "Microsoft", "Windows", "Start Menu", "Programs")), process.env.APPDATA && t.push(d.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs")), t;
 }
-function Je() {
+function Ke() {
   const t = Date.now();
   if (V && t - le < 5 * 6e4) return V;
   const e = [], n = t, r = (s, i) => {
@@ -269,15 +273,15 @@ function Je() {
       a.isDirectory() ? r(u, i + 1) : a.isFile() && a.name.toLowerCase().endsWith(".lnk") && e.push({ name: a.name.slice(0, -4), path: u });
     }
   };
-  for (const s of Ze()) r(s, 0);
+  for (const s of Je()) r(s, 0);
   return V = e, le = t, e;
 }
 function J(t) {
   if (typeof t != "string") return null;
-  const e = t.toLowerCase().replace(/^(open|launch|start|run|play)\s+/, "").trim(), n = Z(e), r = e.split(/\s+/).map(Z).filter((i) => i.length >= 2 && !Ve.has(i));
+  const e = t.toLowerCase().replace(/^(open|launch|start|run|play)\s+/, "").trim(), n = Z(e), r = e.split(/\s+/).map(Z).filter((i) => i.length >= 2 && !Ze.has(i));
   if (!n && !r.length) return null;
   let s = null;
-  for (const i of Je()) {
+  for (const i of Ke()) {
     const l = Z(i.name);
     let a = 0;
     if (l === n) a = 100;
@@ -291,13 +295,13 @@ function J(t) {
   }
   return s && s.score >= 20 ? s.app : null;
 }
-async function Ke(t) {
-  const e = ze(t);
+async function Ye(t) {
+  const e = Ve(t);
   if (e)
     try {
       if (e.kind === "url")
         return x.openExternal(e.target), { ok: !0, label: e.label };
-      if (await Qe(e.label, e.target))
+      if (await et(e.label, e.target))
         return { ok: !0, label: e.label, focused: !0 };
       const r = J(e.label) || J(e.target);
       return r ? (x.openPath(r.path), { ok: !0, label: e.label }) : (w("cmd", ["/c", "start", "", e.target], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref(), { ok: !0, label: e.label });
@@ -313,7 +317,7 @@ async function Ke(t) {
     }
   return { ok: !1, error: "unknown" };
 }
-const Ye = `
+const Xe = `
 $ErrorActionPreference='SilentlyContinue'
 Add-Type @"
 using System;
@@ -337,7 +341,7 @@ if ([SentiFocus]::IsIconic($h)) { [void][SentiFocus]::ShowWindow($h, 9) }
 [void][SentiFocus]::SetForegroundWindow($h)
 [SentiFocus]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
 Write-Output 'yes'
-`, Xe = {
+`, Qe = {
   "VS Code": ["Code"],
   Chrome: ["chrome"],
   Edge: ["msedge"],
@@ -352,8 +356,8 @@ Write-Output 'yes'
   Paint: ["mspaint"],
   Calculator: ["CalculatorApp", "Calculator"]
 };
-function Qe(t, e) {
-  const n = (Xe[t] ?? [e.replace(/\.exe$/i, "")]).map((s) => s.replace(/[^A-Za-z0-9_.-]/g, "")).filter(Boolean);
+function et(t, e) {
+  const n = (Qe[t] ?? [e.replace(/\.exe$/i, "")]).map((s) => s.replace(/[^A-Za-z0-9_.-]/g, "")).filter(Boolean);
   if (!n.length) return Promise.resolve(!1);
   const r = `$names = @(${n.map((s) => `'${s}'`).join(",")})
 `;
@@ -361,7 +365,7 @@ function Qe(t, e) {
     try {
       T(
         "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", r + Ye],
+        ["-NoProfile", "-NonInteractive", "-Command", r + Xe],
         { timeout: 6e3, windowsHide: !0 },
         (i, l) => s(!i && String(l).trim() === "yes")
       );
@@ -370,7 +374,7 @@ function Qe(t, e) {
     }
   });
 }
-function et(t) {
+function tt(t) {
   if (typeof t != "string") return null;
   const e = t.toLowerCase().trim().replace(/^(open|show|go to|reveal)\s+/, "").replace(/^(my|the)\s+/, "").replace(/\s+(folder|directory)$/, "").trim(), n = {
     temp: { shell: g.tmpdir(), label: "your Temp folder" },
@@ -406,8 +410,8 @@ function et(t) {
     }
   return null;
 }
-function tt(t) {
-  const e = et(t);
+function nt(t) {
+  const e = tt(t);
   if (!e) return { ok: !1, error: "unknown" };
   try {
     return e.shell ? w("explorer.exe", [e.shell], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref() : e.path && x.openPath(e.path), { ok: !0, label: e.label };
@@ -415,27 +419,27 @@ function tt(t) {
     return { ok: !1, error: "launch-failed" };
   }
 }
-const nt = {
+const rt = {
   desktop: "desktop",
   documents: "documents",
   downloads: "downloads",
   pictures: "pictures",
   videos: "videos",
   music: "music"
-}, rt = 15 * 1024 * 1024;
+}, ot = 15 * 1024 * 1024;
 function $e(t, e) {
-  const n = nt[t];
+  const n = rt[t];
   if (!n) return null;
   let r;
   try {
-    r = d.resolve(p.getPath(n));
+    r = p.getPath(n);
   } catch {
     return null;
   }
-  const s = d.resolve(r, e || ""), i = r.endsWith(d.sep) ? r : r + d.sep;
-  return s !== r && !s.startsWith(i) ? null : { base: r, full: s };
+  const s = Fe(r, e);
+  return s ? { base: r, full: s } : null;
 }
-function ot(t, e) {
+function st(t, e) {
   const n = $e(t, e);
   if (!n) throw new Error("Not allowed");
   const s = G(n.full, { withFileTypes: !0 }).filter((i) => !i.name.startsWith(".")).slice(0, 500).map((i) => {
@@ -449,12 +453,12 @@ function ot(t, e) {
   }).sort((i, l) => i.dir === l.dir ? i.name.localeCompare(l.name) : i.dir ? -1 : 1);
   return JSON.stringify({ root: t, relPath: e, items: s });
 }
-function st(t, e) {
+function it(t, e) {
   const n = $e(t, e);
   if (!n) throw new Error("Not allowed");
   const r = Q(n.full);
   if (!r.isFile()) throw new Error("Not a file");
-  if (r.size > rt) throw new Error("File is too large to send (15 MB limit)");
+  if (r.size > ot) throw new Error("File is too large to send (15 MB limit)");
   const s = C(n.full);
   return JSON.stringify({
     name: d.basename(n.full),
@@ -463,7 +467,7 @@ function st(t, e) {
   });
 }
 const ce = 8e3, ue = 40;
-function it(t) {
+function at(t) {
   const e = String(t ?? "").toLowerCase().trim();
   if (!e) return { ok: !1, error: "empty" };
   const n = ["desktop", "documents", "downloads", "pictures", "videos", "music"].map((a) => {
@@ -504,7 +508,7 @@ function it(t) {
   }
 }
 const de = 2e4;
-function at() {
+function lt() {
   const t = [g.tmpdir(), d.join(process.env.SystemRoot || "C:\\Windows", "Temp")], e = Date.now();
   let n = 0, r = 0;
   const s = (i, l) => {
@@ -537,7 +541,7 @@ function at() {
   for (const i of t) s(i, 0);
   return { freedMB: Math.round(n / 1024 / 1024), files: r };
 }
-function lt() {
+function ct() {
   const t = [
     "$ErrorActionPreference='SilentlyContinue'",
     "$sh = New-Object -ComObject Shell.Application",
@@ -566,7 +570,7 @@ function lt() {
     return { freedMB: 0, files: 0 };
   }
 }
-const ct = `
+const ut = `
 $ErrorActionPreference='SilentlyContinue'
 Add-Type @"
 using System;
@@ -586,12 +590,12 @@ $pid2 = 0
 $proc = (Get-Process -Id $pid2).ProcessName
 [Console]::Out.Write((ConvertTo-Json @{ title = $sb.ToString(); process = $proc } -Compress))
 `;
-function ut() {
+function dt() {
   return new Promise((t) => {
     try {
       T(
         "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", ct],
+        ["-NoProfile", "-NonInteractive", "-Command", ut],
         { timeout: 5e3, windowsHide: !0 },
         (e, n) => {
           if (e || !n) return t(null);
@@ -608,7 +612,7 @@ function ut() {
     }
   });
 }
-const dt = `
+const pt = `
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type @"
 using System;
@@ -680,11 +684,11 @@ while ($true) {
 }
 `;
 let y = null;
-function pt() {
+function ft() {
   if (y && !y.killed) return !0;
   try {
     const t = d.join(p.getPath("userData"), "input.ps1");
-    return F(d.dirname(t), { recursive: !0 }), E(t, dt, "utf8"), y = w(
+    return F(d.dirname(t), { recursive: !0 }), E(t, pt, "utf8"), y = w(
       "powershell.exe",
       ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", t],
       { stdio: ["pipe", "ignore", "ignore"], windowsHide: !0 }
@@ -702,7 +706,7 @@ function ne() {
   }
   y = null;
 }
-const ft = {
+const ht = {
   Backspace: 8,
   Tab: 9,
   Enter: 13,
@@ -731,7 +735,7 @@ const ft = {
   F11: 122,
   F12: 123
 }, _ = (t) => Math.max(0, Math.min(1, Number(t) || 0));
-function ht(t) {
+function mt(t) {
   switch (t.t) {
     case "move":
       return `M ${_(t.x).toFixed(5)} ${_(t.y).toFixed(5)}`;
@@ -752,7 +756,7 @@ function ht(t) {
       return e ? `T ${Buffer.from(e, "utf8").toString("base64")}` : null;
     }
     case "key": {
-      const e = ft[String(t.k)];
+      const e = ht[String(t.k)];
       if (e === void 0) return null;
       const n = Array.isArray(t.mods) ? t.mods : [], r = (n.includes("shift") ? 1 : 0) | (n.includes("ctrl") ? 2 : 0) | (n.includes("alt") ? 4 : 0);
       return `K ${e} ${r}`;
@@ -761,9 +765,9 @@ function ht(t) {
       return null;
   }
 }
-function mt(t) {
-  if (!Array.isArray(t) || !t.length || !pt() || !(y != null && y.stdin)) return !1;
-  const e = t.map((n) => ht(n)).filter((n) => !!n);
+function yt(t) {
+  if (!Array.isArray(t) || !t.length || !ft() || !(y != null && y.stdin)) return !1;
+  const e = t.map((n) => mt(n)).filter((n) => !!n);
   if (!e.length) return !0;
   try {
     return y.stdin.write(e.join(`
@@ -773,14 +777,14 @@ function mt(t) {
     return ne(), !1;
   }
 }
-function yt() {
+function gt() {
   try {
     return w("rundll32.exe", ["user32.dll,LockWorkStation"], { detached: !0, stdio: "ignore" }).unref(), !0;
   } catch {
     return !1;
   }
 }
-function gt(t) {
+function bt(t) {
   const e = String(t ?? "").toLowerCase().trim();
   try {
     if (e === "sleep")
@@ -796,7 +800,7 @@ function gt(t) {
     return !1;
   }
 }
-function bt(t) {
+function wt(t) {
   const r = `$w = New-Object -ComObject WScript.Shell; 1..${t === "mute" ? 1 : 5} | ForEach-Object { $w.SendKeys([char]${t === "up" ? 175 : t === "down" ? 174 : 173}) }`;
   try {
     return T("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", r], {
@@ -807,7 +811,7 @@ function bt(t) {
     return !1;
   }
 }
-const wt = {
+const St = {
   chrome: { proc: "chrome.exe", label: "Chrome" },
   edge: { proc: "msedge.exe", label: "Edge" },
   firefox: { proc: "firefox.exe", label: "Firefox" },
@@ -818,9 +822,9 @@ const wt = {
   calculator: { proc: "CalculatorApp.exe", label: "Calculator" },
   paint: { proc: "mspaint.exe", label: "Paint" }
 };
-function St(t) {
+function kt(t) {
   if (typeof t != "string") return { ok: !1, error: "unknown" };
-  const e = wt[t.toLowerCase().trim()];
+  const e = St[t.toLowerCase().trim()];
   if (!e) return { ok: !1, error: "unknown" };
   try {
     return w("taskkill", ["/IM", e.proc, "/F"], { detached: !0, stdio: "ignore", windowsHide: !0 }).unref(), { ok: !0, label: e.label };
@@ -828,19 +832,19 @@ function St(t) {
     return { ok: !1, error: "failed" };
   }
 }
-async function kt() {
-  if (A && Date.now() - A.at < Ge) return A.data;
-  const t = He();
+async function $t() {
+  if (A && Date.now() - A.at < He) return A.data;
+  const t = qe();
   let e = {};
   if (process.platform === "win32")
     try {
-      e = await qe();
+      e = await ze();
     } catch {
     }
   const n = { ...t, ...e };
   return A = { at: Date.now(), data: n }, n;
 }
-async function $t(t) {
+async function xt(t) {
   const { baseUrl: e, path: n, method: r = "GET", body: s, auth: i = !0 } = t;
   if (!/^https?:\/\//i.test(e) || !n.startsWith("/api/device/"))
     return { ok: !1, status: 400, data: { error: "Blocked request" } };
@@ -866,7 +870,7 @@ async function $t(t) {
   }
 }
 let U = !0;
-const xt = [
+const vt = [
   "Alt+Tab",
   "Alt+F4",
   "Alt+Escape",
@@ -876,18 +880,18 @@ const xt = [
   // Task Manager (best-effort; OS may still win)
   "Super"
   // Win key (best-effort)
-], vt = "CommandOrControl+Alt+Shift+Q", Ct = "CommandOrControl+Shift+Space";
-function Pt() {
-  for (const t of xt)
+], Ct = "CommandOrControl+Alt+Shift+Q", Pt = "CommandOrControl+Shift+Space";
+function It() {
+  for (const t of vt)
     try {
       I.isRegistered(t) && I.unregister(t);
     } catch {
     }
 }
 function $(t) {
-  U = t, Pt();
+  U = t, It();
 }
-function It(t, e = 15e3) {
+function Ft(t, e = 15e3) {
   return new Promise((n, r) => {
     const s = Date.now(), i = () => {
       fe.get(t, (u) => {
@@ -956,7 +960,7 @@ p.requestSingleInstanceLock() ? p.on("second-instance", () => {
 p.whenReady().then(async () => {
   if (B)
     try {
-      await It(be);
+      await Ft(be);
     } catch (e) {
       console.error("[Electron] Vite dev server failed to start:", e), p.quit();
       return;
@@ -970,20 +974,20 @@ p.whenReady().then(async () => {
     });
   }), !B)
     try {
-      K = await De(d.join(ee, "../dist"));
+      K = await Me(d.join(ee, "../dist"));
     } catch (e) {
       console.error("[Electron] Failed to start static server:", e), p.quit();
       return;
     }
   xe(), $(!0);
   try {
-    I.register(vt, () => {
+    I.register(Ct, () => {
       U = !1, p.exit(0);
     });
   } catch {
   }
   try {
-    I.register(Ct, () => {
+    I.register(Pt, () => {
       U || o == null || o.webContents.send("senti:talk");
     });
   } catch {
@@ -1005,14 +1009,14 @@ p.on("before-quit", () => {
 p.on("will-quit", () => {
   I.unregisterAll(), ne();
 });
-c.handle("senti:token-set", (t, e) => typeof e != "string" || !e.trim() ? !1 : Me(e.trim()));
-c.handle("senti:token-clear", () => (Oe(), !0));
+c.handle("senti:token-set", (t, e) => typeof e != "string" || !e.trim() ? !1 : Oe(e.trim()));
+c.handle("senti:token-clear", () => (Re(), !0));
 c.handle("senti:token-present", () => !!we());
 c.on("senti:get-setup", (t) => {
-  t.returnValue = Re();
+  t.returnValue = Be();
 });
-c.handle("senti:set-setup", (t, e) => (Be(!!e), !0));
-c.handle("senti:system-info", () => kt());
+c.handle("senti:set-setup", (t, e) => (Ne(!!e), !0));
+c.handle("senti:system-info", () => $t());
 c.handle("senti:clipboard-read", () => {
   try {
     return ge.readText();
@@ -1035,7 +1039,7 @@ c.handle("senti:screen-sources", async () => {
   }
 });
 c.handle("senti:memory-list", () => j());
-c.handle("senti:memory-add", (t, e) => Ue(String(e ?? "")));
+c.handle("senti:memory-add", (t, e) => Ge(String(e ?? "")));
 c.handle("senti:memory-forget", (t, e) => {
   const n = j().filter((r) => r.id !== String(e));
   return te(n), n;
@@ -1043,7 +1047,7 @@ c.handle("senti:memory-forget", (t, e) => {
 c.handle("senti:memory-clear", () => (te([]), []));
 c.handle(
   "senti:activity-record",
-  (t, e, n, r) => We(e, n, r)
+  (t, e, n, r) => Ue(e, n, r)
 );
 c.handle("senti:activity-list", () => Y());
 c.handle("senti:activity-clear", () => (ke([]), []));
@@ -1057,36 +1061,36 @@ c.handle("senti:keep-awake", (t, e, n) => {
     return !1;
   }
 });
-c.handle("senti:open-app", (t, e) => Ke(e));
-c.handle("senti:close-app", (t, e) => St(e));
-c.handle("senti:clean-temp", () => at());
-c.handle("senti:empty-recycle-bin", () => lt());
-c.handle("senti:open-folder", (t, e) => tt(e));
+c.handle("senti:open-app", (t, e) => Ye(e));
+c.handle("senti:close-app", (t, e) => kt(e));
+c.handle("senti:clean-temp", () => lt());
+c.handle("senti:empty-recycle-bin", () => ct());
+c.handle("senti:open-folder", (t, e) => nt(e));
 c.handle(
   "senti:serve-list",
-  (t, e, n) => ot(String(e ?? ""), String(n ?? ""))
+  (t, e, n) => st(String(e ?? ""), String(n ?? ""))
 );
 c.handle(
   "senti:serve-read",
-  (t, e, n) => st(String(e ?? ""), String(n ?? ""))
+  (t, e, n) => it(String(e ?? ""), String(n ?? ""))
 );
-c.handle("senti:open-file", (t, e) => it(e));
+c.handle("senti:open-file", (t, e) => at(e));
 c.handle("senti:web-search", (t, e) => {
   const n = String(e ?? "").trim().slice(0, 200);
   return n ? (x.openExternal(`https://www.google.com/search?q=${encodeURIComponent(n)}`), { ok: !0 }) : { ok: !1 };
 });
-c.handle("senti:lock-workstation", () => yt());
-c.handle("senti:power", (t, e) => gt(e));
-c.handle("senti:active-window", () => ut());
-c.handle("senti:remote-input", (t, e) => mt(e));
+c.handle("senti:lock-workstation", () => gt());
+c.handle("senti:power", (t, e) => bt(e));
+c.handle("senti:active-window", () => dt());
+c.handle("senti:remote-input", (t, e) => yt(e));
 c.handle("senti:remote-input-stop", () => (ne(), !0));
 c.handle("senti:volume", (t, e) => {
   const n = e === "up" || e === "down" || e === "mute" ? e : null;
-  return n ? bt(n) : !1;
+  return n ? wt(n) : !1;
 });
 c.handle("senti:api", (t, e) => {
   const n = e ?? {};
-  return typeof n.baseUrl != "string" || typeof n.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : $t({
+  return typeof n.baseUrl != "string" || typeof n.path != "string" ? { ok: !1, status: 400, data: { error: "Bad request" } } : xt({
     baseUrl: n.baseUrl,
     path: n.path,
     method: typeof n.method == "string" ? n.method : "GET",
@@ -1122,13 +1126,13 @@ function oe(t) {
 function q(t) {
   !o || o.isDestroyed() || (re = t, t === "hud" ? ($(!1), o.setFullScreen(!1), o.setResizable(!1), o.setSkipTaskbar(!0), o.setAlwaysOnTop(!0, "screen-saver"), o.setIgnoreMouseEvents(!0, { forward: !0 }), oe(!1), o.showInactive()) : t === "setup" ? ($(!1), o.setIgnoreMouseEvents(!1), o.setAlwaysOnTop(!1), o.setFullScreen(!1), o.setResizable(!0), o.setSkipTaskbar(!1), o.setSize(980, 760), o.center(), o.show()) : t === "panel" ? ($(!1), o.setIgnoreMouseEvents(!1), o.setAlwaysOnTop(!1), o.setFullScreen(!1), o.setResizable(!1), o.setSkipTaskbar(!1), o.setSize(760, 840), o.center(), o.show(), o.focus()) : ($(!0), o.setIgnoreMouseEvents(!1), o.setFullScreen(!1), o.setAlwaysOnTop(!1), o.setResizable(!1), o.setSkipTaskbar(!1), o.setSize(680, 780), o.center(), o.show(), o.focus()));
 }
-function Ft() {
+function Et() {
   !o || o.isDestroyed() || re !== "hud" || (oe(!0), o.showInactive(), o.setAlwaysOnTop(!0, "screen-saver"));
 }
-function Et() {
+function Tt() {
   !o || o.isDestroyed() || re !== "hud" || oe(!1);
 }
-function Tt() {
+function At() {
   const t = [
     d.join(process.resourcesPath || "", "build", "icon.png"),
     d.join(ee, "..", "build", "icon.png")
@@ -1146,11 +1150,11 @@ function Tt() {
 function X() {
   !o || o.isDestroyed() || (o.webContents.send("senti:open-settings"), q("panel"), o.show(), o.focus());
 }
-function At() {
+function _t() {
   if (!P)
     try {
-      P = new Fe(Tt()), P.setToolTip("Senti — listening for you"), P.setContextMenu(
-        Ee.buildFromTemplate([
+      P = new Ee(At()), P.setToolTip("Senti — listening for you"), P.setContextMenu(
+        Te.buildFromTemplate([
           { label: "Open Senti (Settings)", click: () => X() },
           { type: "separator" },
           {
@@ -1164,13 +1168,13 @@ function At() {
     } catch {
     }
 }
-function _t(t) {
+function Dt(t) {
   q(t ? "setup" : "signin");
 }
-c.handle("senti:set-setup-mode", (t, e) => (_t(!!e), !0));
-c.handle("senti:set-window-mode", (t, e) => e === "signin" || e === "setup" || e === "hud" || e === "panel" ? (q(e), e === "hud" && At(), !0) : !1);
-c.handle("senti:hud-show", () => (Ft(), !0));
-c.handle("senti:hud-hide", () => (Et(), !0));
+c.handle("senti:set-setup-mode", (t, e) => (Dt(!!e), !0));
+c.handle("senti:set-window-mode", (t, e) => e === "signin" || e === "setup" || e === "hud" || e === "panel" ? (q(e), e === "hud" && _t(), !0) : !1);
+c.handle("senti:hud-show", () => (Et(), !0));
+c.handle("senti:hud-hide", () => (Tt(), !0));
 c.handle("senti:lock", () => {
   q("signin");
 });

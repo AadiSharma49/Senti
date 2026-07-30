@@ -1,5 +1,13 @@
 import { api } from './api'
-import { startScreenShare, setFastFrames, getScreenStream, pauseFrameUpload } from './screenShare'
+import {
+  startScreenShare,
+  setFastFrames,
+  getScreenStream,
+  pauseFrameUpload,
+  setQuality,
+  QUALITY,
+  type QualityPreset,
+} from './screenShare'
 import { startHostPeer, type PeerHandle } from './webrtc'
 
 /**
@@ -97,6 +105,27 @@ async function tick(): Promise<void> {
 }
 
 /**
+ * Sort what arrives on the data channel.
+ *
+ * It carries two kinds of message: input to replay, and control messages from
+ * the viewer (currently only a quality change). Control messages must never
+ * reach the input injector — an unrecognised event there is at best ignored
+ * and at worst a stray click.
+ */
+async function applyIncoming(events: unknown[]): Promise<void> {
+  const input: unknown[] = []
+  for (const e of events) {
+    const ev = e as { t?: string; preset?: string }
+    if (ev?.t === 'quality' && ev.preset && ev.preset in QUALITY) {
+      await setQuality(ev.preset as QualityPreset)
+      continue
+    }
+    input.push(e)
+  }
+  if (input.length) await window.senti?.remoteInput?.(input)
+}
+
+/**
  * Offer this machine's screen over a direct connection, and take input back on
  * the data channel. If it never connects, the frame + HTTP path is still
  * running underneath, so control degrades instead of breaking.
@@ -109,7 +138,7 @@ async function openPeer(sessionId: string): Promise<void> {
     peer = await startHostPeer(
       sessionId,
       screen,
-      (events) => void window.senti?.remoteInput?.(events),
+      (events) => void applyIncoming(events),
       (ok) => {
         peerConnected = ok
       }

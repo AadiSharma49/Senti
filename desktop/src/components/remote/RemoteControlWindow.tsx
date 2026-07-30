@@ -8,6 +8,7 @@ import {
   connectPeer,
   type StartResult,
 } from '../../services/remoteControl'
+import { QUALITY, type QualityPreset } from '../../services/screenShare'
 
 /**
  * Driving another machine: its screen fills this window, and your mouse and
@@ -40,6 +41,9 @@ export default function RemoteControlWindow({
    * difference between "watchable" and "playable".
    */
   const [locked, setLocked] = useState(false)
+  const [quality, setQuality] = useState<QualityPreset>('balanced')
+  /** Whether we're waiting on an emailed code or the machine's static PIN. */
+  const [viaEmail, setViaEmail] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const surfaceRef = useRef<HTMLDivElement>(null)
@@ -53,7 +57,12 @@ export default function RemoteControlWindow({
       if (!alive) return
       if (res.ok) {
         setPhase('pin')
-        setMessage(`Enter the remote PIN for ${deviceName}.`)
+        setViaEmail(res.method === 'email')
+        setMessage(
+          res.method === 'email'
+            ? `We sent a 6-digit code to ${res.sentTo}. It expires in 10 minutes.`
+            : `Enter the remote PIN for ${deviceName}.`
+        )
       } else {
         setPhase('error')
         setMessage(res.message)
@@ -233,6 +242,25 @@ export default function RemoteControlWindow({
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {phase === 'live' && direct && (
+            <select
+              value={quality}
+              onChange={(e) => {
+                const p = e.target.value as QualityPreset
+                setQuality(p)
+                // The host owns the capture, so the choice travels to it.
+                sendEvent({ t: 'quality', preset: p } as never)
+              }}
+              title="More pixels or more frames — a fixed connection can't give you both"
+              className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white outline-none focus:border-accent/60"
+            >
+              {(Object.keys(QUALITY) as QualityPreset[]).map((k) => (
+                <option key={k} value={k}>
+                  {QUALITY[k].label}
+                </option>
+              ))}
+            </select>
+          )}
           {phase === 'live' && (
             <button
               onClick={toggleLock}
@@ -292,16 +320,19 @@ export default function RemoteControlWindow({
           <div className="w-full max-w-sm text-center">
             {phase === 'pin' && (
               <>
-                <div className="mb-1 text-lg font-semibold">Remote PIN</div>
+                <div className="mb-1 text-lg font-semibold">
+                  {viaEmail ? 'Check your email' : 'Remote PIN'}
+                </div>
                 <p className="mb-4 text-sm text-white/50">{message}</p>
                 <input
                   autoFocus
-                  type="password"
+                  type={viaEmail ? 'text' : 'password'}
+                  inputMode={viaEmail ? 'numeric' : 'text'}
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && void submitPin()}
                   className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-lg tracking-[0.4em] outline-none focus:border-accent/60"
-                  placeholder="••••"
+                  placeholder={viaEmail ? '000000' : '••••'}
                 />
                 <button
                   onClick={() => void submitPin()}

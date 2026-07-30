@@ -10,6 +10,7 @@ import type { BrowserWindow as BrowserWindowType } from 'electron'
 const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer, clipboard } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { resolveInside } from './pathSafety'
 
 // ESM compatibility: Define __dirname and __filename
 const __filename = fileURLToPath(import.meta.url)
@@ -735,16 +736,14 @@ function safeResolve(rootKey: string, relPath: string): { base: string; full: st
   if (!key) return null
   let base: string
   try {
-    base = path.resolve(app.getPath(key))
+    base = app.getPath(key)
   } catch {
     return null
   }
-  const full = path.resolve(base, relPath || '')
-  // The containment check. `path.resolve` has already collapsed any `..`, so
-  // if the result no longer starts with the root, the caller tried to escape.
-  const withSep = base.endsWith(path.sep) ? base : base + path.sep
-  if (full !== base && !full.startsWith(withSep)) return null
-  return { base, full }
+  // The containment check lives in pathSafety.ts so it can be unit-tested
+  // without Electron — see the note there on why that matters.
+  const full = resolveInside(base, relPath)
+  return full ? { base, full } : null
 }
 
 function listRemoteFolder(rootKey: string, relPath: string): string {

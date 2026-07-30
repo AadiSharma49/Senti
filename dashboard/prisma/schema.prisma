@@ -116,6 +116,10 @@ model RemoteSession {
   state          String   @default("pending")
   /// Failed PIN attempts; the session dies rather than allowing a brute force.
   attempts       Int      @default(0)
+  /// SHA-256 of the one-time code emailed to the owner, and when it expires.
+  /// Null means this session falls back to the device's static remote PIN.
+  emailCodeHash  String?
+  emailCodeSentAt DateTime?
   createdAt      DateTime @default(now())
   /// Refreshed by the viewer; the target hangs up when this goes stale.
   heartbeatAt    DateTime @default(now())
