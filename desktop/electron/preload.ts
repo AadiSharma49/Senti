@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('senti', {
   cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
   emptyRecycleBin: () => ipcRenderer.invoke('senti:empty-recycle-bin'),
   openFolder: (name: string) => ipcRenderer.invoke('senti:open-folder', name),
+  /** Serve a folder listing / a file to another of your devices. */
+  serveList: (root: string, rel: string) => ipcRenderer.invoke('senti:serve-list', root, rel),
+  serveRead: (root: string, rel: string) => ipcRenderer.invoke('senti:serve-read', root, rel),
   openFile: (query: string) => ipcRenderer.invoke('senti:open-file', query),
   webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),

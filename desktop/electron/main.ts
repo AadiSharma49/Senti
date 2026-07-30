@@ -514,16 +514,35 @@ function resolveInstalledApp(nameRaw: unknown): InstalledApp | null {
   return best && best.score >= 20 ? best.app : null
 }
 
-function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
+async function openApp(nameRaw: unknown): Promise<{ ok: boolean; label?: string; focused?: boolean; error?: string }> {
   const hit = resolveApp(nameRaw)
   if (hit) {
     try {
       if (hit.kind === 'url') {
         void shell.openExternal(hit.target)
-      } else {
-        // `target` comes from OUR table, never from the model.
-        spawn('cmd', ['/c', 'start', '', hit.target], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+        return { ok: true, label: hit.label }
       }
+
+      // Already running? Switch to it. "Open VS Code" when VS Code is open
+      // means "show me VS Code", never "give me a second copy".
+      if (await focusApp(hit.label, hit.target)) {
+        return { ok: true, label: hit.label, focused: true }
+      }
+
+      // Prefer the real Start Menu shortcut over the bare command name.
+      //
+      // Several tools put a .cmd SHIM on PATH rather than the executable —
+      // `code` is the notorious one — and launching that through `cmd /c
+      // start` leaves a console window sitting on screen next to the app.
+      // The shortcut points at the actual .exe, so nothing extra opens.
+      const viaShortcut = resolveInstalledApp(hit.label) || resolveInstalledApp(hit.target)
+      if (viaShortcut) {
+        void shell.openPath(viaShortcut.path)
+        return { ok: true, label: hit.label }
+      }
+
+      // `target` comes from OUR table, never from the model.
+      spawn('cmd', ['/c', 'start', '', hit.target], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
       return { ok: true, label: hit.label }
     } catch {
       return { ok: false, error: 'launch-failed' }
@@ -542,6 +561,80 @@ function openApp(nameRaw: unknown): { ok: boolean; label?: string; error?: strin
   }
 
   return { ok: false, error: 'unknown' }
+}
+
+/**
+ * Bring an already-running app to the front instead of starting another copy.
+ *
+ * "Open VS Code" when VS Code is already open should switch to it — launching
+ * a second window is never what someone means. Windows guards
+ * SetForegroundWindow against apps stealing focus, so we nudge it with a
+ * synthetic ALT press, which is the long-standing way to satisfy that check.
+ */
+const FOCUS_PS = `
+$ErrorActionPreference='SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class SentiFocus {
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
+  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
+  [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
+}
+"@
+$p = $null
+foreach ($n in $names) {
+  $p = Get-Process -Name $n | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+  if ($p) { break }
+}
+if (-not $p) { Write-Output 'no'; exit }
+$h = $p.MainWindowHandle
+if ([SentiFocus]::IsIconic($h)) { [void][SentiFocus]::ShowWindow($h, 9) }
+[SentiFocus]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
+[void][SentiFocus]::SetForegroundWindow($h)
+[SentiFocus]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
+Write-Output 'yes'
+`
+
+/** Process names to look for, per app. Several apps run under another name. */
+const FOCUS_NAMES: Record<string, string[]> = {
+  'VS Code': ['Code'],
+  Chrome: ['chrome'],
+  Edge: ['msedge'],
+  Firefox: ['firefox'],
+  Spotify: ['Spotify'],
+  Discord: ['Discord'],
+  Steam: ['steam'],
+  Notepad: ['notepad'],
+  'File Explorer': ['explorer'],
+  'Task Manager': ['Taskmgr'],
+  Terminal: ['WindowsTerminal', 'wt'],
+  Paint: ['mspaint'],
+  Calculator: ['CalculatorApp', 'Calculator'],
+}
+
+function focusApp(label: string, target: string): Promise<boolean> {
+  // Names come from our own tables, but they're being spliced into a script,
+  // so strip anything that isn't a plain process name regardless.
+  const names = (FOCUS_NAMES[label] ?? [target.replace(/\.exe$/i, '')])
+    .map((n) => n.replace(/[^A-Za-z0-9_.-]/g, ''))
+    .filter(Boolean)
+  if (!names.length) return Promise.resolve(false)
+
+  const prelude = `$names = @(${names.map((n) => `'${n}'`).join(',')})\n`
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', prelude + FOCUS_PS],
+        { timeout: 6000, windowsHide: true },
+        (err, stdout) => resolve(!err && String(stdout).trim() === 'yes')
+      )
+    } catch {
+      resolve(false)
+    }
+  })
 }
 
 // --- Files & folders --------------------------------------------------
@@ -615,6 +708,80 @@ function openFolder(nameRaw: unknown): { ok: boolean; label?: string; error?: st
   } catch {
     return { ok: false, error: 'launch-failed' }
   }
+}
+
+// --- Serving files to your other devices ------------------------------
+//
+// Answering "list my Documents" / "send me that PDF" from the laptop.
+//
+// The whole risk here is path traversal: a caller that can name any path can
+// read your entire drive. So the caller never sends a path. It sends a ROOT
+// KEY ('documents') plus a relative path, we resolve the root ourselves, join,
+// and then verify the result is still INSIDE that root — a relative path full
+// of `..` resolves out of the folder, and this is what catches it.
+const FILE_ROOTS: Record<string, Parameters<typeof app.getPath>[0]> = {
+  desktop: 'desktop',
+  documents: 'documents',
+  downloads: 'downloads',
+  pictures: 'pictures',
+  videos: 'videos',
+  music: 'music',
+}
+/** ~15 MB. Bigger files need chunking, which this deliberately doesn't do yet. */
+const MAX_SERVE_BYTES = 15 * 1024 * 1024
+
+function safeResolve(rootKey: string, relPath: string): { base: string; full: string } | null {
+  const key = FILE_ROOTS[rootKey]
+  if (!key) return null
+  let base: string
+  try {
+    base = path.resolve(app.getPath(key))
+  } catch {
+    return null
+  }
+  const full = path.resolve(base, relPath || '')
+  // The containment check. `path.resolve` has already collapsed any `..`, so
+  // if the result no longer starts with the root, the caller tried to escape.
+  const withSep = base.endsWith(path.sep) ? base : base + path.sep
+  if (full !== base && !full.startsWith(withSep)) return null
+  return { base, full }
+}
+
+function listRemoteFolder(rootKey: string, relPath: string): string {
+  const r = safeResolve(rootKey, relPath)
+  if (!r) throw new Error('Not allowed')
+  const entries = readdirSync(r.full, { withFileTypes: true })
+  const items = entries
+    .filter((e) => !e.name.startsWith('.'))
+    .slice(0, 500)
+    .map((e) => {
+      let size = 0
+      let modified = 0
+      try {
+        const st = statSync(path.join(r.full, e.name))
+        size = st.size
+        modified = st.mtimeMs
+      } catch {
+        // unreadable entry — still list it, just without details
+      }
+      return { name: e.name, dir: e.isDirectory(), size, modified }
+    })
+    .sort((a, b) => (a.dir === b.dir ? a.name.localeCompare(b.name) : a.dir ? -1 : 1))
+  return JSON.stringify({ root: rootKey, relPath, items })
+}
+
+function readRemoteFile(rootKey: string, relPath: string): string {
+  const r = safeResolve(rootKey, relPath)
+  if (!r) throw new Error('Not allowed')
+  const st = statSync(r.full)
+  if (!st.isFile()) throw new Error('Not a file')
+  if (st.size > MAX_SERVE_BYTES) throw new Error('File is too large to send (15 MB limit)')
+  const data = readFileSync(r.full)
+  return JSON.stringify({
+    name: path.basename(r.full),
+    size: st.size,
+    base64: data.toString('base64'),
+  })
 }
 
 /**
@@ -1595,6 +1762,13 @@ ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name)
 ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
 ipcMain.handle('senti:empty-recycle-bin', () => emptyRecycleBin())
 ipcMain.handle('senti:open-folder', (_e: unknown, name: unknown) => openFolder(name))
+// Serving a folder listing / a file to your other devices.
+ipcMain.handle('senti:serve-list', (_e: unknown, root: unknown, rel: unknown) =>
+  listRemoteFolder(String(root ?? ''), String(rel ?? ''))
+)
+ipcMain.handle('senti:serve-read', (_e: unknown, root: unknown, rel: unknown) =>
+  readRemoteFile(String(root ?? ''), String(rel ?? ''))
+)
 ipcMain.handle('senti:open-file', (_e: unknown, query: unknown) => openFile(query))
 ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
   const q = String(query ?? '').trim().slice(0, 200)

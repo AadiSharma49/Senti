@@ -23,7 +23,13 @@ export async function runAction(action: {
     case 'open_app': {
       if (!perms.openApps) return denied('open apps')
       const res = await senti?.openApp?.(target)
-      if (res?.ok) return `Opening ${res.label ?? target}.`
+      if (res?.ok) {
+        // Say what actually happened — "switched to" reads as understanding,
+        // "opening" when it was already open reads as not paying attention.
+        return res.focused
+          ? `${res.label ?? target} was already open — switched to it.`
+          : `Opening ${res.label ?? target}.`
+      }
       if (res?.error === 'unknown') return `I don't know how to open ${target} yet.`
       return `I couldn't open ${target}.`
     }

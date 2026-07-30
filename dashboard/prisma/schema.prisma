@@ -91,6 +91,8 @@ model Device {
   screen   ScreenFrame?
   /// Sessions where this device is the one being controlled.
   sessions RemoteSession[] @relation("TargetSessions")
+  /// File browse/fetch requests aimed at this device.
+  fileRequests FileRequest[]
 
   /// SHA-256 of the PIN required to take remote control of THIS machine.
   /// Null means remote control is not set up and will be refused.
@@ -123,6 +125,31 @@ model RemoteSession {
   signals RemoteSignal[]
 
   @@index([targetDeviceId, state])
+}
+
+/// A request from one of your devices to browse or fetch a file on another.
+///
+/// Same pull model as commands: the target machine is behind NAT, so it polls,
+/// does the work against a whitelist of your own folders, and writes the
+/// answer back. `payload` holds a folder listing or a base64 file, so it's a
+/// Text column rather than the short status strings commands use.
+model FileRequest {
+  id        String   @id @default(cuid())
+  deviceId  String
+  device    Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  /// list | read
+  kind      String
+  /// Folder key + relative path — never an absolute path from the caller.
+  root      String
+  relPath   String   @default("")
+  /// pending -> done | failed
+  state     String   @default("pending")
+  payload   String?
+  error     String?
+  createdAt DateTime @default(now())
+  ranAt     DateTime?
+
+  @@index([deviceId, state])
 }
 
 /// WebRTC handshake traffic for a session: offers, answers, ICE candidates.

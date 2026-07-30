@@ -46,11 +46,14 @@ interface SentiAPI {
    * running task, screen share) don't turn off each other's hold on it. */
   keepAwake: (on: boolean, holder: string) => Promise<boolean>
   /** OS actions (whitelisted or scoped in main). */
-  openApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
+  openApp: (name: string) => Promise<{ ok: boolean; label?: string; focused?: boolean; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   cleanTemp: () => Promise<{ freedMB: number; files: number }>
   emptyRecycleBin: () => Promise<{ freedMB: number; files: number }>
   openFolder: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
+  /** Serve a folder listing / a file to another of your devices. */
+  serveList: (root: string, rel: string) => Promise<string>
+  serveRead: (root: string, rel: string) => Promise<string>
   openFile: (query: string) => Promise<{ ok: boolean; label?: string; count?: number; error?: string }>
   webSearch: (query: string) => Promise<{ ok: boolean }>
   lockWorkstation: () => Promise<boolean>

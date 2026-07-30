@@ -14,6 +14,7 @@ import { startCommandPolling, stopCommandPolling } from './services/commandPolle
 import { startClipboardSync, stopClipboardSync } from './services/clipboardSync'
 import { startRemoteHost, stopRemoteHost } from './services/remoteHost'
 import { startProactive, stopProactive } from './services/proactive'
+import { startFileHost, stopFileHost } from './services/fileHost'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -92,6 +93,12 @@ function App() {
     if (signedIn && settings.permissions.remoteControl) startRemoteHost()
     else stopRemoteHost()
   }, [signedIn, settings.permissions.remoteControl])
+
+  // Serve files to your other machines, while you allow file access at all.
+  useEffect(() => {
+    if (signedIn && settings.permissions.files) startFileHost()
+    else stopFileHost()
+  }, [signedIn, settings.permissions.files])
 
   // Let Senti notice what you're up to and speak first now and then.
   useEffect(() => {

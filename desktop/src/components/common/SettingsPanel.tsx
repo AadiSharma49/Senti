@@ -15,6 +15,7 @@ import { api } from '../../services/api'
 import { AudioCapture } from '../../services/audioCapture'
 import { reflect } from '../../services/reflection'
 import RemoteControlWindow from '../remote/RemoteControlWindow'
+import RemoteFiles from '../remote/RemoteFiles'
 
 /**
  * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
@@ -136,6 +137,7 @@ export default function SettingsPanel() {
   const [peers, setPeers] = useState<PeerDevice[]>([])
   const [peerMsg, setPeerMsg] = useState<Record<string, string>>({})
   const [watchingId, setWatchingId] = useState<string | null>(null)
+  const [browsingId, setBrowsingId] = useState<string | null>(null)
   const [watchFrame, setWatchFrame] = useState<string | null>(null)
   useEffect(() => {
     if (!open || !deviceLinked) return
@@ -617,6 +619,19 @@ export default function SettingsPanel() {
                               {watchingId === d.id ? 'Stop watching' : 'Watch screen'}
                             </button>
                             <button
+                              onClick={() => setBrowsingId(browsingId === d.id ? null : d.id)}
+                              disabled={!live}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                !live
+                                  ? 'cursor-not-allowed border-white/5 text-white/25'
+                                  : browsingId === d.id
+                                  ? 'border-accent/60 bg-accent/20 text-accent'
+                                  : 'border-white/15 bg-white/5 text-white hover:border-accent/40 hover:bg-accent/10'
+                              }`}
+                            >
+                              {browsingId === d.id ? 'Hide files' : 'Files'}
+                            </button>
+                            <button
                               onClick={() => setControlling({ id: d.id, name: d.name })}
                               disabled={!live}
                               className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
@@ -629,6 +644,7 @@ export default function SettingsPanel() {
                             </button>
                           </div>
                           {peerMsg[d.id] && <div className="mt-2 text-xs text-accent">{peerMsg[d.id]}</div>}
+                          {browsingId === d.id && <RemoteFiles deviceId={d.id} deviceName={d.name} />}
                           {watchingId === d.id && (
                             <div className="mt-3">
                               {watchFrame ? (
