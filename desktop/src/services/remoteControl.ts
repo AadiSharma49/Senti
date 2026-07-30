@@ -45,18 +45,27 @@ export function currentSession(): string | null {
 }
 
 export type StartResult =
-  | { ok: true; id: string }
+  | { ok: true; id: string; method: 'email' | 'pin'; sentTo?: string }
   | { ok: false; reason: 'no-pin' | 'failed'; message: string }
 
-/** Ask to control a device. The session is inert until the PIN is verified. */
+/**
+ * Ask to control a device. The session is inert until it's verified — with a
+ * code emailed to the account owner when email is configured, otherwise the
+ * static PIN set on the target machine.
+ */
 export async function startSession(targetDeviceId: string): Promise<StartResult> {
-  const res = await api<{ id?: string; error?: string; message?: string }>(SESSION_PATH, {
-    method: 'POST',
-    body: { action: 'start', targetDeviceId },
-  })
+  const res = await api<{ id?: string; error?: string; message?: string; method?: string; sentTo?: string }>(
+    SESSION_PATH,
+    { method: 'POST', body: { action: 'start', targetDeviceId } }
+  )
   if (res.ok && res.data?.id) {
     sessionId = res.data.id
-    return { ok: true, id: res.data.id }
+    return {
+      ok: true,
+      id: res.data.id,
+      method: res.data.method === 'email' ? 'email' : 'pin',
+      sentTo: res.data.sentTo,
+    }
   }
   if (res.data?.error === 'no-pin') {
     return {
