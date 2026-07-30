@@ -39,20 +39,12 @@ const dot: Record<string, string> = {
 }
 
 /**
- * One-tap shortcuts. These run on the PC through the SAME permission dial as a
- * spoken command — if you switched something off in Senti, it refuses here too
- * and says so.
+ * The web view is deliberately a WINDOW, not a control panel: see your
+ * machines and watch a screen. Everything that acts on a PC — cleanup, power,
+ * launching apps, full mouse/keyboard control — lives in the Senti app itself,
+ * where it's behind the device's own permission dial and remote PIN. One place
+ * that does things, one place that shows them.
  */
-const SHORTCUTS: { label: string; action: string; args?: Record<string, string> }[] = [
-  { label: 'Clean up', action: 'clean_temp' },
-  { label: 'Lock PC', action: 'lock_workstation' },
-  { label: 'Sleep', action: 'power', args: { mode: 'sleep' } },
-  { label: 'Restart', action: 'power', args: { mode: 'restart' } },
-  { label: 'Shut down', action: 'power', args: { mode: 'shutdown' } },
-  { label: 'VS Code', action: 'open_app', args: { name: 'code' } },
-  { label: 'Chrome', action: 'open_app', args: { name: 'chrome' } },
-  { label: 'Mute', action: 'set_volume', args: { direction: 'mute' } },
-]
 
 export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
   const [devices, setDevices] = useState<DeviceLive[]>(initial)
@@ -175,32 +167,6 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
               </div>
             </div>
 
-            {/* One-tap shortcuts — big enough to hit with a thumb. */}
-            <div className="relative mt-4 border-t border-white/5 pt-4">
-              <div className="flex flex-wrap gap-2">
-                {SHORTCUTS.map((s) => (
-                  <button
-                    key={s.label}
-                    onClick={() => send(d.id, s.label, s.action, s.args)}
-                    disabled={!live}
-                    className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
-                      live
-                        ? 'border-white/15 bg-white/5 text-white hover:border-accent/40 hover:bg-accent/10'
-                        : 'cursor-not-allowed border-white/5 text-white/25'
-                    }`}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-              {sent[d.id] && <div className="mt-3 text-xs text-accent">{sent[d.id]}</div>}
-              {!live && (
-                <div className="mt-3 text-xs text-white/35">
-                  This PC is offline, so it can&apos;t pick up commands right now.
-                </div>
-              )}
-            </div>
-
             {/* Live screen — watch this PC from here. */}
             <div className="relative mt-4 border-t border-white/5 pt-4">
               <div className="mb-2 flex items-center justify-between">
@@ -237,13 +203,15 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
                   {live ? 'Tap “Share screen” to see this PC live.' : 'PC offline.'}
                 </div>
               )}
+              {sent[d.id] && <div className="mt-2 text-xs text-accent">{sent[d.id]}</div>}
             </div>
           </Card>
         )
       })}
 
       <p className="text-center text-xs text-white/35">
-        Updates on its own. Say &ldquo;Senti, …&rdquo; on your PC and watch it change here.
+        Updates on its own. To actually control a machine — mouse, keyboard, cleanup, power —
+        open Senti on any of your devices and use My devices there.
       </p>
     </div>
   )

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import SetupWizard from './components/onboarding/SetupWizard'
 import WakeHud from './components/assistant/WakeHud'
 import ScreenShareIndicator from './components/assistant/ScreenShareIndicator'
+import ControlledBanner from './components/remote/ControlledBanner'
 import SettingsPanel from './components/common/SettingsPanel'
 import { useSettingsStore } from './state/settingsStore'
 import { useLockStore } from './state/lockStore'
@@ -11,6 +12,7 @@ import { useGreetingStore } from './state/greetingStore'
 import { startReporting, stopReporting } from './services/statusReporter'
 import { startCommandPolling, stopCommandPolling } from './services/commandPoller'
 import { startClipboardSync, stopClipboardSync } from './services/clipboardSync'
+import { startRemoteHost, stopRemoteHost } from './services/remoteHost'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -83,6 +85,13 @@ function App() {
     else stopClipboardSync()
   }, [signedIn, settings.permissions.clipboardSync])
 
+  // Listen for another of your machines asking to drive this one. The session
+  // still can't do anything until its PIN is verified.
+  useEffect(() => {
+    if (signedIn && settings.permissions.remoteControl) startRemoteHost()
+    else stopRemoteHost()
+  }, [signedIn, settings.permissions.remoteControl])
+
   // Setup wizard — its own full-window flow.
   if (needsSetup) {
     return (
@@ -98,6 +107,7 @@ function App() {
     <div className="relative h-full w-full overflow-hidden">
       {!settingsOpen && <WakeHud />}
       <ScreenShareIndicator />
+      <ControlledBanner />
       <SettingsPanel />
     </div>
   )

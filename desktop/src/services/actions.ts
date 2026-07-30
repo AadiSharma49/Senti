@@ -38,6 +38,12 @@ export async function runAction(action: {
 
     case 'clean_temp': {
       if (!perms.cleanup) return denied('delete temporary files')
+      // Open the folder first so you SEE the work happen, instead of taking
+      // "I deleted 55 MB" on faith. The window is already up as files vanish.
+      if (perms.files) {
+        await senti?.openFolder?.('temp')
+        await new Promise((r) => setTimeout(r, 700))
+      }
       const res = await senti?.cleanTemp?.()
       if (!res) return "I couldn't clean up just now."
       if (res.files === 0) return 'Nothing to clean — your temp folders are already clear.'

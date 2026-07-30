@@ -1,0 +1,149 @@
+import { api } from './api'
+import { peerScreen } from './peers'
+
+/**
+ * Driving another machine — the sending half of remote control.
+ *
+ * Start a session against one of your other devices, verify its PIN, then
+ * stream input to it while pulling its screen back.
+ *
+ * Mouse moves are throttled and coalesced on purpose: a mouse produces dozens
+ * of events a second, and forwarding each as its own request would flood the
+ * backend to no benefit — only the LATEST position matters. Clicks and
+ * keystrokes are never dropped, because every one of those is intentional.
+ */
+const SESSION_PATH = '/api/device/remote/session'
+const INPUT_PATH = '/api/device/remote/input'
+const FLUSH_MS = 80
+const HEARTBEAT_MS = 6000
+
+export interface RemoteEvent {
+  t: 'move' | 'click' | 'scroll' | 'type' | 'key'
+  x?: number
+  y?: number
+  b?: 'left' | 'right' | 'middle'
+  d?: number
+  text?: string
+  k?: string
+  mods?: string[]
+}
+
+let sessionId: string | null = null
+let queue: RemoteEvent[] = []
+/** The newest pointer position, kept apart so it can be coalesced. */
+let pendingMove: RemoteEvent | null = null
+let flushTimer: number | null = null
+let beatTimer: number | null = null
+
+export function currentSession(): string | null {
+  return sessionId
+}
+
+export type StartResult =
+  | { ok: true; id: string }
+  | { ok: false; reason: 'no-pin' | 'failed'; message: string }
+
+/** Ask to control a device. The session is inert until the PIN is verified. */
+export async function startSession(targetDeviceId: string): Promise<StartResult> {
+  const res = await api<{ id?: string; error?: string; message?: string }>(SESSION_PATH, {
+    method: 'POST',
+    body: { action: 'start', targetDeviceId },
+  })
+  if (res.ok && res.data?.id) {
+    sessionId = res.data.id
+    return { ok: true, id: res.data.id }
+  }
+  if (res.data?.error === 'no-pin') {
+    return {
+      ok: false,
+      reason: 'no-pin',
+      message: res.data.message || 'Remote control is not set up on that machine yet.',
+    }
+  }
+  return { ok: false, reason: 'failed', message: "Couldn't start a session with that device." }
+}
+
+export type VerifyResult = { ok: true } | { ok: false; attemptsLeft: number; message: string }
+
+/** Hand over the PIN. Only on success does the session start accepting input. */
+export async function verifyPin(pin: string): Promise<VerifyResult> {
+  if (!sessionId) return { ok: false, attemptsLeft: 0, message: 'No session.' }
+  const res = await api<{ ok?: boolean; attemptsLeft?: number }>(SESSION_PATH, {
+    method: 'POST',
+    body: { action: 'verify', id: sessionId, pin },
+  })
+  if (res.ok && res.data?.ok) {
+    startPumps()
+    return { ok: true }
+  }
+  const left = res.data?.attemptsLeft ?? 0
+  if (left <= 0) {
+    // Out of attempts: the backend killed the session, so drop it here too
+    // rather than leaving a dead id that quietly rejects everything.
+    sessionId = null
+    return { ok: false, attemptsLeft: 0, message: 'Too many wrong PINs — session cancelled.' }
+  }
+  return { ok: false, attemptsLeft: left, message: `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left.` }
+}
+
+export async function endSession(): Promise<void> {
+  const id = sessionId
+  sessionId = null
+  queue = []
+  pendingMove = null
+  stopPumps()
+  if (id) {
+    try {
+      await api(SESSION_PATH, { method: 'POST', body: { action: 'end', id } })
+    } catch {
+      // The target hangs up on its own once heartbeats stop.
+    }
+  }
+}
+
+/** Queue an event. Moves coalesce; everything else is kept. */
+export function sendEvent(e: RemoteEvent): void {
+  if (!sessionId) return
+  if (e.t === 'move') pendingMove = e
+  else queue.push(e)
+}
+
+async function flush(): Promise<void> {
+  if (!sessionId) return
+  // A move must be applied BEFORE the click that follows it, or the click
+  // lands wherever the pointer happened to be.
+  const batch = pendingMove ? [pendingMove, ...queue] : queue
+  pendingMove = null
+  queue = []
+  if (!batch.length) return
+  try {
+    await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
+  } catch {
+    // Dropped input is better than a growing backlog of stale clicks.
+  }
+}
+
+function startPumps(): void {
+  stopPumps()
+  flushTimer = window.setInterval(() => void flush(), FLUSH_MS)
+  beatTimer = window.setInterval(() => {
+    if (sessionId) void api(SESSION_PATH, { method: 'POST', body: { action: 'heartbeat', id: sessionId } })
+  }, HEARTBEAT_MS)
+}
+
+function stopPumps(): void {
+  if (flushTimer !== null) {
+    clearInterval(flushTimer)
+    flushTimer = null
+  }
+  if (beatTimer !== null) {
+    clearInterval(beatTimer)
+    beatTimer = null
+  }
+}
+
+/** The target's newest screen frame, for the control window. */
+export async function targetFrame(deviceId: string): Promise<string | null> {
+  const s = await peerScreen(deviceId)
+  return s.frame
+}

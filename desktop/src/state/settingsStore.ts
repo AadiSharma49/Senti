@@ -30,6 +30,11 @@ export interface SettingsState {
     screenShare: boolean
     /** Sync the clipboard between your devices: copy here, paste there. */
     clipboardSync: boolean
+    /**
+     * Let another of YOUR devices take mouse/keyboard control of this one.
+     * Off by default — and even on, nothing connects without the remote PIN.
+     */
+    remoteControl: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
     /**
@@ -98,6 +103,9 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   files: true,
   screenShare: true,
   clipboardSync: true,
+  // Someone driving your mouse and keyboard is the biggest permission here —
+  // it stays off until you deliberately turn it on and set a PIN.
+  remoteControl: false,
   systemControl: true,
   alwaysListening: true,
 }

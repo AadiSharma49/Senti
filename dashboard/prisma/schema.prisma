@@ -89,6 +89,53 @@ model Device {
   events   UnlockEvent[]
   commands DeviceCommand[]
   screen   ScreenFrame?
+  /// Sessions where this device is the one being controlled.
+  sessions RemoteSession[] @relation("TargetSessions")
+
+  /// SHA-256 of the PIN required to take remote control of THIS machine.
+  /// Null means remote control is not set up and will be refused.
+  remotePinHash String?
+}
+
+/// A live remote-control session: one device driving another.
+///
+/// Both machines are already token-authenticated to the same account, so this
+/// is the SECOND factor — a PIN the owner set, verified before any input is
+/// accepted. That's what stops a stolen, already-linked laptop from being used
+/// to drive the desktop.
+model RemoteSession {
+  id             String   @id @default(cuid())
+  userId         String
+  /// Who is driving, and which machine is being driven.
+  viewerDeviceId String
+  targetDeviceId String
+  target         Device   @relation("TargetSessions", fields: [targetDeviceId], references: [id], onDelete: Cascade)
+  /// pending (awaiting PIN) -> active -> ended
+  state          String   @default("pending")
+  /// Failed PIN attempts; the session dies rather than allowing a brute force.
+  attempts       Int      @default(0)
+  createdAt      DateTime @default(now())
+  /// Refreshed by the viewer; the target hangs up when this goes stale.
+  heartbeatAt    DateTime @default(now())
+  endedAt        DateTime?
+
+  events RemoteInput[]
+
+  @@index([targetDeviceId, state])
+}
+
+/// One queued input event (a move, click, scroll, or keystroke) travelling
+/// from the driving device to the driven one. Deleted the moment it's
+/// delivered — this is a transport queue, never a log of what you typed.
+model RemoteInput {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   RemoteSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  /// JSON event, e.g. {"t":"move","x":0.5,"y":0.3}
+  data      String
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
 }
 
 /// One shared clipboard per account: copy on the PC, paste on the laptop.

@@ -19,6 +19,9 @@ import { api } from './api'
  */
 const SCREEN_PATH = '/api/device/screen'
 const FRAME_INTERVAL_MS = 1000
+/** While someone is actively driving this machine, ~5 fps instead of 1. */
+const FAST_FRAME_MS = 200
+let currentInterval = FRAME_INTERVAL_MS
 /** Downscale so a frame stays small (~30-80 KB) and uploads quickly. */
 const MAX_WIDTH = 1280
 const JPEG_QUALITY = 0.5
@@ -126,8 +129,26 @@ export async function startScreenShare(): Promise<boolean> {
   running = true
   emit()
   void captureFrame()
-  timer = window.setInterval(() => void captureFrame(), FRAME_INTERVAL_MS)
+  timer = window.setInterval(() => void captureFrame(), currentInterval)
   return true
+}
+
+/**
+ * Speed the feed up while someone is actually DRIVING this machine.
+ *
+ * A frame a second is fine for glancing at your PC, but it's unusable for
+ * control — you'd click where the cursor was a second ago. During a remote
+ * session we push to ~5 fps, which is choppy but honest to work with, and drop
+ * back the moment the session ends.
+ */
+export function setFastFrames(fast: boolean): void {
+  const next = fast ? FAST_FRAME_MS : FRAME_INTERVAL_MS
+  if (next === currentInterval) return
+  currentInterval = next
+  if (running && timer !== null) {
+    clearInterval(timer)
+    timer = window.setInterval(() => void captureFrame(), currentInterval)
+  }
 }
 
 export async function stopScreenShare(): Promise<void> {

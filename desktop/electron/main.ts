@@ -481,6 +481,9 @@ function resolveFolder(nameRaw: unknown): { path?: string; shell?: string; label
 
   // Special shell locations that aren't plain paths.
   const special: Record<string, { shell: string; label: string }> = {
+    temp: { shell: os.tmpdir(), label: 'your Temp folder' },
+    'temp files': { shell: os.tmpdir(), label: 'your Temp folder' },
+    'temporary files': { shell: os.tmpdir(), label: 'your Temp folder' },
     'recycle bin': { shell: 'shell:RecycleBinFolder', label: 'Recycle Bin' },
     trash: { shell: 'shell:RecycleBinFolder', label: 'Recycle Bin' },
     'this pc': { shell: 'shell:MyComputerFolder', label: 'This PC' },
@@ -698,6 +701,187 @@ function emptyRecycleBin(): { freedMB: number; files: number } {
     }
   } catch {
     return { freedMB: 0, files: 0 }
+  }
+}
+
+// --- Remote input injection -------------------------------------------
+//
+// Driving this machine from another one: real mouse moves, clicks, scrolls and
+// keystrokes delivered to Windows itself.
+//
+// Done through ONE long-lived PowerShell process reading commands on stdin.
+// Two reasons: spawning a process per event would add ~200ms to every mouse
+// move (unusable), and the alternative — a native input module — needs a
+// per-Electron-version rebuild that breaks on upgrade. This needs neither.
+//
+// Positions arrive NORMALIZED (0..1) and go out as MOUSEEVENTF_ABSOLUTE, whose
+// 0..65535 coordinate space is DPI-independent. That sidesteps display-scaling
+// maths entirely, which is where this kind of code usually goes wrong.
+const INPUT_SCRIPT = `
+$ErrorActionPreference = 'SilentlyContinue'
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class SentiIn {
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
+  [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
+}
+"@
+$MOVE=0x0001; $ABS=0x8000; $LD=0x0002; $LU=0x0004; $RD=0x0008; $RU=0x0010
+$MD=0x0020; $MU=0x0040; $WHEEL=0x0800; $KEYUP=0x0002
+
+function Send-Key([byte]$vk, [int]$shiftState) {
+  if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,0,[IntPtr]::Zero) }
+  if ($shiftState -band 2) { [SentiIn]::keybd_event(0x11,0,0,[IntPtr]::Zero) }
+  if ($shiftState -band 4) { [SentiIn]::keybd_event(0x12,0,0,[IntPtr]::Zero) }
+  [SentiIn]::keybd_event($vk,0,0,[IntPtr]::Zero)
+  [SentiIn]::keybd_event($vk,0,$KEYUP,[IntPtr]::Zero)
+  if ($shiftState -band 4) { [SentiIn]::keybd_event(0x12,0,$KEYUP,[IntPtr]::Zero) }
+  if ($shiftState -band 2) { [SentiIn]::keybd_event(0x11,0,$KEYUP,[IntPtr]::Zero) }
+  if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,$KEYUP,[IntPtr]::Zero) }
+}
+
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($null -eq $line) { break }
+  $p = $line.Split(' ')
+  switch ($p[0]) {
+    'M' {
+      $x = [uint32]([double]$p[1] * 65535); $y = [uint32]([double]$p[2] * 65535)
+      [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+    }
+    'C' {
+      $x = [uint32]([double]$p[2] * 65535); $y = [uint32]([double]$p[3] * 65535)
+      [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+      $down = $LD; $up = $LU
+      if ($p[1] -eq 'right') { $down = $RD; $up = $RU }
+      elseif ($p[1] -eq 'middle') { $down = $MD; $up = $MU }
+      $times = 1
+      if ($p.Length -gt 4 -and $p[4] -eq '2') { $times = 2 }
+      for ($i = 0; $i -lt $times; $i++) {
+        [SentiIn]::mouse_event($down, 0, 0, 0, [IntPtr]::Zero)
+        [SentiIn]::mouse_event($up, 0, 0, 0, [IntPtr]::Zero)
+      }
+    }
+    'S' { [SentiIn]::mouse_event($WHEEL, 0, 0, [uint32][int]$p[1], [IntPtr]::Zero) }
+    'T' {
+      $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
+      foreach ($ch in $text.ToCharArray()) {
+        if ($ch -eq "\`n") { Send-Key 0x0D 0; continue }
+        $scan = [SentiIn]::VkKeyScan($ch)
+        if ($scan -eq -1) { continue }
+        Send-Key ([byte]($scan -band 0xFF)) (($scan -shr 8) -band 0xFF)
+      }
+    }
+    'K' { Send-Key ([byte][int]$p[1]) ([int]$p[2]) }
+  }
+}
+`
+
+let inputProc: import('child_process').ChildProcess | null = null
+
+/** Start (or reuse) the injector. Returns false if PowerShell won't start. */
+function ensureInputProc(): boolean {
+  if (inputProc && !inputProc.killed) return true
+  try {
+    const file = path.join(app.getPath('userData'), 'input.ps1')
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file, INPUT_SCRIPT, 'utf8')
+    inputProc = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
+      { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
+    )
+    inputProc.on('exit', () => {
+      inputProc = null
+    })
+    return true
+  } catch {
+    inputProc = null
+    return false
+  }
+}
+
+function stopInputProc(): void {
+  try {
+    inputProc?.kill()
+  } catch {
+    // already gone
+  }
+  inputProc = null
+}
+
+/** JS key names -> Windows virtual-key codes, for keys that aren't characters. */
+const VK: Record<string, number> = {
+  Backspace: 0x08, Tab: 0x09, Enter: 0x0d, Escape: 0x1b, ' ': 0x20,
+  PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24,
+  ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28,
+  Insert: 0x2d, Delete: 0x2e,
+  F1: 0x70, F2: 0x71, F3: 0x72, F4: 0x73, F5: 0x74, F6: 0x75,
+  F7: 0x76, F8: 0x77, F9: 0x78, F10: 0x79, F11: 0x7a, F12: 0x7b,
+}
+
+interface RemoteEvent {
+  t: string
+  x?: number
+  y?: number
+  b?: string
+  d?: number
+  text?: string
+  k?: string
+  mods?: string[]
+}
+
+const clamp01 = (n: unknown): number => Math.max(0, Math.min(1, Number(n) || 0))
+
+/** Translate one event into a line the injector understands. */
+function inputLine(e: RemoteEvent): string | null {
+  switch (e.t) {
+    case 'move':
+      return `M ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)}`
+    case 'click': {
+      const b = e.b === 'right' || e.b === 'middle' ? e.b : 'left'
+      const times = e.d === 2 ? '2' : '1'
+      return `C ${b} ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)} ${times}`
+    }
+    case 'scroll': {
+      // Screen-pixel delta -> wheel notches, inverted to match Windows.
+      const notches = Math.max(-10, Math.min(10, Math.round(-(Number(e.d) || 0) / 100)))
+      if (!notches) return null
+      return `S ${notches * 120}`
+    }
+    case 'type': {
+      const text = String(e.text ?? '').slice(0, 500)
+      if (!text) return null
+      return `T ${Buffer.from(text, 'utf8').toString('base64')}`
+    }
+    case 'key': {
+      const vk = VK[String(e.k)]
+      if (vk === undefined) return null
+      const mods = Array.isArray(e.mods) ? e.mods : []
+      // Bit flags the script expects: 1 shift, 2 ctrl, 4 alt.
+      const state = (mods.includes('shift') ? 1 : 0) | (mods.includes('ctrl') ? 2 : 0) | (mods.includes('alt') ? 4 : 0)
+      return `K ${vk} ${state}`
+    }
+    default:
+      return null
+  }
+}
+
+function injectInput(events: unknown): boolean {
+  if (!Array.isArray(events) || !events.length) return false
+  if (!ensureInputProc() || !inputProc?.stdin) return false
+  const lines = events
+    .map((e) => inputLine(e as RemoteEvent))
+    .filter((l): l is string => !!l)
+  if (!lines.length) return true
+  try {
+    inputProc.stdin.write(lines.join('\n') + '\n')
+    return true
+  } catch {
+    stopInputProc()
+    return false
   }
 }
 
@@ -1126,6 +1310,8 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
+  // Never leave the injector running after Senti is gone.
+  stopInputProc()
 })
 
 // --- Device token + backend access (main-process only) ---------------
@@ -1246,6 +1432,13 @@ ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
 })
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
 ipcMain.handle('senti:power', (_e: unknown, mode: unknown) => powerAction(mode))
+
+// Remote control: apply input from the machine driving this one.
+ipcMain.handle('senti:remote-input', (_e: unknown, events: unknown) => injectInput(events))
+ipcMain.handle('senti:remote-input-stop', () => {
+  stopInputProc()
+  return true
+})
 ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
   const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null
   return d ? changeVolume(d) : false

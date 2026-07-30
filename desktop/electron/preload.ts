@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('senti', {
   webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
+  /** Apply input from the machine remotely driving this one. */
+  remoteInput: (events: unknown[]) => ipcRenderer.invoke('senti:remote-input', events),
+  remoteInputStop: () => ipcRenderer.invoke('senti:remote-input-stop'),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 
   // Backend access — the token is attached in main, never exposed here.

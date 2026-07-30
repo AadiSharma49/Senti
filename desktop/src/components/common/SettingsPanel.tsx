@@ -11,6 +11,8 @@ import { apiBase, apiOverride, setApiBase } from '../../config'
 import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
+import { api } from '../../services/api'
+import RemoteControlWindow from '../remote/RemoteControlWindow'
 
 /**
  * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
@@ -57,6 +59,50 @@ export default function SettingsPanel() {
       alive = false
     }
   }, [open])
+
+  // The PIN another device must enter to drive THIS machine. We only ever
+  // learn whether one is set — never what it is.
+  const [remotePinSet, setRemotePinSet] = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinMsg, setPinMsg] = useState('')
+  useEffect(() => {
+    if (!open || !deviceLinked) return
+    let alive = true
+    void (async () => {
+      const res = await api<{ set?: boolean }>('/api/device/remote/pin')
+      if (alive && res.ok) setRemotePinSet(!!res.data?.set)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open, deviceLinked])
+
+  const saveRemotePin = async () => {
+    const res = await api<{ ok?: boolean; error?: string }>('/api/device/remote/pin', {
+      method: 'POST',
+      body: { pin: pinInput },
+    })
+    setPinInput('')
+    if (res.ok) {
+      setRemotePinSet(true)
+      setPinMsg('Remote PIN saved. Your other devices will need it to connect.')
+    } else {
+      setPinMsg(res.data?.error || "Couldn't save that PIN.")
+    }
+    setTimeout(() => setPinMsg(''), 6000)
+  }
+
+  const clearRemotePin = async () => {
+    const res = await api('/api/device/remote/pin', { method: 'DELETE' })
+    if (res.ok) {
+      setRemotePinSet(false)
+      setPinMsg('Remote control turned off for this PC.')
+      setTimeout(() => setPinMsg(''), 6000)
+    }
+  }
+
+  // Which device we're driving right now (opens the control window).
+  const [controlling, setControlling] = useState<{ id: string; name: string } | null>(null)
 
   // My Devices — every machine on this account, controllable from right here.
   const [peers, setPeers] = useState<PeerDevice[]>([])
@@ -270,6 +316,7 @@ export default function SettingsPanel() {
               { key: 'files', title: 'Open files and folders', hint: '“Open my downloads”, “find my resume”. Opens them — never edits or deletes.' },
               { key: 'screenShare', title: 'Share screen to my devices', hint: 'Stream this PC live to your own phone/laptop. Shows a red badge while active.' },
               { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Senti devices.' },
+              { key: 'remoteControl', title: 'Allow remote control of this PC', hint: 'Let another of your devices drive this mouse and keyboard. Needs a remote PIN below. A banner shows the whole time, and you can stop it instantly.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
               { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },
               { key: 'cleanup', title: 'Delete temporary files', hint: 'Frees disk space. Off by default.' },
@@ -489,6 +536,17 @@ export default function SettingsPanel() {
                             >
                               {watchingId === d.id ? 'Stop watching' : 'Watch screen'}
                             </button>
+                            <button
+                              onClick={() => setControlling({ id: d.id, name: d.name })}
+                              disabled={!live}
+                              className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+                                live
+                                  ? 'border-accent bg-accent text-black hover:brightness-110'
+                                  : 'cursor-not-allowed border-white/5 text-white/25'
+                              }`}
+                            >
+                              Take control
+                            </button>
                           </div>
                           {peerMsg[d.id] && <div className="mt-2 text-xs text-accent">{peerMsg[d.id]}</div>}
                           {watchingId === d.id && (
@@ -514,6 +572,46 @@ export default function SettingsPanel() {
                 })}
               </div>
             )}
+
+            {/* The PIN another device must enter to drive THIS machine. */}
+            <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="font-semibold text-white">Remote PIN for this PC</div>
+              <p className="mt-1 text-xs text-secondary">
+                Both machines are already signed into your account — this PIN is the second
+                lock, so a stolen laptop still can&apos;t drive this PC.{' '}
+                {remotePinSet ? 'A PIN is set.' : 'No PIN set yet, so remote control is refused.'}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  type="password"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && pinInput.length >= 4 && void saveRemotePin()}
+                  placeholder={remotePinSet ? 'New PIN' : 'Set a PIN (4-12)'}
+                  className="w-40 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm tracking-widest outline-none focus:border-accent/60"
+                />
+                <button
+                  onClick={() => void saveRemotePin()}
+                  disabled={pinInput.length < 4}
+                  className={`rounded-full px-4 py-2 text-xs font-semibold ${
+                    pinInput.length >= 4
+                      ? 'bg-accent text-black hover:brightness-110'
+                      : 'cursor-not-allowed border border-white/10 text-white/30'
+                  }`}
+                >
+                  {remotePinSet ? 'Change PIN' : 'Set PIN'}
+                </button>
+                {remotePinSet && (
+                  <button
+                    onClick={() => void clearRemotePin()}
+                    className="rounded-full border border-red-400/30 px-3 py-2 text-xs text-red-300 hover:bg-red-500/10"
+                  >
+                    Turn off remote control
+                  </button>
+                )}
+              </div>
+              {pinMsg && <div className="mt-2 text-xs text-accent">{pinMsg}</div>}
+            </div>
           </motion.section>
         )}
 
@@ -593,5 +691,17 @@ export default function SettingsPanel() {
     </motion.div>
   )
 
-  return <AnimatePresence>{open && panel}</AnimatePresence>
+  return (
+    <>
+      <AnimatePresence>{open && panel}</AnimatePresence>
+      {/* Driving another machine takes over the whole window. */}
+      {controlling && (
+        <RemoteControlWindow
+          deviceId={controlling.id}
+          deviceName={controlling.name}
+          onClose={() => setControlling(null)}
+        />
+      )}
+    </>
+  )
 }
