@@ -33,8 +33,16 @@ export default function RemoteControlWindow({
   const [frame, setFrame] = useState<string | null>(null)
   /** True once video is flowing peer-to-peer; false means the frame fallback. */
   const [direct, setDirect] = useState(false)
+  /**
+   * Game mode: the pointer is locked to this window and we send MOVEMENT
+   * rather than positions. Games capture the mouse and read raw deltas for
+   * camera control, so absolute jumps are unusable for them — this is the
+   * difference between "watchable" and "playable".
+   */
+  const [locked, setLocked] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
+  const surfaceRef = useRef<HTMLDivElement>(null)
   const lastMove = useRef(0)
 
   // Open the session as soon as the window appears.
@@ -98,7 +106,11 @@ export default function RemoteControlWindow({
     if (phase !== 'live') return
     const onKey = (e: KeyboardEvent) => {
       // Escape is the way out; it must stay local or you could never leave.
+      // In game mode the browser uses it to release the captured mouse, so
+      // the first press only unlocks — otherwise stepping out of a game would
+      // also hang up the session, which nobody wants.
       if (e.key === 'Escape') {
+        if (document.pointerLockElement) return
         onClose()
         return
       }
@@ -149,6 +161,18 @@ export default function RemoteControlWindow({
     return { x, y }
   }
 
+  // Track pointer lock, including the user escaping it with the OS shortcut.
+  useEffect(() => {
+    const onChange = () => setLocked(document.pointerLockElement === surfaceRef.current)
+    document.addEventListener('pointerlockchange', onChange)
+    return () => document.removeEventListener('pointerlockchange', onChange)
+  }, [])
+
+  const toggleLock = () => {
+    if (document.pointerLockElement) document.exitPointerLock()
+    else void surfaceRef.current?.requestPointerLock()
+  }
+
   const onMove = (e: React.MouseEvent) => {
     const now = Date.now()
     // Over a direct connection there's no HTTP round trip, so we can sample at
@@ -156,14 +180,28 @@ export default function RemoteControlWindow({
     // that rate would just queue up requests, so stay at ~20Hz there.
     if (now - lastMove.current < (direct ? 16 : 50)) return
     lastMove.current = now
+
+    if (locked) {
+      // Locked: the cursor isn't anywhere on screen, so position is
+      // meaningless — send how far it moved instead.
+      const dx = e.movementX
+      const dy = e.movementY
+      if (dx || dy) sendEvent({ t: 'moverel', x: dx, y: dy })
+      return
+    }
     const p = norm(e)
     if (p) sendEvent({ t: 'move', x: p.x, y: p.y })
   }
 
   const onClick = (e: React.MouseEvent) => {
+    const b = e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left'
+    if (locked) {
+      // No position to send — the host clicks wherever the pointer already is.
+      sendEvent({ t: 'click', b, x: -1, y: -1, d: e.detail >= 2 ? 2 : 1 })
+      return
+    }
     const p = norm(e)
     if (!p) return
-    const b = e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left'
     sendEvent({ t: 'click', b, x: p.x, y: p.y, d: e.detail >= 2 ? 2 : 1 })
   }
 
@@ -194,16 +232,32 @@ export default function RemoteControlWindow({
               : 'connected via relay — negotiating a direct link for smoother video'}
           </span>
         </div>
-        <button
-          onClick={onClose}
-          className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
-        >
-          Disconnect (Esc)
-        </button>
+        <div className="flex items-center gap-2">
+          {phase === 'live' && (
+            <button
+              onClick={toggleLock}
+              title="Capture the mouse and send movement instead of position — needed for games"
+              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                locked
+                  ? 'border-accent bg-accent text-black'
+                  : 'border-white/15 text-white/80 hover:bg-white/10'
+              }`}
+            >
+              {locked ? 'Game mode on' : 'Game mode'}
+            </button>
+          )}
+          <button
+            onClick={onClose}
+            className="rounded-full border border-white/15 px-3 py-1 text-xs text-white/80 hover:bg-white/10"
+          >
+            Disconnect (Esc)
+          </button>
+        </div>
       </div>
 
       {phase === 'live' ? (
         <div
+          ref={surfaceRef}
           className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
           onMouseMove={onMove}
           onMouseDown={onClick}

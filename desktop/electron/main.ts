@@ -779,7 +779,7 @@ Add-Type @"
 using System;
 using System.Runtime.InteropServices;
 public class SentiIn {
-  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint dx, uint dy, uint d, IntPtr e);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, int d, IntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
   [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
 }
@@ -804,12 +804,22 @@ while ($true) {
   $p = $line.Split(' ')
   switch ($p[0]) {
     'M' {
-      $x = [uint32]([double]$p[1] * 65535); $y = [uint32]([double]$p[2] * 65535)
+      $x = [int]([double]$p[1] * 65535); $y = [int]([double]$p[2] * 65535)
       [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
     }
+    'R' {
+      # RELATIVE move: no ABSOLUTE flag, so Windows adds the delta to the
+      # current position. This is the only kind of motion a game reading raw
+      # input understands — absolute jumps make camera control unusable.
+      [SentiIn]::mouse_event($MOVE, [int]$p[1], [int]$p[2], 0, [IntPtr]::Zero)
+    }
     'C' {
-      $x = [uint32]([double]$p[2] * 65535); $y = [uint32]([double]$p[3] * 65535)
-      [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+      # A click with x<0 means "wherever the pointer already is" — during
+      # pointer lock the viewer has no meaningful absolute position to send.
+      if ([double]$p[2] -ge 0) {
+        $x = [int]([double]$p[2] * 65535); $y = [int]([double]$p[3] * 65535)
+        [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+      }
       $down = $LD; $up = $LU
       if ($p[1] -eq 'right') { $down = $RD; $up = $RU }
       elseif ($p[1] -eq 'middle') { $down = $MD; $up = $MU }
@@ -820,7 +830,7 @@ while ($true) {
         [SentiIn]::mouse_event($up, 0, 0, 0, [IntPtr]::Zero)
       }
     }
-    'S' { [SentiIn]::mouse_event($WHEEL, 0, 0, [uint32][int]$p[1], [IntPtr]::Zero) }
+    'S' { [SentiIn]::mouse_event($WHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
     'T' {
       $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
       foreach ($ch in $text.ToCharArray()) {
@@ -896,9 +906,19 @@ function inputLine(e: RemoteEvent): string | null {
   switch (e.t) {
     case 'move':
       return `M ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)}`
+    case 'moverel': {
+      // Deltas only. Clamped so a wild packet can't fling the cursor across
+      // the desktop, which is the sort of thing that ruins a game.
+      const dx = Math.max(-400, Math.min(400, Math.round(Number(e.x) || 0)))
+      const dy = Math.max(-400, Math.min(400, Math.round(Number(e.y) || 0)))
+      if (!dx && !dy) return null
+      return `R ${dx} ${dy}`
+    }
     case 'click': {
       const b = e.b === 'right' || e.b === 'middle' ? e.b : 'left'
       const times = e.d === 2 ? '2' : '1'
+      // A negative x tells the host to click in place — see the script.
+      if (typeof e.x !== 'number' || e.x < 0) return `C ${b} -1 -1 ${times}`
       return `C ${b} ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)} ${times}`
     }
     case 'scroll': {

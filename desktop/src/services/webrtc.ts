@@ -105,8 +105,23 @@ export async function startViewerPeer(
   let channelOpen = false
 
   // We only receive; we never send our own screen or mic back.
-  pc.addTransceiver('video', { direction: 'recvonly' })
+  const videoTx = pc.addTransceiver('video', { direction: 'recvonly' })
   pc.addTransceiver('audio', { direction: 'recvonly' })
+
+  // Ask for H.264 ahead of VP8/VP9. Hardware decoders for H.264 are close to
+  // universal, while VP9 often falls back to software — which on a modest
+  // machine is the difference between smooth 1080p and a stuttering CPU pegged
+  // at 100%. Negotiation still decides; this only states a preference.
+  try {
+    const caps = RTCRtpReceiver.getCapabilities('video')
+    if (caps?.codecs && videoTx.setCodecPreferences) {
+      const h264 = caps.codecs.filter((c) => /h264/i.test(c.mimeType))
+      const rest = caps.codecs.filter((c) => !/h264/i.test(c.mimeType))
+      if (h264.length) videoTx.setCodecPreferences([...h264, ...rest])
+    }
+  } catch {
+    // Unsupported on this build — the default ordering still works.
+  }
   const channel = pc.createDataChannel('input', { ordered: true })
   channel.onopen = () => {
     channelOpen = true

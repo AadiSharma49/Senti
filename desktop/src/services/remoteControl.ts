@@ -19,7 +19,8 @@ const FLUSH_MS = 80
 const HEARTBEAT_MS = 6000
 
 export interface RemoteEvent {
-  t: 'move' | 'click' | 'scroll' | 'type' | 'key'
+  /** `moverel` carries a delta rather than a position — see the game mode. */
+  t: 'move' | 'moverel' | 'click' | 'scroll' | 'type' | 'key'
   x?: number
   y?: number
   b?: 'left' | 'right' | 'middle'
@@ -112,11 +113,27 @@ export async function endSession(): Promise<void> {
   }
 }
 
-/** Queue an event. Moves coalesce; everything else is kept. */
+/** Queue an event. Absolute moves coalesce; everything else is kept. */
 export function sendEvent(e: RemoteEvent): void {
   if (!sessionId) return
-  if (e.t === 'move') pendingMove = e
-  else queue.push(e)
+  if (e.t === 'move') {
+    // Only the newest position matters — older ones are already wrong.
+    pendingMove = e
+    return
+  }
+  if (e.t === 'moverel') {
+    // Deltas must ACCUMULATE, never replace. Dropping one loses that much
+    // movement permanently, which in a game reads as the camera sticking.
+    const last = queue[queue.length - 1]
+    if (last?.t === 'moverel') {
+      last.x = (last.x ?? 0) + (e.x ?? 0)
+      last.y = (last.y ?? 0) + (e.y ?? 0)
+    } else {
+      queue.push({ ...e })
+    }
+    return
+  }
+  queue.push(e)
 }
 
 async function flush(): Promise<void> {
