@@ -23,6 +23,14 @@ export const LIMITS: Record<string, RateLimit> = {
   chat: { limit: 20, windowMs: 60_000 },
   greeting: { limit: 20, windowMs: 60_000 },
   policy: { limit: 60, windowMs: 60_000 },
+  /**
+   * High-frequency feeds: screen frames (1/s), watching a sibling's screen,
+   * clipboard sync. These MUST NOT share the policy bucket — a screen share
+   * alone is 60 req/min, which would starve command polling and heartbeats
+   * sharing that budget, and "remote control goes flaky while sharing" is
+   * exactly the kind of bug nobody can diagnose from the outside.
+   */
+  stream: { limit: 300, windowMs: 60_000 },
   voiceprint: { limit: 10, windowMs: 60_000 },
   /** Unauthenticated attempts (bad/absent token) — brute-force defence. */
   reject: { limit: 30, windowMs: 60_000 },

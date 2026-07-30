@@ -17,7 +17,7 @@ const MAX_FRAME_CHARS = 500_000
 
 /** POST — store the newest frame (and whether the PC is still sharing). */
 export async function POST(req: Request) {
-  const auth = await authenticateDevice(req, 'policy')
+  const auth = await authenticateDevice(req, 'stream')
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))
@@ -38,7 +38,7 @@ export async function POST(req: Request) {
 
 /** DELETE — the PC stopped sharing; mark the feed cold (keep the last frame). */
 export async function DELETE(req: Request) {
-  const auth = await authenticateDevice(req, 'policy')
+  const auth = await authenticateDevice(req, 'stream')
   if (!auth.ok) return auth.response
 
   await prisma.screenFrame.updateMany({

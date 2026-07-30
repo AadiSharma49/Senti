@@ -28,6 +28,8 @@ export interface SettingsState {
     files: boolean
     /** Stream this PC's screen to your own phone/laptop for a live remote view. */
     screenShare: boolean
+    /** Sync the clipboard between your devices: copy here, paste there. */
+    clipboardSync: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
     /**
@@ -95,6 +97,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   cleanup: false,
   files: true,
   screenShare: true,
+  clipboardSync: true,
   systemControl: true,
   alwaysListening: true,
 }

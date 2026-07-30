@@ -53,6 +53,10 @@ contextBridge.exposeInMainWorld('senti', {
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => ipcRenderer.invoke('senti:screen-sources'),
 
+  /** OS clipboard (text only), for cross-device clipboard sync. */
+  clipboardRead: () => ipcRenderer.invoke('senti:clipboard-read'),
+  clipboardWrite: (text: string) => ipcRenderer.invoke('senti:clipboard-write', text),
+
   /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
   memoryList: () => ipcRenderer.invoke('senti:memory-list'),
   memoryAdd: (text: string) => ipcRenderer.invoke('senti:memory-add', text),

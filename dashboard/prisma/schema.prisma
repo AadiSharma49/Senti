@@ -30,6 +30,7 @@ model User {
   voiceProfile VoiceProfile?
   devices      Device[]
   events       UnlockEvent[]
+  clipboard    SharedClipboard?
 }
 
 /// The account's enrolled voiceprint (captured on a device, synced up so
@@ -88,6 +89,19 @@ model Device {
   events   UnlockEvent[]
   commands DeviceCommand[]
   screen   ScreenFrame?
+}
+
+/// One shared clipboard per account: copy on the PC, paste on the laptop.
+/// A single row holding only the LATEST copy, overwritten every time — never a
+/// history of everything you've copied. `fromDeviceId` lets the writer skip
+/// its own update instead of echoing it back onto its own clipboard.
+model SharedClipboard {
+  userId       String   @id
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text         String
+  fromDeviceId String
+  fromName     String
+  updatedAt    DateTime @updatedAt
 }
 
 /// The latest screen frame the PC is streaming, so you can watch it live from

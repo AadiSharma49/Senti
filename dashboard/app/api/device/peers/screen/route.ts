@@ -10,7 +10,7 @@ import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
-  const auth = await authenticateDevice(req, 'policy')
+  const auth = await authenticateDevice(req, 'stream')
   if (!auth.ok) return auth.response
 
   const deviceId = new URL(req.url).searchParams.get('deviceId') || ''

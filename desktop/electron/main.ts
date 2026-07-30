@@ -7,7 +7,7 @@ import http from 'http'
 import os from 'os'
 import electron from 'electron'
 import type { BrowserWindow as BrowserWindowType } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer } = electron
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer, clipboard } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
 
@@ -1156,6 +1156,24 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
+
+// The OS clipboard, for cross-device sync. Text only — files and images stay
+// on the machine they were copied on.
+ipcMain.handle('senti:clipboard-read', () => {
+  try {
+    return clipboard.readText()
+  } catch {
+    return ''
+  }
+})
+ipcMain.handle('senti:clipboard-write', (_e: unknown, text: unknown) => {
+  try {
+    if (typeof text === 'string' && text) clipboard.writeText(text)
+    return true
+  } catch {
+    return false
+  }
+})
 
 // Screen sources for the live remote view. Returns the primary screen's source
 // id, which the renderer feeds to getUserMedia to capture the desktop without a

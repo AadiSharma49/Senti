@@ -10,6 +10,7 @@ import { useUiStore } from './state/uiStore'
 import { useGreetingStore } from './state/greetingStore'
 import { startReporting, stopReporting } from './services/statusReporter'
 import { startCommandPolling, stopCommandPolling } from './services/commandPoller'
+import { startClipboardSync, stopClipboardSync } from './services/clipboardSync'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -75,6 +76,12 @@ function App() {
       stopCommandPolling()
     }
   }, [signedIn])
+
+  // Copy here, paste on your other machines — while you allow it.
+  useEffect(() => {
+    if (signedIn && settings.permissions.clipboardSync) startClipboardSync()
+    else stopClipboardSync()
+  }, [signedIn, settings.permissions.clipboardSync])
 
   // Setup wizard — its own full-window flow.
   if (needsSetup) {

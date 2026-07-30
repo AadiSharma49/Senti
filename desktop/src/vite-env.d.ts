@@ -38,6 +38,9 @@ interface SentiAPI {
   systemInfo: () => Promise<SystemSnapshot>
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => Promise<{ id: string; name: string }[]>
+  /** OS clipboard (text only), for cross-device clipboard sync. */
+  clipboardRead: () => Promise<string>
+  clipboardWrite: (text: string) => Promise<boolean>
   /** Hold the machine awake while a monitored task runs. */
   /** `holder` is a caller id — the lock is ref-counted so independent callers (a
    * running task, screen share) don't turn off each other's hold on it. */
