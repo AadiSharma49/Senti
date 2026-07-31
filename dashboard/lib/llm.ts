@@ -106,6 +106,27 @@ type CallOutcome =
    */
   | { ok: false; reason: 'model-gone' | 'empty' | 'busy' | 'error' }
 
+/**
+ * Remove a reasoning model's private thinking from what gets SPOKEN.
+ *
+ * Several models in the fallback chain (Qwen especially) emit a <think> block
+ * of chain-of-thought before the answer. It's meant to be internal, but it
+ * arrives in `content` like anything else — so without this Senti reads its
+ * own deliberation aloud: "The user is asking for the current Prime Minister.
+ * I need to respond in the persona of..."
+ *
+ * An unclosed block is handled too, since a reply truncated by maxTokens can
+ * end mid-thought — and in that case everything present is thinking.
+ */
+function stripThinking(raw: string): string {
+  let out = raw.replace(/<think>[\s\S]*?<\/think>/gi, '')
+  const open = out.search(/<think>/i)
+  if (open !== -1) out = out.slice(0, open)
+  // Some models use these instead; same intent, same treatment.
+  out = out.replace(/<\|?(?:reasoning|thought)\|?>[\s\S]*?<\/\|?(?:reasoning|thought)\|?>/gi, '')
+  return out.trim()
+}
+
 async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<CallOutcome> {
   const messages = [
     { role: 'system', content: opts.system },
@@ -138,7 +159,7 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<Ca
     }
     const data = await res.json()
     const msg = data?.choices?.[0]?.message
-    const text = typeof msg?.content === 'string' ? msg.content.trim() : ''
+    const text = stripThinking(typeof msg?.content === 'string' ? msg.content : '')
 
     // The model may answer, act, or both.
     let toolCall: ToolCall | null = null
