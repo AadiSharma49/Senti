@@ -52,6 +52,8 @@ interface SentiAPI {
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; focused?: boolean; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   cleanTemp: () => Promise<{ freedMB: number; files: number }>
+  /** Clean up on screen — opens the folder and clears it where you can see. */
+  cleanTempVisible: () => Promise<{ freedMB: number; files: number; shown: boolean }>
   emptyRecycleBin: () => Promise<{ freedMB: number; files: number }>
   openFolder: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
   /** Serve a folder listing / a file to another of your devices. */

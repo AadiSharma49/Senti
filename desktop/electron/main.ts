@@ -1182,7 +1182,12 @@ function inputLine(e: RemoteEvent): string | null {
       return `T ${Buffer.from(text, 'utf8').toString('base64')}`
     }
     case 'key': {
-      const vk = VK[String(e.k)]
+      const name = String(e.k)
+      // A single letter or digit maps straight to its virtual-key code, which
+      // is what makes combinations like Ctrl+A expressible at all — the `type`
+      // path can't carry modifiers.
+      const vk =
+        VK[name] ?? (/^[a-zA-Z0-9]$/.test(name) ? name.toUpperCase().charCodeAt(0) : undefined)
       if (vk === undefined) return null
       const mods = Array.isArray(e.mods) ? e.mods : []
       // Bit flags the script expects: 1 shift, 2 ctrl, 4 alt.
@@ -1208,6 +1213,86 @@ function injectInput(events: unknown): boolean {
     stopInputProc()
     return false
   }
+}
+
+/**
+ * Doing the cleanup ON SCREEN, the way you'd do it yourself.
+ *
+ * Deleting files through the filesystem API is faster and more reliable, and
+ * that's still the fallback — but "I freed 55 MB" asks you to take it on
+ * faith. Watching the folder open, everything highlight, and the files go is
+ * a different kind of trust.
+ *
+ * The danger is obvious: Ctrl+A followed by Delete is catastrophic in the
+ * wrong window. So the foreground window is re-checked immediately before
+ * EVERY destructive keystroke, and anything unexpected aborts to the silent
+ * path rather than pressing on hopefully.
+ */
+const CONFIRM_KEY_DELAY = 900
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms))
+}
+
+/** Is Explorer in front, showing the folder we opened? */
+async function explorerShowing(expectTitle: string): Promise<boolean> {
+  const win = await activeWindow()
+  if (!win) return false
+  const proc = win.process.toLowerCase()
+  if (proc !== 'explorer' && proc !== 'cabinetwclass') return false
+  return win.title.toLowerCase().includes(expectTitle.toLowerCase())
+}
+
+/**
+ * Open the temp folder and clear it out visibly. Returns false if the window
+ * never appeared or focus drifted, so the caller can fall back.
+ */
+async function visibleCleanTemp(): Promise<boolean> {
+  const dir = os.tmpdir()
+  const folderName = path.basename(dir) // "Temp"
+
+  try {
+    void shell.openPath(dir)
+  } catch {
+    return false
+  }
+
+  // Wait for the window, but not forever — a machine under load can be slow.
+  let ready = false
+  for (let i = 0; i < 14; i++) {
+    await sleep(400)
+    if (await explorerShowing(folderName)) {
+      ready = true
+      break
+    }
+  }
+  if (!ready) return false
+
+  // Select everything. Harmless on its own, which is why it goes first.
+  if (!injectInput([{ t: 'key', k: 'a', mods: ['ctrl'] }])) return false
+  await sleep(700)
+
+  // Re-check RIGHT before the destructive key. If anything stole focus in the
+  // last second — a notification, another app — Shift+Delete would land
+  // somewhere it must never land.
+  if (!(await explorerShowing(folderName))) return false
+
+  // Shift+Delete skips the Recycle Bin. For temp files that's the point:
+  // moving junk to the bin frees no space at all.
+  if (!injectInput([{ t: 'key', k: 'Delete', mods: ['shift'] }])) return false
+
+  // Windows asks "permanently delete these items?" — answer it.
+  await sleep(CONFIRM_KEY_DELAY)
+  injectInput([{ t: 'key', k: 'Enter' }])
+
+  // Files in use can't be deleted and Windows raises a skip dialog for each.
+  // Enter dismisses those too, so give it a few nudges rather than leaving a
+  // modal sitting on screen.
+  for (let i = 0; i < 3; i++) {
+    await sleep(1200)
+    injectInput([{ t: 'key', k: 'Enter' }])
+  }
+  return true
 }
 
 /** Lock the workstation — the real Windows lock, not our window. */
@@ -1759,6 +1844,18 @@ ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown, holder: unknown) =
 ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
 ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name))
 ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
+/**
+ * Clean up where you can watch it. Falls back to the silent sweep when the
+ * window never came up or focus drifted, then reports what was actually
+ * freed either way — the visible pass can't count bytes, only the API can.
+ */
+ipcMain.handle('senti:clean-temp-visible', async () => {
+  const shown = await visibleCleanTemp()
+  // Run the API sweep regardless: it catches the locked/nested files Explorer
+  // skipped, and it's the only thing that can report a real figure.
+  const swept = cleanTempDirs()
+  return { ...swept, shown }
+})
 ipcMain.handle('senti:empty-recycle-bin', () => emptyRecycleBin())
 ipcMain.handle('senti:open-folder', (_e: unknown, name: unknown) => openFolder(name))
 // Serving a folder listing / a file to your other devices.

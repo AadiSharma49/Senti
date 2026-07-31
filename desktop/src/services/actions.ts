@@ -44,16 +44,17 @@ export async function runAction(action: {
 
     case 'clean_temp': {
       if (!perms.cleanup) return denied('delete temporary files')
-      // Open the folder first so you SEE the work happen, instead of taking
-      // "I deleted 55 MB" on faith. The window is already up as files vanish.
-      if (perms.files) {
-        await senti?.openFolder?.('temp')
-        await new Promise((r) => setTimeout(r, 700))
-      }
-      const res = await senti?.cleanTemp?.()
+      // Do it where you can watch: the folder opens, everything highlights,
+      // the files go. "I freed 55 MB" asks you to take it on faith; this
+      // doesn't. Falls back to the silent sweep if the window never came up.
+      const res = useSettingsStore.getState().showWork
+        ? await senti?.cleanTempVisible?.()
+        : await senti?.cleanTemp?.()
       if (!res) return "I couldn't clean up just now."
       if (res.files === 0) return 'Nothing to clean — your temp folders are already clear.'
-      return `Done. I freed ${
+      // Don't claim you watched it happen if the visible pass bailed out.
+      const watched = 'shown' in res && res.shown
+      return `${watched ? 'There you go.' : 'Done.'} I freed ${
         res.freedMB === 0 ? 'under a megabyte' : res.freedMB + ' megabytes'
       } by deleting ${res.files} temporary files.`
     }

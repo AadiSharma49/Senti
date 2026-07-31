@@ -29,6 +29,8 @@ export default function SettingsPanel() {
 
   const resetConfiguration = useSettingsStore((s) => s.resetConfiguration)
   const permissions = useSettingsStore((s) => s.permissions)
+  const showWork = useSettingsStore((s) => s.showWork)
+  const setShowWork = useSettingsStore((s) => s.setShowWork)
   const lastHeard = useWakeStore((s) => s.lastHeard)
   const wakeStatus = useWakeStore((s) => s.status)
   const micLevel = useWakeStore((s) => s.micLevel)
@@ -586,6 +588,37 @@ export default function SettingsPanel() {
               ))}
             </div>
           )}
+        </motion.section>
+
+        <motion.section variants={sectionVariant} initial="hidden" animate="visible">
+          <h4 className="section-title">How Senti works</h4>
+          <p className="section-sub mb-3">Whether you watch tasks happen, or just hear the result.</p>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <div className="font-semibold text-white">Show me the work</div>
+                <div className="mt-1 text-xs text-secondary">
+                  Senti opens the folder and clears it on screen, instead of doing it silently
+                  and reporting back. Slower, and moving your mouse mid-task can interrupt it —
+                  it falls back to doing it quietly if that happens.
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWork(!showWork)}
+                aria-pressed={showWork}
+                aria-label="Show me the work"
+                className={`relative h-7 w-12 shrink-0 rounded-full transition ${
+                  showWork ? 'bg-accent' : 'bg-white/15'
+                }`}
+              >
+                <span
+                  className={`absolute top-1 h-5 w-5 rounded-full bg-black transition-all ${
+                    showWork ? 'left-6' : 'left-1'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
         </motion.section>
 
         {deviceLinked && (

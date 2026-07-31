@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('senti', {
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),
   closeApp: (name: string) => ipcRenderer.invoke('senti:close-app', name),
   cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
+  /** Clean up on screen — opens the folder and clears it where you can see. */
+  cleanTempVisible: () => ipcRenderer.invoke('senti:clean-temp-visible'),
   emptyRecycleBin: () => ipcRenderer.invoke('senti:empty-recycle-bin'),
   openFolder: (name: string) => ipcRenderer.invoke('senti:open-folder', name),
   /** Serve a folder listing / a file to another of your devices. */

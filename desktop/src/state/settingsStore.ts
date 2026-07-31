@@ -53,6 +53,14 @@ export interface SettingsState {
 
   setSecurity: (s: Partial<SettingsState['security']>) => void
   setPermissions: (p: Partial<SettingsState['permissions']>) => void
+  /**
+   * Carry out tasks ON SCREEN where you can watch, rather than silently.
+   * Slower and it can be interrupted, but you see the work instead of being
+   * told about it.
+   */
+  showWork: boolean
+
+  setShowWork: (on: boolean) => void
   setSetupCompleted: (completed: boolean) => void
   resetConfiguration: () => void
 }
@@ -127,6 +135,12 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   permissions: loadPermissions(),
 
   setupCompleted: loadSetupCompleted(),
+  showWork: safe<boolean>('senti:showWork', true),
+
+  setShowWork: (on) => {
+    persist('senti:showWork', on)
+    set({ showWork: on })
+  },
 
   setSecurity: (s) => {
     const next = { ...loadSecurity(), ...s }
