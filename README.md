@@ -1,121 +1,82 @@
-# Senti v0.1.0 — first public build
+# Senti
 
-**Your voice is the key. And the assistant is listening.**
+A voice assistant that lives on your Windows PC and actually operates it.
 
-Senti locks your computer and unlocks it when it hears *you* — not a password,
-not a phrase, your actual voice. Then you keep talking, and it answers out loud
-like an assistant that knows who you are.
+You talk to it like a person — "open Chrome", "clean up my temp files", "what's
+the latest in tech" — and it does the thing and answers out loud. Speech is
+transcribed **on your machine**; your audio never leaves it.
 
-This is the first build you can install and run. It is early, and the "Known
-limits" section below is deliberately honest — read it before you rely on it.
+From another of your own devices you can watch this PC's screen, take real
+mouse-and-keyboard control of it, browse its files, and share a clipboard.
 
 ---
 
 ## What it does
 
-- **Voice unlock, no passphrase.** Walk up, say anything at all — "hey", "open
-  up", a sentence in any language — and Senti unlocks if it recognizes your
-  voice. It verifies *who is speaking*, not *what was said*. Say the wrong thing
-  in the wrong voice and it stays locked.
-- **A talking assistant.** Once you're in, just talk to Senti. It answers out
-  loud in a real human voice, in any language, and it knows your name.
-- **Fully private verification.** Your voice is turned into 256 numbers on your
-  own machine. That voiceprint, and your audio, never leave the device.
-- **PIN fallback.** A 4-digit PIN is always there for when your voice can't be.
-- **One account, every device.** Enroll once; your voiceprint follows you to
-  your other machines. Manage everything from the web dashboard.
+**Talk to it.** Say its name, say hello, give it an order, or press
+`Ctrl+Shift+Space`. Then just keep talking — it's a conversation with memory,
+not a command line. Say "stop" when you're done.
 
-## How it works, briefly
+**It runs your machine.** Opens any installed app or game, closes apps, opens
+folders, finds and opens files, clears temp files and the recycle bin, controls
+volume, locks/sleeps/restarts/shuts down, searches the web, reads out live tech
+news. Every action sits behind a switch you control, and it refuses out loud
+when one is off.
 
-- **Who is speaking** → WeSpeaker ResNet34-LM, running offline in the app.
-- **What you said** → Whisper (multilingual), transcribed on-device.
-- **Thinking** → Llama 3.3 70B on Groq (swappable to Grok / OpenAI / Gemini by
-  one setting).
-- **Speaking** → ElevenLabs, a real human voice in about half a second.
-- **The dashboard** → Next.js + Postgres. It's the source of truth; the desktop
-  app obeys it.
+**It learns you.** Facts you tell it are kept in a local file, and it works out
+your habits on its own from how you actually use the PC — then answers about the
+real you rather than in generalities.
 
-## Security
+**It speaks first.** Now and then it notices what you're doing and says
+something unprompted. It reads the foreground window's *title* only; it does not
+watch your screen.
 
-Each of these was tested by actually attacking it:
+**Your other devices.** Watch this PC live, take full control of it (video and
+input travel peer-to-peer over WebRTC, with a game mode that sends relative
+mouse movement), browse and fetch its files, and share a clipboard both ways.
 
-- The device API rejects any request that comes from a web page (no CORS
-  surface at all) — a malicious site gets a 403.
-- Your device key lives in a background process, encrypted by Windows itself.
-  The visible app can't read it back, even with dev tools open.
-- The database stores only a one-way hash of each device key — a leak yields no
-  usable credentials.
-- Voiceprints are encrypted at rest (AES-256-GCM). This is biometric data — the
-  one credential you can never change.
-- Every request is rate limited.
+## Privacy, concretely
 
-## Install
+- Speech-to-text and the voiceprint run **on-device**. Audio is never uploaded.
+- Only the **text** of what you say goes to the assistant, and only once you've
+  addressed it.
+- Memory and the habits journal are **local files** that never leave the machine.
+- Remote control requires a code emailed to you (or a PIN you set), shows an
+  unmissable banner the whole time, and can be killed instantly from the machine
+  being controlled.
+- There is **no screen recording and no camera**. Deliberately.
 
-1. Download `Senti-Setup-0.1.0.exe` below.
-2. Windows will say "unknown publisher" (this build isn't code-signed yet) —
-   choose **More info → Run anyway**.
-3. Senti opens into setup. It asks for a **pairing token first** — get one from
-   your dashboard under **Devices → Link a device**.
-4. Set a PIN, then read the five short enrollment lines.
-5. Done. It locks. Speak, and you're in.
+## Layout
 
-Requirements: Windows 10 or 11, 64-bit. ~250 MB — it's large because the speech
-and speaker models ship inside it, so verification needs no internet.
+```
+desktop/    Electron + React — the assistant, voice, OS actions, remote control
+dashboard/  Next.js — accounts, the device API, and a read-only web view
+```
 
-## Known limits (read this)
+Everything that acts on a machine happens in the desktop app, behind that
+device's own permissions. The web dashboard is a window, not a control panel.
 
-- **It is not the Windows login screen.** It's a full-screen app that locks the
-  desktop and blocks Alt+Tab / Alt+F4 — but **Ctrl+Alt+Del and Task Manager
-  still get past it.** Truly replacing the login screen needs a signed Windows
-  credential provider, which is the big item on the roadmap.
-- **Unsigned installer.** Windows SmartScreen will warn until it's code-signed.
-- **No liveness detection.** A high-quality recording of your voice could
-  currently pass. Don't use this as your only defense on a sensitive machine.
-- **The assistant talks, it doesn't act yet.** It can't open apps or control
-  your system — that's coming.
-- **No memory between sessions.** It forgets the conversation when the window
-  closes.
-- **Web search isn't live** on the default (Groq) brain. Switch to Gemini for
-  grounded, current answers.
+## Running it
 
----
+```bash
+# backend
+cd dashboard && npm install && npm run dev
 
-## Roadmap
+# app
+cd desktop && npm install && npm run dev
+```
 
-Rough order, honestly labeled by effort.
+`dashboard/.env` needs at minimum `DATABASE_URL`, Clerk keys, and `GROQ_API_KEY`.
+`ELEVENLABS_API_KEY` gives it a human voice, `RESEND_API_KEY` enables emailed
+codes for remote control, `GEMINI_API_KEY` adds live web search — all optional,
+and the features degrade rather than break without them.
 
-### Next
-- **Proactive alerts + remote control (Telegram).** Someone fails voice unlock
-  on your machine → your phone buzzes. Lock your PC, check status, and control
-  it from anywhere. This also makes the Security Timeline real.
-- **Event capture, done right.** On a *security event* (repeated failed
-  attempts), grab a snapshot of that moment — local-first, never a background
-  surveillance uploader.
-- **Pick your voice.** Choose the assistant's voice and persona from the
-  dashboard.
+```bash
+cd desktop && npm test      # unit tests
+cd desktop && npm run dist  # build the installer
+```
 
-### Soon
-- **Memory (RAG).** Senti remembers you between sessions — your preferences,
-  your context — and gets more useful the more you use it. A weekly digest of
-  what mattered.
-- **Do things, not just say things.** A tool-using assistant that can open apps,
-  run tasks, and act on your machine when you ask.
-- **Liveness detection.** Defeat replay attacks — reject a recording of your
-  voice.
+## Architecture
 
-### Big
-- **The real Windows lock screen.** A signed C++ credential provider so Senti
-  survives Ctrl+Alt+Del and genuinely replaces the login screen. Weeks of work,
-  built in a VM, and needs a code-signing certificate — but it's the thing that
-  turns "a secure app" into "your lock screen."
-- **macOS and Linux.**
-
-### For everyone else
-- **Make it yours.** Voice, persona, unlock strictness, and rules — all
-  customizable per account, so Senti feels like *your* assistant, not a fixed
-  one.
-
----
-
-*Built in public. Feedback and issues welcome.*
-https://claude.ai/code/artifact/21a91508-63c9-4586-955e-d2ba7f841cc9
+See [ARCHITECTURE.md](ARCHITECTURE.md) for how the pieces fit together and where
+the trust boundaries are.

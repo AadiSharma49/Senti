@@ -1435,60 +1435,10 @@ async function apiRequest(opts: {
   }
 }
 
-// --- Lock hardening -------------------------------------------------
-// The renderer is the source of truth for auth; it pushes lock state to
-// the main process via the `senti:set-lock-state` IPC. While locked, the
-// window cannot be closed and common escape hotkeys are swallowed.
-let isLocked = true
-
-// Hotkeys we try to swallow while locked. Windows reserves some
-// combinations for the OS (Ctrl+Alt+Del, and the Win key alone) that no
-// application can intercept — those are handled by the kernel and are out
-// of our reach by design.
-const LOCK_SHORTCUTS = [
-  'Alt+Tab',
-  'Alt+F4',
-  'Alt+Escape',
-  'CommandOrControl+W',
-  'CommandOrControl+Shift+W',
-  'CommandOrControl+Shift+Escape', // Task Manager (best-effort; OS may still win)
-  'Super',                          // Win key (best-effort)
-]
-
-// Documented recovery hatch: if voice AND PIN both fail during
-// development/testing, this force-quits Senti so you can never trap
-// yourself on your own machine. Kept intentionally obscure.
-const RECOVERY_SHORTCUT = 'CommandOrControl+Alt+Shift+Q'
-
 // Tap-to-talk. Press this anywhere and Senti opens a conversation instantly —
 // no wake word, like holding the button on a walkie-talkie. The surest way to
 // start talking when a room is noisy or you'd rather not say the name.
 const TALK_SHORTCUT = 'CommandOrControl+Shift+Space'
-
-
-function unregisterLockShortcuts(): void {
-  for (const accel of LOCK_SHORTCUTS) {
-    try {
-      if (globalShortcut.isRegistered(accel)) globalShortcut.unregister(accel)
-    } catch {
-      // ignore
-    }
-  }
-}
-
-/**
- * Senti is NOT a lock screen.
- *
- * It used to hold the machine hostage: fullscreen on every monitor, swallowing
- * Alt+Tab, blocking close, forcing focus. That framing is gone. All this tracks
- * now is whether you've signed in yet, so Senti knows it's really you before it
- * acts. It never blanks your screens and never traps you.
- */
-function setLocked(locked: boolean): void {
-  isLocked = locked
-  unregisterLockShortcuts()
-
-}
 
 function waitForVite(url: string, timeout = 15000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -1663,27 +1613,9 @@ app.whenReady().then(async () => {
 
   createWindow()
 
-  // A monitor plugged in (or unplugged) while locked must not open a hole.
-  // (No display listeners any more — Senti never blanks your other monitors.)
-
-  // Start locked: swallow escape hotkeys until the renderer authenticates.
-  setLocked(true)
-
-  // Recovery hatch — always available, even while locked, so a failed
-  // voice/PIN attempt can never permanently trap the user.
-  try {
-    globalShortcut.register(RECOVERY_SHORTCUT, () => {
-      isLocked = false
-      app.exit(0)
-    })
-  } catch {
-    // ignore if not registrable
-  }
-
-  // Tap-to-talk from anywhere — only meaningful once past the lock.
+  // Tap-to-talk from anywhere.
   try {
     globalShortcut.register(TALK_SHORTCUT, () => {
-      if (isLocked) return
       mainWindow?.webContents.send('senti:talk')
     })
   } catch {
@@ -1911,19 +1843,14 @@ ipcMain.handle('senti:device-info', () => ({
   platform: process.platform,
 }))
 
-// The renderer reports its auth state here (locked = anything but unlocked).
-ipcMain.handle('senti:set-lock-state', (_event: unknown, locked: boolean) => {
-  setLocked(!!locked)
-})
-
 // --- Window modes + tray ---------------------------------------------
 //
 // Senti has to keep running after you unlock, or it can't hear you. So the
 // window is never destroyed — it becomes a small HUD that stays hidden until
 // the wake word fires, and the app lives in the tray.
 
-type WindowMode = 'signin' | 'setup' | 'hud' | 'panel'
-let windowMode: WindowMode = 'signin'
+type WindowMode = 'setup' | 'hud' | 'panel'
+let windowMode: WindowMode = 'setup'
 let tray: InstanceType<typeof Tray> | null = null
 let quitting = false
 
@@ -1963,7 +1890,6 @@ function setWindowMode(mode: WindowMode): void {
     // The orb LIVES here: a small, click-through presence in the corner that's
     // always visible, so you know Senti is listening. It grows to the centre
     // when you speak to it (showHud).
-    setLocked(false)
     mainWindow.setFullScreen(false)
     mainWindow.setResizable(false)
     mainWindow.setSkipTaskbar(true)
@@ -1973,7 +1899,6 @@ function setWindowMode(mode: WindowMode): void {
     positionHud(false)
     mainWindow.showInactive()
   } else if (mode === 'setup') {
-    setLocked(false)
     mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setAlwaysOnTop(false)
     mainWindow.setFullScreen(false)
@@ -1984,7 +1909,6 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.show()
   } else if (mode === 'panel') {
     // The control center (Settings), reachable from the tray/orb once signed in.
-    setLocked(false)
     mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setAlwaysOnTop(false)
     mainWindow.setFullScreen(false)
@@ -1996,7 +1920,6 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.focus()
   } else {
     // Sign-in: a normal window you can move, minimise or Alt+Tab away from.
-    setLocked(true)
     mainWindow.setIgnoreMouseEvents(false)
     mainWindow.setFullScreen(false)
     mainWindow.setAlwaysOnTop(false)
@@ -2075,29 +1998,10 @@ function buildTray(): void {
   }
 }
 
-/**
- * Setup mode: a normal, resizable window instead of a fullscreen lock.
- *
- * First-time setup is not a lock — it's a form. Forcing it fullscreen and
- * swallowing Alt+Tab makes a new user feel trapped before they've even
- * linked their account. So the renderer tells us when it's in setup, and we
- * behave like an ordinary app until they're done.
- */
-function setSetupMode(inSetup: boolean): void {
-  // Superseded by setWindowMode. Kept so the older renderer call still works,
-  // and deliberately no longer forces fullscreen.
-  setWindowMode(inSetup ? 'setup' : 'signin')
-}
-
-ipcMain.handle('senti:set-setup-mode', (_e: unknown, inSetup: unknown) => {
-  setSetupMode(!!inSetup)
-  return true
-})
-
 // Background operation: after unlock Senti becomes a hidden HUD in the tray so
 // it can keep listening. The renderer drives these.
 ipcMain.handle('senti:set-window-mode', (_e: unknown, mode: unknown) => {
-  if (mode === 'signin' || mode === 'setup' || mode === 'hud' || mode === 'panel') {
+  if (mode === 'setup' || mode === 'hud' || mode === 'panel') {
     setWindowMode(mode)
     if (mode === 'hud') buildTray()
     return true
@@ -2137,15 +2041,7 @@ ipcMain.handle('senti:hud-hide', () => {
   return true
 })
 
-/** "Sign in again" — shows the normal sign-in window, never a fullscreen lock. */
-ipcMain.handle('senti:lock', () => {
-  setWindowMode('signin')
-})
-
 ipcMain.handle('senti:quit', () => {
-  // Quitting is only permitted once unlocked; while locked, exiting the
-  // app must go through authentication (or the recovery hatch).
-  if (isLocked) return false
   app.quit()
   return true
 })

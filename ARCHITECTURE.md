@@ -1,98 +1,110 @@
 # Senti — how it works, end to end
 
-Senti has three parts. Each has a clear job, and a clear boundary about what
-data crosses which line.
+Two parts, with a deliberate line between them: **everything that acts on a
+machine happens on that machine**, behind its own permissions. The server holds
+accounts and passes messages.
 
 ```
-   ┌──────────────────────────────┐        ┌───────────────────────────┐
-   │  YOUR WINDOWS PC             │        │  DASHBOARD (Vercel)       │
-   │                              │        │                           │
-   │  1. Credential provider      │        │  Next.js + Clerk          │
-   │     (C++, login screen)      │        │  Postgres (Neon)          │
-   │       │ voice / PIN          │        │                           │
-   │       ▼                      │        │  - accounts, devices      │
-   │  2. Desktop app (Electron)   │◄──────►│  - policy (source of      │
-   │     - speaker verify (ONNX)  │  text  │    truth the PC obeys)    │
-   │     - Whisper STT (ONNX)     │  only  │  - the AI brain + voice   │
-   │     - the lock UI + assistant│        │  - security timeline      │
-   │                              │        │                           │
-   │  voiceprint + audio          │        │  device token: hashed     │
-   │  NEVER leave this box  ──────┼────X   │  voiceprint: encrypted    │
-   └──────────────────────────────┘        └───────────────────────────┘
-                                       ▲
-                                       │  (planned) phone / Telegram
-                                       │  remote control + alerts
+   ┌────────────────────────────────┐        ┌──────────────────────────┐
+   │  YOUR PC — desktop app         │        │  DASHBOARD (Vercel)      │
+   │  Electron + React              │        │  Next.js + Clerk         │
+   │                                │        │  Postgres (Neon)         │
+   │  • Whisper STT      (on-device)│◄──────►│                          │
+   │  • voiceprint       (on-device)│  text  │  • accounts, devices     │
+   │  • the 12 OS actions           │  only  │  • the AI brain + voice  │
+   │  • memory + habits  (local)    │        │  • message passing       │
+   │  • remote control host/viewer  │        │                          │
+   │                                │        │  device token: hashed    │
+   │  audio + memory NEVER  ────────┼───X    │  no audio, ever          │
+   └────────────────────────────────┘        └──────────────────────────┘
+              ▲                                        ▲
+              │  WebRTC: video + input                 │  read-only web view
+              │  peer-to-peer, never via server        │  (watch a screen)
+              ▼                                        │
+   ┌────────────────────────────────┐                  │
+   │  YOUR LAPTOP / PHONE           │──────────────────┘
+   └────────────────────────────────┘
 ```
 
-## 1. The lock (who gets in)
+## The desktop app
 
-- **Today:** the Electron app is a full-screen lock *after* Windows login. It
-  blocks Alt+Tab / Alt+F4, but Ctrl+Alt+Del and Task Manager get past it,
-  because the Windows session is already unlocked underneath.
-- **In progress (`credential-provider/`):** a C++ credential provider that runs
-  at the real login screen, *before* the session exists. That is the version
-  nothing walks past.
+**Hearing you.** The mic feeds a voice-activity detector whose threshold tracks
+the room's noise floor — a fixed cutoff meant a quiet microphone only registered
+its loudest syllable, so sentences arrived as fragments. Speech segments go to
+Whisper, running locally. Audio never leaves.
 
-Either way, unlocking is **voice-first**: the WeSpeaker model turns your speech
-into a 256-number voiceprint and compares it to your enrolled print. It checks
-*who* is speaking, never *what* was said. A PIN is the always-available
-fallback.
+**Deciding it was addressed.** `wakeParse` decides whether you were talking to
+Senti: its name, a greeting, or a bare imperative ("open Chrome") all count;
+ordinary conversation doesn't. That gate is the only thing between you and an
+assistant that answers the television, and it fails *silently* when wrong — so
+it's pure, Electron-free, and unit-tested in both directions.
 
-## 2. The assistant (what it can do)
+**Doing things.** Twelve actions, each mapped to a permission in a table
+(`actionPermissions.ts`) that's tested, because an action shipped without a
+permission would run regardless of the user's switches. The model chooses an
+action by NAME; it never supplies a command. Unknown names are refused.
 
-You talk; Whisper transcribes **on your machine**; only the text is sent to the
-brain (Llama on Groq by default, swappable to Grok/GPT/Gemini); the reply comes
-back and is spoken in a real voice (ElevenLabs). Your audio never leaves the
-device.
+**Knowing you.** Facts live in a local file. An aggregated activity journal —
+app, day, rough time-of-day, minutes — lets Senti reflect every few hours and
+write down what's durably true about you. Aggregation is the privacy design:
+storing every window title with a timestamp would be a log of everything you
+opened.
 
-## 3. The dashboard (the source of truth)
+## The dashboard
 
-Accounts, devices, and policy live here. The desktop is a secure endpoint that
-*obeys* it. The device talks to it from a background process (not a browser),
-authenticated by a device token.
+Accounts, devices, and the AI brain. It is **not** a control panel: the web view
+can watch a screen and see device status, and that's it. Everything that acts on
+a machine goes through the desktop app on that machine.
 
-## What crosses the boundary — the honest data model
+Device routes (`/api/device/*`) are called from Electron's main process, so they
+carry no `Origin` header — and any request that *does* have one is rejected.
+That's stronger than a CORS allowlist: instead of telling one origin "yes", it
+tells every browser "no".
 
-This is the part that decides whether Senti is a security product or spyware.
-The rule: **your machine is private by default.**
+## Remote control
 
-**Never leaves your PC:**
-- Raw microphone audio.
-- Your voiceprint in usable form (it is uploaded only *encrypted*, so it can
-  sync to your other devices — the server cannot read it).
-- Your Windows password (sealed with DPAPI, only ever on your machine).
+A session needs a code emailed to the owner (or a PIN set on the target). Until
+it's verified the session grants nothing; input sent before then is rejected.
 
-**Leaves your PC, by design:**
-- The *text* of what you say to the assistant (to reach the AI brain).
-- Device status: name, OS, online/locked.
+Once verified, the two machines exchange a WebRTC handshake through the server
+and then talk **directly** — screen video and every keystroke flow peer-to-peer
+and stop touching our infrastructure. Input rides a data channel, which removes
+the poll latency from every click.
 
-**Security events (the "capture" feature — done right):**
-Senti does **not** silently record your screen or your day. It records only on
-a **security event you can see**, and it is **local-first**:
-- Triggers: repeated failed voice attempts, unlock from a new device, lockout.
-- What's captured: a timestamp, the event type, the device — and optionally a
-  single snapshot (webcam/screen) **of that moment only**.
-- Where it goes: stored locally; a summary appears on your Security Timeline. A
-  snapshot syncs to your account **only if you turn that on**.
+Injected input goes through one long-lived PowerShell process using
+`mouse_event`/`keybd_event`. Positions are normalised and applied as
+DPI-independent absolute coordinates; game mode sends relative deltas instead,
+because games read raw movement and never see a cursor position.
 
-Why not "capture everything"? Because always-on capture + autostart +
-unbypassable lock + remote control + upload is the exact behavioral signature
-antivirus flags as a RAT — and storing other people's screens (their passwords,
-their bank pages) on a shared database is a breach waiting to happen. The
-event-triggered version gives the same value ("someone tried to get in, here's
-the moment, your phone buzzed") without becoming the thing it claims to protect
-against.
+Input events are **deleted the moment they're delivered**. This must not become
+a keylogger, and not keeping the data is the only way to be sure.
 
-## Roadmap position
+## What crosses the boundary
 
-| Piece | State |
+**Never leaves your PC:** raw audio, your voiceprint in usable form (uploaded
+only encrypted, so it can sync between your own devices), your memory file, your
+habits journal.
+
+**Leaves by design:** the text of what you say (to reach the brain), device
+status, and — only while you're sharing — screen frames or a peer-to-peer video
+stream.
+
+**Not built, on purpose:** continuous screen capture and camera access. Always-on
+capture plus autostart plus remote control is the exact behavioural signature of
+a RAT, and storing screens means storing other people's passwords and bank
+pages. Senti reads the foreground window's *title* to know you're in a game or
+watching a video — which gets most of the value and none of that.
+
+## Safety-critical code, and why it's tested
+
+| Module | Why a break would be invisible |
 | --- | --- |
-| Voice unlock (on-device) | Done |
-| Talking assistant | Done |
-| Hardened backend, encrypted voiceprints | Done |
-| Choose your AI model (in the UI) | Building |
-| **C++ credential provider — the real lock** | **Scaffold in `credential-provider/`** |
-| Control the machine by voice | Planned |
-| Memory / RAG | Planned |
-| Phone / Telegram remote + proactive alerts | Planned |
-| Liveness (defeat voice replay) | Planned |
+| `wakeParse` | Senti just doesn't answer. No error anywhere. |
+| `actionPermissions` | An action would run with its switch off. |
+| `pathSafety` | Remote file access would serve the whole drive, looking identical. |
+| `voiceActivityDetector` | Sentences arrive as fragments; transcription looks wrong instead. |
+| `memoryRecall` | Relevant memories quietly stop being sent. |
+
+```bash
+cd desktop && npm test
+```

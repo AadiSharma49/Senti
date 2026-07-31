@@ -18,13 +18,9 @@ export interface ApiResponse<T = unknown> {
 interface SentiAPI {
   platform: () => Promise<string>
   deviceInfo: () => Promise<{ hostname: string; platform: string }>
-  lock: () => Promise<void>
   quit: () => Promise<boolean>
-  setLockState: (locked: boolean) => Promise<void>
-  /** True while first-time setup is showing: a normal window, not a lock. */
-  setSetupMode: (inSetup: boolean) => Promise<boolean>
-  /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
-  setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => Promise<boolean>
+  /** 'setup' first run, 'panel' control center, 'hud' the floating orb. */
+  setWindowMode: (mode: 'setup' | 'hud' | 'panel') => Promise<boolean>
   /** Fill the display while driving another machine, and give it back after. */
   enterFullscreen: () => Promise<boolean>
   exitFullscreen: () => Promise<boolean>

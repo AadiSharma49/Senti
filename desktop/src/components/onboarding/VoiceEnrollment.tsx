@@ -13,15 +13,15 @@ import type { Utterance } from '../../types/audio'
  *
  * Senti must learn your VOICE, not a phrase. If every enrollment sample is the
  * same sentence, the averaged embedding drifts toward that sentence's sounds
- * and unlock only works when you repeat it. So we walk the user through
+ * and recognition only works when you repeat it. So we walk the user through
  * several DIFFERENT lines, and reject samples that are too short to carry a
- * reliable voiceprint. The result is text-independent: afterwards you can say
- * absolutely anything to unlock.
+ * reliable voiceprint. The result is text-independent: afterwards Senti knows
+ * your voice whatever you happen to say.
  */
 
 /** Different lines on purpose — a varied voiceprint works with any words. */
 const PROMPTS = [
-  'Hey Senti, unlock my computer.',
+  'Hey Senti, open my downloads.',
   'The weather looks pretty good outside today.',
   'Let me get started with my work now.',
   'My voice is the only key I need.',
@@ -142,7 +142,7 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
         <>
           <p className="text-sm text-secondary">
             Senti will learn your voice, not a password. You will read {ENROLL_SAMPLES} short lines
-            out loud — each one different on purpose, so afterwards you can unlock by saying
+            out loud — each one different on purpose, so afterwards Senti knows your voice from
             absolutely anything, in any language.
           </p>
           <button
@@ -202,7 +202,7 @@ export default function VoiceEnrollment({ onComplete }: VoiceEnrollmentProps) {
       {phase === 'done' && (
         <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
           <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-          Voice enrolled. Now say anything at all to unlock.
+          Voice enrolled. Senti knows your voice now.
         </div>
       )}
 

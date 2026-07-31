@@ -12,14 +12,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('senti', {
   platform: () => ipcRenderer.invoke('senti:get-platform'),
   deviceInfo: () => ipcRenderer.invoke('senti:device-info'),
-  lock: () => ipcRenderer.invoke('senti:lock'),
   quit: () => ipcRenderer.invoke('senti:quit'),
-  setLockState: (locked: boolean) => ipcRenderer.invoke('senti:set-lock-state', locked),
-  /** True while first-time setup is showing: a normal window, not a lock. */
-  setSetupMode: (inSetup: boolean) => ipcRenderer.invoke('senti:set-setup-mode', inSetup),
 
-  /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
-  setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => ipcRenderer.invoke('senti:set-window-mode', mode),
+  /** 'setup' first run, 'panel' control center, 'hud' the floating orb. */
+  setWindowMode: (mode: 'setup' | 'hud' | 'panel') => ipcRenderer.invoke('senti:set-window-mode', mode),
   /** Fill the display while driving another machine, and give it back after. */
   enterFullscreen: () => ipcRenderer.invoke('senti:enter-fullscreen'),
   exitFullscreen: () => ipcRenderer.invoke('senti:exit-fullscreen'),

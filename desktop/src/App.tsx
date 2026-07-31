@@ -5,7 +5,6 @@ import ScreenShareIndicator from './components/assistant/ScreenShareIndicator'
 import ControlledBanner from './components/remote/ControlledBanner'
 import SettingsPanel from './components/common/SettingsPanel'
 import { useSettingsStore } from './state/settingsStore'
-import { useLockStore } from './state/lockStore'
 import { useWakeStore } from './state/wakeStore'
 import { useUiStore } from './state/uiStore'
 import { useGreetingStore } from './state/greetingStore'
@@ -22,13 +21,7 @@ function App() {
   const securityConfigured = settings.security.pin.trim().length >= 4
   const needsSetup = !settings.setupCompleted || !securityConfigured
 
-  // Senti is NOT a lock screen. Once first-time setup is done, you're in — no
-  // sign-in gate, ever. We still tell the main process we're "unlocked" so it
-  // releases its window hardening (escape-hotkey swallowing, close-block).
-  useEffect(() => {
-    if (!needsSetup) useLockStore.getState().authSuccess()
-  }, [needsSetup])
-
+  // Senti is NOT a lock screen: once first-time setup is done, you're in.
   const signedIn = !needsSetup
 
   /**

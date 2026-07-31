@@ -69,7 +69,7 @@ export default function SetupWizard() {
       : step === 1
       ? 'Security'
       : step === 2
-      ? 'Voice Unlock'
+      ? 'Your voice'
       : step === 3
       ? 'Review'
       : 'Complete'
@@ -104,7 +104,7 @@ export default function SetupWizard() {
 
                 {step === 1 && (
                   <motion.div key="security" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
-                    <p className="text-sm text-secondary mb-6">Choose a secure PIN to lock Senti. PIN is the emergency fallback for all other unlock methods.</p>
+                    <p className="text-sm text-secondary mb-6">Set a PIN. It&apos;s the fallback for taking remote control of this machine from your other devices.</p>
                     <div className="grid gap-4">
                       <input type="password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="PIN" className="input-glass" />
                       <input type="password" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Confirm PIN" className="input-glass" />
@@ -117,7 +117,7 @@ export default function SetupWizard() {
                     {voiceProfile ? (
                       <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
                         <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-                        Voice enrolled ({voiceProfile.sampleCount} samples). Your voice unlocks Senti.
+                        Voice enrolled ({voiceProfile.sampleCount} samples). Senti knows it&apos;s you.
                       </div>
                     ) : (
                       <VoiceEnrollment />
@@ -127,7 +127,7 @@ export default function SetupWizard() {
 
                 {step === 3 && (
                   <motion.div key="review" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
-                    <p className="text-sm text-secondary mb-6">Review your secure setup before finishing.</p>
+                    <p className="text-sm text-secondary mb-6">One last look before you start talking to it.</p>
                     <div className="grid gap-4">
                       <div className="glass rounded-3xl border border-white/10 p-4">
                         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Account</div>
@@ -139,13 +139,13 @@ export default function SetupWizard() {
                       </div>
                       <div className="glass rounded-3xl border border-white/10 p-4">
                         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Security</div>
-                        <div className="text-sm text-white/80">PIN is configured and kept secure locally.</div>
+                        <div className="text-sm text-white/80">PIN configured, stored only on this machine.</div>
                       </div>
                       <div className="glass rounded-3xl border border-white/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Voice Unlock</div>
+                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Your voice</div>
                         <div className="text-sm text-white/80">
                           {voiceProfile
-                            ? `Enrolled — Senti will unlock when it recognizes your voice.`
+                            ? `Enrolled — Senti recognises your voice.`
                             : 'Skipped — you can enroll your voice later from Settings.'}
                         </div>
                       </div>
@@ -156,7 +156,7 @@ export default function SetupWizard() {
                 {step === 4 && (
                   <motion.div key="complete" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <div className="text-lg font-semibold text-white">Setup complete</div>
-                    <p className="text-sm text-secondary mt-3">Senti is ready. Your settings are now stored locally and the lockscreen will return automatically.</p>
+                    <p className="text-sm text-secondary mt-3">Senti is ready and listening. Say &ldquo;hey Senti&rdquo; — or just give it an order like &ldquo;open Chrome&rdquo; — from anywhere.</p>
                   </motion.div>
                 )}
               </AnimatePresence>

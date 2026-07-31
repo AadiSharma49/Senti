@@ -5,7 +5,6 @@ import { voiceEmbeddingEngine, cosineSimilarity } from '../services/voiceEmbeddi
 import { audioManager } from '../services/audioManager'
 import { useVoiceProfileStore } from './voiceProfileStore'
 import { useSettingsStore } from './settingsStore'
-import { useLockStore } from './lockStore'
 import type { Utterance } from '../types/audio'
 
 /**
@@ -161,7 +160,6 @@ async function handleUtterance(utterance: Utterance): Promise<void> {
     if (score >= threshold) {
       useVoiceAuthStore.setState({ lastScore: score, state: 'matched' })
       audioManager.play('unlock')
-      useLockStore.getState().authSuccess()
       return
     }
 
