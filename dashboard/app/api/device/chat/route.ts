@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 import { llmChatRich, type ChatMsg } from '@/lib/llm'
-import { geminiEnabled, geminiGenerate } from '@/lib/gemini'
+import { answerFromWeb, webSearchEnabled } from '@/lib/websearch'
 
 /**
  * What Senti is allowed to DO on the machine. The desktop enforces this too —
@@ -359,44 +359,27 @@ export async function POST(req: Request) {
     )
   const lastUserTurn = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
 
-  if ((call?.name === 'ask_web' || stalled) && geminiEnabled) {
+  const wantsWeb = call?.name === 'ask_web' || stalled
+  if (wantsWeb) {
     const question =
       typeof call?.args?.question === 'string' ? call.args.question.slice(0, 300) : lastUserTurn.slice(0, 300)
-    if (question) {
-      const answer = await geminiGenerate({
-        system:
-          persona(name, language) +
-          '\n\nAnswer the question from what you find on the web, out loud and in one or two ' +
-          'sentences. Give the actual answer first. No links, no markdown, no hedging about ' +
-          'being an AI — just tell them what you found.',
-        messages: [{ role: 'user', content: question }],
-        search: true,
-        maxTokens: 300,
-        temperature: 0.6,
-      })
-      if (answer?.trim()) {
-        const spoken = answer.trim()
-        const audio = await generateSpeech(spoken)
-        return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
-      }
-      // Grounding unavailable or empty — fall through and let the normal
-      // reply happen rather than leaving the question unanswered.
-    }
+    const answer = webSearchEnabled && question ? await answerFromWeb(question, persona(name, language)) : null
+
+    // Either way we answer HERE and return, because both alternatives are bad:
+    // "Done." (the generic action fallback) is a lie, and the model's own
+    // "let me look that up, give me a sec" is a promise with nothing behind
+    // it. A question that can't be answered deserves to be told so.
+    const spoken =
+      answer ||
+      "I can't reach the web right now, so I'd only be guessing — and I'd rather not."
+    const audio = await generateSpeech(spoken)
+    return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
   }
 
   // The model can answer, act, or both. Turn an action into something to say,
   // so the user always hears a confirmation.
   let action: { name: string; args: Record<string, unknown> } | null = null
   let reply = recoveredText
-
-  // ask_web is answered above. Reaching here means the lookup failed — no key,
-  // no quota, or the service was down. Say that plainly: "Done." (the generic
-  // action fallback) would be a lie about a question that never got answered.
-  if (call?.name === 'ask_web') {
-    const spoken = "I can't reach the web right now, so I'd only be guessing — and I'd rather not."
-    const audio = await generateSpeech(spoken)
-    return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
-  }
 
   if (call && KNOWN_ACTIONS.has(call.name)) {
     // Only pass through arguments we understand, capped.
