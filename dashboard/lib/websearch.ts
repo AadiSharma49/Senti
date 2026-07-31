@@ -21,7 +21,7 @@ import { geminiEnabled, geminiGenerate } from './gemini'
 import { llmChat } from './llm'
 
 const TAVILY_KEY = process.env.TAVILY_API_KEY || ''
-export const tavilyEnabled = !!TAVILY_KEY
+const tavilyEnabled = !!TAVILY_KEY
 /** True when SOME provider can reach the web. */
 export const webSearchEnabled = geminiEnabled || tavilyEnabled
 

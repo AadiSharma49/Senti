@@ -40,10 +40,6 @@ let beatTimer: number | null = null
 let peer: PeerHandle | null = null
 let peerLive = false
 
-export function currentSession(): string | null {
-  return sessionId
-}
-
 export type StartResult =
   | { ok: true; id: string; method: 'email' | 'pin'; sentTo?: string }
   | { ok: false; reason: 'no-pin' | 'failed'; message: string }
@@ -194,10 +190,6 @@ export async function connectPeer(onStream: (s: MediaStream) => void): Promise<b
     await new Promise((r) => setTimeout(r, 400))
   }
   return false
-}
-
-export function isPeerLive(): boolean {
-  return peerLive
 }
 
 function startPumps(): void {

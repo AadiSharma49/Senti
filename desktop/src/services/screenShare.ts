@@ -42,10 +42,6 @@ export const QUALITY: Record<QualityPreset, { width: number; height: number; fps
 
 let quality: QualityPreset = 'balanced'
 
-export function getQuality(): QualityPreset {
-  return quality
-}
-
 /**
  * Change quality on a LIVE stream — applyConstraints re-negotiates the capture
  * without tearing the session down, so the picture doesn't blank while you
@@ -98,10 +94,6 @@ function emit(): void {
       // ignore a bad listener
     }
   }
-}
-
-export function isSharing(): boolean {
-  return running
 }
 
 /**

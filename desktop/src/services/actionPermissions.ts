@@ -33,6 +33,26 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   remember: null,
 }
 
+/**
+ * How Senti describes what it just refused to do.
+ *
+ * Beside the table on purpose: a new action added above without a phrase here
+ * is immediately visible, rather than silently refusing with "I'm not allowed
+ * to do that" and leaving the user guessing which switch to look for.
+ */
+export const DENIED_PHRASE: Record<string, string> = {
+  open_app: 'open apps',
+  close_app: 'close apps',
+  open_folder: 'open your files and folders',
+  open_file: 'open your files and folders',
+  clean_temp: 'delete temporary files',
+  empty_recycle_bin: 'empty the Recycle Bin',
+  screen_share: 'share your screen',
+  lock_workstation: 'lock your PC',
+  power: 'power off or restart your PC',
+  set_volume: 'change the volume',
+}
+
 /** True when this action may run under the given permission settings. */
 export function isActionAllowed(action: string, perms: Record<string, boolean>): boolean {
   // An action we don't recognise is refused rather than allowed. Failing shut

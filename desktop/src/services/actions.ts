@@ -1,4 +1,5 @@
 import { useSettingsStore } from '../state/settingsStore'
+import { isActionAllowed, DENIED_PHRASE } from './actionPermissions'
 import { startScreenShare, stopScreenShare } from './screenShare'
 
 /**
@@ -19,9 +20,17 @@ export async function runAction(action: {
   const target = String(action.args?.name ?? '')
   const denied = (what: string) => `I'm not allowed to ${what}. You can turn that on in Settings.`
 
+  // The single gate, checked once against a table that IS unit-tested — see
+  // actionPermissions.ts. Previously each case checked its own permission
+  // inline, which meant the tests were exercising a table the running code
+  // never consulted: a new action could ship wired to nothing and everything
+  // would still be green.
+  if (!isActionAllowed(action.name, perms as unknown as Record<string, boolean>)) {
+    return denied(DENIED_PHRASE[action.name] ?? 'do that')
+  }
+
   switch (action.name) {
     case 'open_app': {
-      if (!perms.openApps) return denied('open apps')
       const res = await senti?.openApp?.(target)
       if (res?.ok) {
         // Say what actually happened — "switched to" reads as understanding,
@@ -35,7 +44,6 @@ export async function runAction(action: {
     }
 
     case 'close_app': {
-      if (!perms.closeApps) return denied('close apps')
       const res = await senti?.closeApp?.(target)
       if (res?.ok) return `Closed ${res.label ?? target}.`
       if (res?.error === 'unknown') return `I can't close ${target} yet.`
@@ -43,7 +51,6 @@ export async function runAction(action: {
     }
 
     case 'clean_temp': {
-      if (!perms.cleanup) return denied('delete temporary files')
       // Do it where you can watch: the folder opens, everything highlights,
       // the files go. "I freed 55 MB" asks you to take it on faith; this
       // doesn't. Falls back to the silent sweep if the window never came up.
@@ -60,7 +67,6 @@ export async function runAction(action: {
     }
 
     case 'open_folder': {
-      if (!perms.files) return denied('open your files and folders')
       const res = await senti?.openFolder?.(target)
       if (res?.ok) return `Opening ${res.label ?? target}.`
       if (res?.error === 'unknown') return `I'm not sure which folder you mean by ${target}.`
@@ -68,7 +74,6 @@ export async function runAction(action: {
     }
 
     case 'open_file': {
-      if (!perms.files) return denied('open your files and folders')
       const query = String(action.args?.query ?? action.args?.name ?? '')
       const res = await senti?.openFile?.(query)
       if (res?.ok) {
@@ -80,7 +85,6 @@ export async function runAction(action: {
     }
 
     case 'screen_share': {
-      if (!perms.screenShare) return denied('share your screen')
       const on = action.args?.on !== false // default to starting
       if (on) {
         const ok = await startScreenShare()
@@ -100,7 +104,6 @@ export async function runAction(action: {
     }
 
     case 'empty_recycle_bin': {
-      if (!perms.cleanup) return denied('empty the Recycle Bin')
       const res = await senti?.emptyRecycleBin?.()
       if (!res) return "I couldn't empty the Recycle Bin just now."
       if (res.files === 0) return 'The Recycle Bin is already empty.'
@@ -110,7 +113,6 @@ export async function runAction(action: {
     }
 
     case 'power': {
-      if (!perms.systemControl) return denied('power off or restart your PC')
       const mode = String(action.args?.mode ?? '').toLowerCase()
       const ok = await senti?.power?.(mode)
       if (!ok) return "I couldn't do that just now."
@@ -122,13 +124,11 @@ export async function runAction(action: {
     }
 
     case 'lock_workstation': {
-      if (!perms.systemControl) return denied('lock your PC')
       const ok = await senti?.lockWorkstation?.()
       return ok ? 'Locking your PC.' : "I couldn't lock it."
     }
 
     case 'set_volume': {
-      if (!perms.systemControl) return denied('change the volume')
       const dir = action.args?.direction
       const d = dir === 'up' || dir === 'down' || dir === 'mute' ? dir : null
       if (!d) return null

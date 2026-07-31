@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { ACTION_PERMISSIONS, isActionAllowed, type PermissionKey } from '../actionPermissions'
+import { readFileSync } from 'fs'
+import { join } from 'path'
+import { ACTION_PERMISSIONS, DENIED_PHRASE, isActionAllowed, type PermissionKey } from '../actionPermissions'
 
 const ALL_OFF: Record<string, boolean> = {
   openApps: false,
@@ -57,6 +59,36 @@ describe('action permissions', () => {
     }
     for (const [action, key] of Object.entries(expected)) {
       expect(ACTION_PERMISSIONS[action]).toBe(key)
+    }
+  })
+
+  /**
+   * These two guard the gap this table once had: it was fully tested while
+   * runAction checked its own inline `perms.x` conditions, so the tests were
+   * green against a table the running code never consulted. A new action
+   * could ship gated by nothing and nothing would fail.
+   */
+  it('is the gate runAction actually uses', () => {
+    const src = readFileSync(join(__dirname, '..', 'actions.ts'), 'utf8')
+    expect(src).toContain('isActionAllowed(')
+    // No case may re-check permissions inline; that's how they drift apart.
+    expect(src).not.toMatch(/if \(!perms\.\w+\)/)
+  })
+
+  it('covers every action runAction can handle', () => {
+    const src = readFileSync(join(__dirname, '..', 'actions.ts'), 'utf8')
+    const handled = [...src.matchAll(/case '([a-z_]+)':/g)].map((m) => m[1])
+    for (const action of handled) {
+      expect(ACTION_PERMISSIONS, `${action} is handled but has no permission entry`).toHaveProperty(action)
+    }
+  })
+
+  it('has a refusal phrase for every gated action', () => {
+    for (const [action, key] of Object.entries(ACTION_PERMISSIONS)) {
+      if (key === null) continue
+      // Without one, a refusal reads "I'm not allowed to do that" and the
+      // user has no idea which switch to go and find.
+      expect(DENIED_PHRASE[action], `${action} has no refusal phrase`).toBeTruthy()
     }
   })
 
