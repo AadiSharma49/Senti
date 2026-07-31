@@ -2,33 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 import { llmChatRich, type ChatMsg } from '@/lib/llm'
-
-/**
- * Real current tech headlines from Hacker News — free, no API key, genuinely
- * live. The brain (Groq Llama) has a knowledge cutoff and no web access, so
- * without this "what's the latest in tech" gets a blank stare. We fetch the
- * real headlines and let Senti read them out.
- */
-async function fetchTechHeadlines(limit = 10): Promise<{ title: string; url?: string }[]> {
-  try {
-    const ids: number[] = await fetch('https://hacker-news.firebaseio.com/v0/topstories.json', {
-      signal: AbortSignal.timeout(6000),
-    }).then((r) => r.json())
-    const items = await Promise.all(
-      ids.slice(0, limit).map((id) =>
-        fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`, { signal: AbortSignal.timeout(6000) })
-          .then((r) => r.json())
-          .catch(() => null)
-      )
-    )
-    return items
-      .filter((i): i is { title: string; url?: string } => !!i && typeof i.title === 'string')
-      .map((i) => ({ title: i.title, url: i.url }))
-      .slice(0, limit)
-  } catch {
-    return []
-  }
-}
+import { geminiEnabled, geminiGenerate } from '@/lib/gemini'
 
 /**
  * What Senti is allowed to DO on the machine. The desktop enforces this too —
@@ -166,24 +140,18 @@ const TOOLS = [
   {
     type: 'function',
     function: {
-      name: 'get_tech_news',
+      name: 'ask_web',
       description:
-        'Fetch the REAL current top technology headlines (from Hacker News) and tell the user about them. Use whenever they ask about the latest in tech, tech news, what is happening in technology, or trending tech stories. You have no live web knowledge otherwise, so ALWAYS use this instead of guessing or saying you cannot.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description:
-        'Open a web search in the user\'s browser for something you cannot answer from your own knowledge — a current fact, a place, a product, a "show me X". Use for "search for…", "look up…", "show me…" when it needs the live web.',
+        "Look something up on the live web and ANSWER it out loud. Use this whenever the answer depends on current information you cannot know — today's weather, a score, a price, recent events, whether something is still true, anything after your training. Prefer this over saying you don't know or that you can't browse.",
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'What to search the web for.' },
+          question: {
+            type: 'string',
+            description: 'The question to answer, written in full as a standalone question.',
+          },
         },
-        required: ['query'],
+        required: ['question'],
       },
     },
   },
@@ -223,8 +191,9 @@ const TOOLS = [
 
 /** Actions the desktop knows how to run. */
 const KNOWN_ACTIONS = new Set([
-  'open_app', 'close_app', 'open_folder', 'open_file', 'web_search', 'clean_temp',
+  'open_app', 'close_app', 'open_folder', 'open_file', 'clean_temp',
   'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
+  'ask_web',
 ])
 import { generateSpeech } from '@/lib/tts'
 
@@ -294,8 +263,9 @@ function persona(name: string | null, language: string): string {
     'Never say "sir", "madam", "master", "How may I assist you", "Certainly", or any corporate filler — it ' +
     'sounds fake and servile. Talk the way a close friend texts, out loud. ' +
     'Keep it SHORT and conversational — usually 1 to 2 sentences, like real talk, never an essay. No bullet ' +
-    'lists, no markdown, no headings, no emoji. When you genuinely do not know something current, say so ' +
-    'plainly instead of inventing it. ' +
+    'lists, no markdown, no headings, no emoji. When something depends on CURRENT information — weather, ' +
+    'scores, prices, recent events, anything after your training — look it up with ask_web instead of ' +
+    'saying you cannot know. You have the live web. Never invent an answer. ' +
     'Have a spine: if the owner is about to do something risky, is mistaken, or asks for something that ' +
     "won't get them what they actually want, SAY SO plainly and say why — a real assistant pushes back, it " +
     "doesn't just obey. Offer the better option. But once they've heard you and still want it, it's their " +
@@ -351,14 +321,14 @@ export async function POST(req: Request) {
   })
 
   // Groq/Llama sometimes writes the tool call as PLAIN TEXT instead of a
-  // structured call — "<function=web_search{...}>". Left alone, Senti would
+  // structured call — "<function=ask_web{...}>". Left alone, Senti would
   // speak that gibberish. Recover it into a real call and scrub the text.
   let call = result?.toolCall
   let recoveredText = result?.text || ''
   if (!call && recoveredText.includes('<function')) {
     const m = recoveredText.match(/<function[=\\:\s]*([a-z_]+)\s*(\{[\s\S]*?\})?/i)
     const named = m?.[1] || ''
-    if (m && (KNOWN_ACTIONS.has(named) || named === 'get_tech_news')) {
+    if (m && KNOWN_ACTIONS.has(named)) {
       let parsedArgs: Record<string, unknown> = {}
       try {
         parsedArgs = m[2] ? JSON.parse(m[2]) : {}
@@ -370,36 +340,63 @@ export async function POST(req: Request) {
     }
   }
 
-  // Tech news is fulfilled HERE, on the server: fetch the real headlines, then
-  // ask the brain to talk about them. The desktop sees a normal spoken reply.
-  if (call?.name === 'get_tech_news') {
-    const heads = await fetchTechHeadlines(10)
-    if (heads.length) {
-      const list = heads.map((h, i) => `${i + 1}. ${h.title}`).join('\n')
-      const second = await llmChatRich({
+  // Live web questions are answered HERE, on the server.
+  //
+  // The main brain (Groq) has a knowledge cutoff and no web access, which is
+  // why it used to insist it couldn't know anything current. Gemini's search
+  // grounding does have the web, so the question is handed to it and the
+  // answer comes back as ordinary speech — the desktop never sees a tool call.
+  //
+  // The safety net matters as much as the tool. With a dozen tools attached,
+  // this model often ANNOUNCES a lookup — "let me check that for you, give me
+  // a sec" — and then calls nothing, leaving a promise dangling and the
+  // question unanswered. That's worse than refusing. So a stated intent to
+  // look something up is honoured by actually looking it up.
+  const stalled =
+    !call &&
+    /\b(let me (check|look|see|find)|give me a (sec|second|moment)|i'?ll (check|look|find out)|checking (on )?that|looking that up)\b/i.test(
+      recoveredText
+    )
+  const lastUserTurn = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
+
+  if ((call?.name === 'ask_web' || stalled) && geminiEnabled) {
+    const question =
+      typeof call?.args?.question === 'string' ? call.args.question.slice(0, 300) : lastUserTurn.slice(0, 300)
+    if (question) {
+      const answer = await geminiGenerate({
         system:
           persona(name, language) +
-          '\n\nThese are the REAL top technology headlines on Hacker News right now:\n' +
-          list +
-          '\nTalk the owner through the few most interesting ones out loud — 2 to 4 sentences, ' +
-          'conversational, say why they matter. Do not read the whole list or number them.',
-        messages,
-        maxTokens: 320,
-        temperature: 0.8,
+          '\n\nAnswer the question from what you find on the web, out loud and in one or two ' +
+          'sentences. Give the actual answer first. No links, no markdown, no hedging about ' +
+          'being an AI — just tell them what you found.',
+        messages: [{ role: 'user', content: question }],
+        search: true,
+        maxTokens: 300,
+        temperature: 0.6,
       })
-      const spoken =
-        second?.text ||
-        'Here are the top tech stories right now: ' + heads.slice(0, 4).map((h) => h.title).join('; ') + '.'
-      const audio = await generateSpeech(spoken)
-      return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
+      if (answer?.trim()) {
+        const spoken = answer.trim()
+        const audio = await generateSpeech(spoken)
+        return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
+      }
+      // Grounding unavailable or empty — fall through and let the normal
+      // reply happen rather than leaving the question unanswered.
     }
-    // Couldn't reach the feed — fall through to a normal reply.
   }
 
   // The model can answer, act, or both. Turn an action into something to say,
   // so the user always hears a confirmation.
   let action: { name: string; args: Record<string, unknown> } | null = null
   let reply = recoveredText
+
+  // ask_web is answered above. Reaching here means the lookup failed — no key,
+  // no quota, or the service was down. Say that plainly: "Done." (the generic
+  // action fallback) would be a lie about a question that never got answered.
+  if (call?.name === 'ask_web') {
+    const spoken = "I can't reach the web right now, so I'd only be guessing — and I'd rather not."
+    const audio = await generateSpeech(spoken)
+    return NextResponse.json({ reply: spoken, audio, action: null }, { headers: NO_STORE })
+  }
 
   if (call && KNOWN_ACTIONS.has(call.name)) {
     // Only pass through arguments we understand, capped.
@@ -424,8 +421,6 @@ export async function POST(req: Request) {
           ? `Opening ${args.name ?? 'that folder'}.`
           : call.name === 'open_file'
           ? `Looking for ${args.query ?? 'that file'}.`
-          : call.name === 'web_search'
-          ? `Searching the web for ${args.query ?? 'that'}.`
           : call.name === 'clean_temp'
           ? 'Cleaning up temporary files.'
           : call.name === 'empty_recycle_bin'

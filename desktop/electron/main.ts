@@ -1798,13 +1798,6 @@ ipcMain.handle('senti:serve-read', (_e: unknown, root: unknown, rel: unknown) =>
   readRemoteFile(String(root ?? ''), String(rel ?? ''))
 )
 ipcMain.handle('senti:open-file', (_e: unknown, query: unknown) => openFile(query))
-ipcMain.handle('senti:web-search', (_e: unknown, query: unknown) => {
-  const q = String(query ?? '').trim().slice(0, 200)
-  if (!q) return { ok: false }
-  // encodeURIComponent makes this a URL parameter, never a shell argument.
-  void shell.openExternal(`https://www.google.com/search?q=${encodeURIComponent(q)}`)
-  return { ok: true }
-})
 ipcMain.handle('senti:lock-workstation', () => lockWorkstation())
 ipcMain.handle('senti:power', (_e: unknown, mode: unknown) => powerAction(mode))
 

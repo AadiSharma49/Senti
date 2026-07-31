@@ -16,8 +16,8 @@ export type PermissionKey =
 
 /**
  * null means "needs no permission" — and every one of those is deliberate:
- * `remember` only writes to Senti's own local memory file, and `web_search`
- * opens a search page. Neither touches the machine.
+ * `remember` only writes to Senti's own local memory file. It touches
+ * nothing on the machine.
  */
 export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   open_app: 'openApps',
@@ -30,7 +30,6 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   lock_workstation: 'systemControl',
   power: 'systemControl',
   set_volume: 'systemControl',
-  web_search: null,
   remember: null,
 }
 

@@ -56,7 +56,6 @@ interface SentiAPI {
   serveList: (root: string, rel: string) => Promise<string>
   serveRead: (root: string, rel: string) => Promise<string>
   openFile: (query: string) => Promise<{ ok: boolean; label?: string; count?: number; error?: string }>
-  webSearch: (query: string) => Promise<{ ok: boolean }>
   lockWorkstation: () => Promise<boolean>
   power: (mode: string) => Promise<boolean>
   /** The foreground window's title + process, so Senti can speak up about it. */

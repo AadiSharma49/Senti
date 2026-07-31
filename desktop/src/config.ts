@@ -12,7 +12,17 @@
 const OVERRIDE_KEY = 'senti:apiUrl'
 
 const BUILD_TIME_URL = (import.meta.env.VITE_SENTI_API_URL as string | undefined) || ''
-const DEFAULT_URL = 'http://localhost:3000'
+
+/**
+ * Production, as the DEFAULT.
+ *
+ * It used to default to localhost and rely on a .env file to point at the real
+ * backend — so building without that file produced an installer that talked to
+ * the developer's own machine, and silently did nothing on anyone else's. The
+ * safe default is the one that's right for every shipped copy; pointing at a
+ * local server is the unusual case, and that's what the override is for.
+ */
+const DEFAULT_URL = 'https://senti-kappa.vercel.app'
 
 /** Strip a trailing slash so callers can safely append `/api/...`. */
 function clean(url: string): string {

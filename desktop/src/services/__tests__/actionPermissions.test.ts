@@ -65,7 +65,7 @@ describe('action permissions', () => {
       .filter(([, k]) => k === null)
       .map(([a]) => a)
       .sort()
-    // remember writes Senti's own memory file; web_search opens a search page.
-    expect(exempt).toEqual(['remember', 'web_search'])
+    // remember only writes Senti's own memory file.
+    expect(exempt).toEqual(['remember'])
   })
 })

@@ -82,7 +82,6 @@ contextBridge.exposeInMainWorld('senti', {
   serveList: (root: string, rel: string) => ipcRenderer.invoke('senti:serve-list', root, rel),
   serveRead: (root: string, rel: string) => ipcRenderer.invoke('senti:serve-read', root, rel),
   openFile: (query: string) => ipcRenderer.invoke('senti:open-file', query),
-  webSearch: (query: string) => ipcRenderer.invoke('senti:web-search', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
   /** The foreground window's title + process, so Senti can speak up about it. */

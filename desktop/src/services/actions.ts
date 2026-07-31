@@ -90,14 +90,6 @@ export async function runAction(action: {
       return 'Stopped sharing your screen.'
     }
 
-    case 'web_search': {
-      // Opening a search page is harmless; no permission gate.
-      const query = String(action.args?.query ?? '')
-      if (!query) return null
-      await senti?.webSearch?.(query)
-      return `I've opened a search for ${query}.`
-    }
-
     case 'remember': {
       // Not a system action — just saving a fact. No permission gate; it only
       // ever writes to Senti's local memory file, nothing on the machine.
