@@ -172,6 +172,33 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'take_screenshot',
+      description:
+        'Take a screenshot of the screen and save it to the Pictures folder. Use for "take a screenshot", "capture my screen", "screenshot this", "grab a picture of this".',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'look_at_screen',
+      description:
+        'LOOK at what is on the screen right now and help with it. Use whenever the user refers to something you would need to SEE: "help me with this", "what does this error mean", "what am I looking at", "I am stuck on this", "how do I fix this", "read this for me". Always prefer this over asking them to describe what they see.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: {
+            type: 'string',
+            description: 'What they want to know about the screen, in their own words.',
+          },
+        },
+        required: ['question'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'remember',
       description:
         "Save a durable fact about the owner or their machine to Senti's long-term memory, so you don't forget it or ask again next time. Use it when they tell you a preference, a name, how their setup is arranged, or how they like things done — e.g. \"my main drive is D\", \"call me Aditya\", \"I hate apps that auto-start\". Do NOT use it for one-off requests or passing chit-chat.",
@@ -193,6 +220,7 @@ const TOOLS = [
 const KNOWN_ACTIONS = new Set([
   'open_app', 'close_app', 'open_folder', 'open_file', 'clean_temp',
   'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
+  'take_screenshot', 'look_at_screen',
   'ask_web',
 ])
 import { generateSpeech } from '@/lib/tts'
@@ -262,6 +290,12 @@ function persona(name: string | null, language: string): string {
     'just vibing?"). Never sound like a call-center script. ' +
     'Never say "sir", "madam", "master", "How may I assist you", "Certainly", or any corporate filler — it ' +
     'sounds fake and servile. Talk the way a close friend texts, out loud. ' +
+    // The specific tics that make an assistant sound generated rather than
+    // present. Each one is a phrase that says nothing while sounding polite.
+    'Banned openings: "Great question", "I understand that", "Absolutely", "Of course", "Sure thing", ' +
+    '"I would be happy to", "Let me help you with that", "It is important to note", "As an AI". ' +
+    'Never restate their question back at them, never announce what you are about to do, never end by ' +
+    'asking if there is anything else. Start with the answer. If the answer is one word, say one word. ' +
     'Keep it SHORT and conversational — usually 1 to 2 sentences, like real talk, never an essay. No bullet ' +
     'lists, no markdown, no headings, no emoji. When something depends on CURRENT information — weather, ' +
     'scores, prices, recent events, anything after your training — look it up with ask_web instead of ' +
@@ -270,7 +304,8 @@ function persona(name: string | null, language: string): string {
     "won't get them what they actually want, SAY SO plainly and say why — a real assistant pushes back, it " +
     "doesn't just obey. Offer the better option. But once they've heard you and still want it, it's their " +
     'machine — do it. You are helpful AND honest, never a yes-man. ' +
-    'You genuinely CAN act on this machine: open ANY installed app or game, open files and folders, empty the ' +
+    'You genuinely CAN act on this machine: open ANY installed app or game, open files and folders, TAKE A ' +
+    'SCREENSHOT, LOOK AT THE SCREEN and help with what is on it, empty the ' +
     'recycle bin, clean temp files, control volume, lock/sleep/restart/shut down the PC, share the screen to ' +
     "their phone, search the web, read live tech news, and remember things about them — do those through " +
     "your tools rather than saying you can't. Never claim you can't open an app or game before trying. " +
@@ -408,6 +443,10 @@ export async function POST(req: Request) {
           ? 'Cleaning up temporary files.'
           : call.name === 'empty_recycle_bin'
           ? 'Emptying the Recycle Bin.'
+          : call.name === 'take_screenshot'
+          ? 'Taking a screenshot.'
+          : call.name === 'look_at_screen'
+          ? 'Having a look.'
           : call.name === 'lock_workstation'
           ? 'Locking your PC.'
           : call.name === 'power'

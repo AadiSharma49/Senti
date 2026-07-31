@@ -1,6 +1,7 @@
 import { useSettingsStore } from '../state/settingsStore'
 import { isActionAllowed, DENIED_PHRASE } from './actionPermissions'
 import { startScreenShare, stopScreenShare } from './screenShare'
+import { lookAtScreen } from './vision'
 
 /**
  * Carry out an action the model asked for.
@@ -92,6 +93,19 @@ export async function runAction(action: {
       }
       await stopScreenShare()
       return 'Stopped sharing your screen.'
+    }
+
+    case 'take_screenshot': {
+      const res = await senti?.screenshotSave?.()
+      if (!res?.ok) return "I couldn't grab your screen just now."
+      // Name the folder, not the full path — "Pictures, Senti" is something
+      // you can act on; a 90-character path read aloud is noise.
+      return 'Got it. Saved to your Pictures folder, under Senti.'
+    }
+
+    case 'look_at_screen': {
+      const question = String(action.args?.question ?? '').trim()
+      return await lookAtScreen(question)
     }
 
     case 'remember': {

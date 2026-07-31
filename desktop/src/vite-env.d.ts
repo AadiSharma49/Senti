@@ -35,6 +35,9 @@ interface SentiAPI {
   persistSetupCompleted: (done: boolean) => Promise<boolean>
   /** Real vitals for this machine (memory, disk, top processes, startup apps). */
   systemInfo: () => Promise<SystemSnapshot>
+  /** Screenshots — only ever taken because you asked for one. */
+  screenshotSave: () => Promise<{ ok: boolean; path?: string }>
+  screenshotGrab: () => Promise<string | null>
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => Promise<{ id: string; name: string }[]>
   /** OS clipboard (text only), for cross-device clipboard sync. */

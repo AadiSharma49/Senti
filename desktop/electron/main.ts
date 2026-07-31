@@ -1707,9 +1707,59 @@ ipcMain.handle('senti:clipboard-write', (_e: unknown, text: unknown) => {
   }
 })
 
+// --- Screenshots ------------------------------------------------------
+//
+// Senti seeing your screen, but ONLY when you ask.
+//
+// This is deliberately not the same thing as watching: there is no timer, no
+// background capture, and nothing happens unless a request comes in from
+// something you said. A single frame, at the moment you asked for it, is
+// ordinary software. A loop that samples your screen unprompted is
+// surveillance, and that is not built.
+
+/** Grab the primary screen once. Returns a PNG data URL, or null. */
+async function captureScreen(maxWidth = 1600): Promise<string | null> {
+  try {
+    const displays = screen.getPrimaryDisplay()
+    const { width, height } = displays.size
+    const scale = Math.min(1, maxWidth / width)
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: Math.round(width * scale), height: Math.round(height * scale) },
+    })
+    const shot = sources[0]?.thumbnail
+    if (!shot || shot.isEmpty()) return null
+    return shot.toDataURL()
+  } catch {
+    return null
+  }
+}
+
+/** Save a screenshot to Pictures\Senti and return where it went. */
+async function saveScreenshot(): Promise<{ ok: boolean; path?: string }> {
+  // Full resolution for a saved file — downscaling is for the vision model,
+  // where the image is about to be described, not kept.
+  const dataUrl = await captureScreen(4096)
+  if (!dataUrl) return { ok: false }
+  try {
+    const dir = path.join(app.getPath('pictures'), 'Senti')
+    mkdirSync(dir, { recursive: true })
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const file = path.join(dir, `screenshot-${stamp}.png`)
+    writeFileSync(file, Buffer.from(dataUrl.split(',')[1], 'base64'))
+    return { ok: true, path: file }
+  } catch {
+    return { ok: false }
+  }
+}
+
 // Screen sources for the live remote view. Returns the primary screen's source
 // id, which the renderer feeds to getUserMedia to capture the desktop without a
 // picker dialog. No frame ever touches main — the renderer captures and uploads.
+// Save a screenshot; and grab one for the vision model to describe.
+ipcMain.handle('senti:screenshot-save', () => saveScreenshot())
+ipcMain.handle('senti:screenshot-grab', () => captureScreen(1600))
+
 ipcMain.handle('senti:screen-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })

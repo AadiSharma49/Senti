@@ -49,6 +49,10 @@ contextBridge.exposeInMainWorld('senti', {
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
 
+  /** Screenshots — only ever taken because you asked for one. */
+  screenshotSave: () => ipcRenderer.invoke('senti:screenshot-save'),
+  screenshotGrab: () => ipcRenderer.invoke('senti:screenshot-grab'),
+
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => ipcRenderer.invoke('senti:screen-sources'),
 

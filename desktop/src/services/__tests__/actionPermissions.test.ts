@@ -3,15 +3,15 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 import { ACTION_PERMISSIONS, DENIED_PHRASE, isActionAllowed, type PermissionKey } from '../actionPermissions'
 
-const ALL_OFF: Record<string, boolean> = {
-  openApps: false,
-  closeApps: false,
-  cleanup: false,
-  files: false,
-  screenShare: false,
-  systemControl: false,
-}
-const ALL_ON = Object.fromEntries(Object.keys(ALL_OFF).map((k) => [k, true]))
+/**
+ * Derived from the table, never hand-written. A fixture listing permissions by
+ * hand goes stale the moment one is added — which it did: adding `seeScreen`
+ * turned "allows every gated action" red for a permission the fixture had
+ * simply never heard of, not for any real fault.
+ */
+const KEYS = [...new Set(Object.values(ACTION_PERMISSIONS).filter((k): k is PermissionKey => k !== null))]
+const ALL_OFF: Record<string, boolean> = Object.fromEntries(KEYS.map((k) => [k, false]))
+const ALL_ON: Record<string, boolean> = Object.fromEntries(KEYS.map((k) => [k, true]))
 
 describe('action permissions', () => {
   it('refuses an unknown action', () => {

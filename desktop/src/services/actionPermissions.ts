@@ -12,6 +12,7 @@ export type PermissionKey =
   | 'cleanup'
   | 'files'
   | 'screenShare'
+  | 'seeScreen'
   | 'systemControl'
 
 /**
@@ -27,6 +28,8 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   clean_temp: 'cleanup',
   empty_recycle_bin: 'cleanup',
   screen_share: 'screenShare',
+  take_screenshot: 'seeScreen',
+  look_at_screen: 'seeScreen',
   lock_workstation: 'systemControl',
   power: 'systemControl',
   set_volume: 'systemControl',
@@ -48,6 +51,8 @@ export const DENIED_PHRASE: Record<string, string> = {
   clean_temp: 'delete temporary files',
   empty_recycle_bin: 'empty the Recycle Bin',
   screen_share: 'share your screen',
+  take_screenshot: 'take screenshots',
+  look_at_screen: 'look at your screen',
   lock_workstation: 'lock your PC',
   power: 'power off or restart your PC',
   set_volume: 'change the volume',

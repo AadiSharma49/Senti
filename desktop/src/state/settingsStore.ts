@@ -26,6 +26,11 @@ export interface SettingsState {
     cleanup: boolean
     /** Open your files and folders (read-only: opens them, never edits/deletes). */
     files: boolean
+    /**
+     * Let Senti take a screenshot and look at it — ONLY when you ask. There
+     * is no background capture; nothing happens unless you say so.
+     */
+    seeScreen: boolean
     /** Stream this PC's screen to your own phone/laptop for a live remote view. */
     screenShare: boolean
     /** Sync the clipboard between your devices: copy here, paste there. */
@@ -115,6 +120,7 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   closeApps: false,
   cleanup: false,
   files: true,
+  seeScreen: true,
   screenShare: true,
   clipboardSync: true,
   // Someone driving your mouse and keyboard is the biggest permission here —
