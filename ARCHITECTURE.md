@@ -11,8 +11,9 @@ accounts and passes messages.
    │                                │        │  Postgres (Neon)         │
    │  • Whisper STT      (on-device)│◄──────►│                          │
    │  • voiceprint       (on-device)│  text  │  • accounts, devices     │
-   │  • the 12 OS actions           │  only  │  • the AI brain + voice  │
-   │  • memory + habits  (local)    │        │  • message passing       │
+   │  • 13 OS actions               │  only  │  • the AI brain + voice  │
+   │  • screenshots (on request)    │        │  • message passing       │
+   │  • memory + habits  (local)    │        │  • web + vision lookup   │
    │  • remote control host/viewer  │        │                          │
    │                                │        │  device token: hashed    │
    │  audio + memory NEVER  ────────┼───X    │  no audio, ever          │
@@ -39,10 +40,20 @@ ordinary conversation doesn't. That gate is the only thing between you and an
 assistant that answers the television, and it fails *silently* when wrong — so
 it's pure, Electron-free, and unit-tested in both directions.
 
-**Doing things.** Twelve actions, each mapped to a permission in a table
+**Doing things.** Thirteen actions on the machine (plus `ask_web`, which the
+server answers), each mapped to a permission in a table
 (`actionPermissions.ts`) that's tested, because an action shipped without a
-permission would run regardless of the user's switches. The model chooses an
-action by NAME; it never supplies a command. Unknown names are refused.
+permission would run regardless of the user's switches. `runAction` consults
+that same table — it previously checked its own inline conditions, which meant
+the tests were green against a table the running code never read. The model
+chooses an action by NAME; it never supplies a command. Unknown names are
+refused.
+
+**Seeing.** `take_screenshot` saves a frame; `look_at_screen` sends one to a
+vision model and answers about it. Both fire only on request — there is no
+timer and nothing is retained. That is the entire distinction between this and
+surveillance, and it's structural rather than a policy: no code path captures
+the screen without an incoming request.
 
 **Knowing you.** Facts live in a local file. An aggregated activity journal —
 app, day, rough time-of-day, minutes — lets Senti reflect every few hours and
@@ -86,14 +97,15 @@ only encrypted, so it can sync between your own devices), your memory file, your
 habits journal.
 
 **Leaves by design:** the text of what you say (to reach the brain), device
-status, and — only while you're sharing — screen frames or a peer-to-peer video
-stream.
+status, one screenshot when you ask a question about your screen, and — only
+while you're sharing — screen frames or a peer-to-peer video stream.
 
-**Not built, on purpose:** continuous screen capture and camera access. Always-on
-capture plus autostart plus remote control is the exact behavioural signature of
-a RAT, and storing screens means storing other people's passwords and bank
-pages. Senti reads the foreground window's *title* to know you're in a game or
-watching a video — which gets most of the value and none of that.
+**Not built, on purpose:** CONTINUOUS screen capture and camera access.
+Always-on capture plus autostart plus remote control is the exact behavioural
+signature of a RAT, and storing screens means storing other people's passwords
+and bank pages. Senti reads the foreground window's *title* to know you're in a
+game or watching a video, and takes a screenshot only when asked — which gets
+most of the value and none of that.
 
 ## Safety-critical code, and why it's tested
 
@@ -104,6 +116,7 @@ watching a video — which gets most of the value and none of that.
 | `pathSafety` | Remote file access would serve the whole drive, looking identical. |
 | `voiceActivityDetector` | Sentences arrive as fragments; transcription looks wrong instead. |
 | `memoryRecall` | Relevant memories quietly stop being sent. |
+| `stuckSignal` | It nags while you're concentrating, or never offers help at all. |
 
 ```bash
 cd desktop && npm test
