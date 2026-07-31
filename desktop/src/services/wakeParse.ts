@@ -24,7 +24,22 @@ const NAME_PATTERNS = [
 
 /** Other ways of addressing it — you don't have to use the name. */
 const ADDRESS_PATTERNS = [
-  'buddy', 'wake up', 'you there', 'are you there', 'listen up', 'hey buddy',
+  'buddy', 'bro', 'mate', 'wake up', 'you there', 'are you there', 'listen up', 'hey buddy',
+]
+
+/**
+ * Phrases that are ONLY ever said to a listener.
+ *
+ * "Can you hear me" is the first thing anyone says to test an assistant, and
+ * it did nothing: politeness stripping left "hear me", which isn't a command
+ * verb, so Senti stayed silent while the Control Center cheerfully displayed
+ * the words it had just heard. Nobody says these to themselves — if one is
+ * spoken, it was spoken TO something.
+ */
+const DIRECT_ADDRESS = [
+  'can you hear me', 'do you hear me', 'can u hear me', 'hear me',
+  'are you listening', 'you listening', 'are you awake', 'you awake',
+  'are you working', 'you working', 'can you understand me',
 ]
 
 /**
@@ -100,10 +115,30 @@ export interface WakeMatch {
  * "what's my RAM" must not arrive as "what s my ram".
  */
 export function parseWake(textRaw: string): WakeMatch {
-  const words = textRaw.trim().split(/\s+/).filter(Boolean)
+  let words = textRaw.trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return { woke: false, command: '' }
 
-  const norm = words.map(normalize)
+  let norm = words.map(normalize)
+
+  /**
+   * The name at the END counts too: "open Chrome, Senti" is how people
+   * actually talk. Only trailing, and only on a short phrase — "tell Senti I
+   * said hi" is ABOUT Senti, not to it, and must stay ignored.
+   */
+  let namedAtEnd = false
+  if (norm.length > 1 && norm.length <= 8 && NAME_PATTERNS.includes(norm[norm.length - 1])) {
+    namedAtEnd = true
+    words = words.slice(0, -1)
+    norm = norm.slice(0, -1)
+  }
+
+  /**
+   * Phrases only ever said TO something. Checked before anything else,
+   * because politeness stripping would otherwise reduce "can you hear me" to
+   * "hear me" and lose the point of it entirely.
+   */
+  const whole = norm.join(' ')
+  if (DIRECT_ADDRESS.includes(whole)) return { woke: true, command: textRaw.trim() }
 
   /** How many words of an address phrase start at `at`, or 0 for none. */
   const addressAt = (at: number): number => {
@@ -152,8 +187,8 @@ export function parseWake(textRaw: string): WakeMatch {
 
   const command = words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '').trim()
 
-  // Named or greeted Senti outright.
-  if (woke) return { woke: true, command }
+  // Named or greeted Senti outright — at the front, or trailing on the end.
+  if (woke || namedAtEnd) return { woke: true, command }
 
   // "Hello." on its own is aimed at Senti — nothing else is left for it to be.
   if (greeted && i >= norm.length) return { woke: true, command: '' }

@@ -67,6 +67,52 @@ describe('parseWake — bare commands need no wake word', () => {
   })
 })
 
+describe('parseWake — things only ever said to a listener', () => {
+  /**
+   * The regression that motivated these: "can you hear me" is the first thing
+   * anyone says to test an assistant, and it did nothing. Politeness
+   * stripping reduced it to "hear me", which isn't a command verb, so Senti
+   * stayed silent while the Control Center displayed the exact words it had
+   * just heard back at the user.
+   */
+  const addressed = [
+    'can you hear me',
+    'do you hear me',
+    'can u hear me',
+    'are you listening',
+    'you awake',
+    'are you working',
+  ]
+
+  it.each(addressed)('wakes on %j', (input) => {
+    expect(parseWake(input).woke).toBe(true)
+  })
+
+  it('passes the phrase through so Senti can answer it', () => {
+    // Not an empty command: "can you hear me" deserves "yeah, loud and clear",
+    // not an expectant silence waiting for orders.
+    expect(parseWake('can you hear me').command).toBe('can you hear me')
+  })
+})
+
+describe('parseWake — the name at the end', () => {
+  it.each([
+    ['open chrome senti', 'open chrome'],
+    ['can you hear me senti', 'can you hear me senti'],
+  ])('accepts %j', (input, command) => {
+    const r = parseWake(input)
+    expect(r.woke).toBe(true)
+    expect(r.command).toBe(command)
+  })
+
+  it('still ignores talk ABOUT Senti', () => {
+    // The name is in there, but not as an address — this is a sentence to
+    // another person, and answering it would be eavesdropping.
+    expect(parseWake('tell Senti I said hi').woke).toBe(false)
+    expect(parseWake('I was telling my friend about Senti yesterday').woke).toBe(false)
+  })
+})
+
 describe('parseWake — must stay quiet', () => {
   /**
    * Every one of these would make Senti answer a conversation it wasn't part
