@@ -4,6 +4,7 @@ import { say, deviceLang } from './greetingService'
 import { useWakeStore } from '../state/wakeStore'
 import { useSettingsStore } from '../state/settingsStore'
 import { reflect } from './reflection'
+import { noteVisit, noteDwell, looksStuck, type Attention } from './stuckSignal'
 
 /**
  * Senti speaking first.
@@ -35,6 +36,7 @@ const DWELL_MS = 25 * 60_000
 /** Nothing at all for this long after startup — let the user settle in. */
 const WARMUP_MS = 3 * 60_000
 
+
 interface Focus {
   title: string
   process: string
@@ -49,6 +51,8 @@ let lastSpokeAt = 0
 let current: Focus | null = null
 /** Things already remarked on, so it never repeats itself. */
 const mentioned = new Set<string>()
+/** Per-window attention, for spotting the shape of being stuck. */
+const attention = new Map<string, Attention>()
 
 /** Windows that are noise, not activity. */
 function isBoring(f: { title: string; process: string }): boolean {
@@ -63,6 +67,7 @@ function isBoring(f: { title: string; process: string }): boolean {
 function keyOf(f: Focus): string {
   return `${f.process}::${f.title}`.toLowerCase()
 }
+
 
 async function tick(): Promise<void> {
   if (busy || !running) return
@@ -83,11 +88,14 @@ async function tick(): Promise<void> {
       void window.senti?.activityRecord?.(win.process, win.title, CHECK_MS / 60_000)
     }
 
-    // Track how long this window has held focus.
+    // Track how long this window has held focus, and how often you return to
+    // it — coming back repeatedly is what distinguishes "stuck on this" from
+    // "working through this".
     if (!current || current.title !== win.title || current.process !== win.process) {
       current = { title: win.title, process: win.process, since: now }
-      // A brand-new window is a candidate to remark on immediately; a long
-      // dwell is handled below. Fall through either way.
+      noteVisit(attention, keyOf(current), now)
+    } else {
+      noteDwell(attention, keyOf(current), CHECK_MS, now)
     }
 
     if (now - lastSpokeAt < COOLDOWN_MS) return
@@ -100,15 +108,17 @@ async function tick(): Promise<void> {
     if (mentioned.has(key)) return
 
     const dwell = now - current.since
-    // Either you just switched to something interesting, or you've been on one
-    // thing a long while. Anything in between isn't worth interrupting for.
-    const worthIt = dwell < CHECK_MS * 2 || dwell > DWELL_MS
+    const stuck = looksStuck(attention, key, dwell, now)
+    // Either you just switched to something interesting, you've been on one
+    // thing a long while, or you look stuck. Anything in between isn't worth
+    // interrupting for.
+    const worthIt = stuck || dwell < CHECK_MS * 2 || dwell > DWELL_MS
     if (!worthIt) return
 
     mentioned.add(key)
     if (mentioned.size > 200) mentioned.clear()
     lastSpokeAt = now
-    await speakAbout(current, dwell)
+    await speakAbout(current, dwell, stuck)
   } catch {
     // Never let an unprompted remark break anything.
   } finally {
@@ -116,17 +126,26 @@ async function tick(): Promise<void> {
   }
 }
 
-async function speakAbout(focus: Focus, dwellMs: number): Promise<void> {
+async function speakAbout(focus: Focus, dwellMs: number, stuck: boolean): Promise<void> {
   const lang = deviceLang()
   const snap = await getSystemSnapshot()
   const minutes = Math.round(dwellMs / 60_000)
 
-  const prompt =
-    `[This is you speaking FIRST — the user didn't ask you anything. They're currently in ` +
-    `"${focus.title}" (${focus.process})${minutes >= 5 ? `, for about ${minutes} minutes` : ', just switched to it'}. ` +
-    `Say ONE short, natural line to them about it — a comment, a bit of banter, or a genuinely useful ` +
-    `nudge if something's worth flagging. Talk like a friend in the room. Keep it to one sentence, ` +
-    `and don't ask what they need — just say the thing.]`
+  // When it looks like you're stuck, offer something concrete. Phrased as a
+  // question because the evidence is circumstantial — a long stretch on one
+  // window is a decent guess, never a fact, and an assistant that ANNOUNCES
+  // you're stuck when you're just concentrating is worse than a quiet one.
+  const prompt = stuck
+    ? `[This is you speaking FIRST — the user didn't ask you anything. They've been on ` +
+      `"${focus.title}" (${focus.process}) for a long stretch, or keep coming back to it. They might ` +
+      `be stuck. Say ONE short line offering to help with THAT specific thing — you can search the ` +
+      `web for a guide, a walkthrough, or an answer if they want. Ask; don't assume they're stuck, ` +
+      `and don't be smug about it. One sentence, like a friend leaning over.]`
+    : `[This is you speaking FIRST — the user didn't ask you anything. They're currently in ` +
+      `"${focus.title}" (${focus.process})${minutes >= 5 ? `, for about ${minutes} minutes` : ', just switched to it'}. ` +
+      `Say ONE short, natural line to them about it — a comment, a bit of banter, or a genuinely useful ` +
+      `nudge if something's worth flagging. Talk like a friend in the room. Keep it to one sentence, ` +
+      `and don't ask what they need — just say the thing.]`
 
   const turns: ChatTurn[] = [{ role: 'user', content: prompt }]
   const reply = await askSenti(turns, lang, snap ? describeSystem(snap) : null)
@@ -141,6 +160,15 @@ async function speakAbout(focus: Focus, dwellMs: number): Promise<void> {
     // no bridge outside Electron
   }
   await say({ text, audio: reply.audio }, lang)
+
+  // Having just ASKED you something, Senti has to be ready for the answer.
+  // Making you say "hey Senti" first to reply to its own question is exactly
+  // the kind of seam that makes an assistant feel like software.
+  if (stuck) {
+    useWakeStore.getState().engage()
+    return
+  }
+
   useWakeStore.setState({ state: 'listening', detail: '' })
   window.setTimeout(() => {
     if (useWakeStore.getState().state === 'listening') void window.senti?.hudHide?.()
@@ -155,6 +183,7 @@ export function startProactive(): void {
   lastSpokeAt = 0
   current = null
   mentioned.clear()
+  attention.clear()
   timer = window.setInterval(() => void tick(), CHECK_MS)
 }
 
@@ -165,4 +194,5 @@ export function stopProactive(): void {
     timer = null
   }
   current = null
+  attention.clear()
 }
