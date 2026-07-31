@@ -25,6 +25,9 @@ interface SentiAPI {
   setSetupMode: (inSetup: boolean) => Promise<boolean>
   /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
   setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => Promise<boolean>
+  /** Fill the display while driving another machine, and give it back after. */
+  enterFullscreen: () => Promise<boolean>
+  exitFullscreen: () => Promise<boolean>
   hudShow: () => Promise<boolean>
   hudHide: () => Promise<boolean>
   /** Fired from the tray / second launch to open Settings. Returns unsubscribe. */

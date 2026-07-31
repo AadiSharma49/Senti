@@ -2007,6 +2007,30 @@ ipcMain.handle('senti:set-window-mode', (_e: unknown, mode: unknown) => {
   }
   return false
 })
+/**
+ * Fill the display while driving another machine.
+ *
+ * The control surface is a normal element in the renderer, so without this it
+ * would be boxed inside whatever size the Senti window happened to be. Taking
+ * control should feel like sitting at the other computer, which means the
+ * other computer's screen gets the whole screen.
+ */
+ipcMain.handle('senti:enter-fullscreen', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.setAlwaysOnTop(false)
+  mainWindow.setFullScreen(true)
+  mainWindow.focus()
+  return true
+})
+
+ipcMain.handle('senti:exit-fullscreen', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.setFullScreen(false)
+  // The orb lives above other windows; restore that once we're done.
+  mainWindow.setAlwaysOnTop(true, 'screen-saver')
+  return true
+})
+
 ipcMain.handle('senti:hud-show', () => {
   showHud()
   return true

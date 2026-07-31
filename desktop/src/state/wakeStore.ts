@@ -86,6 +86,10 @@ export interface WakeStore {
   status: string
   /** Live microphone loudness, 0-1. Published only while the panel is open. */
   micLevel: number
+  /** The loudness Senti counts as speech, on the same 0-1 scale as micLevel. */
+  micThreshold: number
+  /** Whether right now is being treated as speech — the meter turns green. */
+  speaking: boolean
 
   start: () => Promise<void>
   stop: () => void
@@ -183,6 +187,8 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   lastHeard: '',
   status: 'Not listening.',
   micLevel: 0,
+  micThreshold: 0,
+  speaking: false,
 
   start: async () => {
     if (get().state !== 'off') return
@@ -228,7 +234,15 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
       const now = Date.now()
       if (now - lastLevelAt < 90) return
       lastLevelAt = now
-      useWakeStore.setState({ micLevel: Math.min(1, level.rms * 6) })
+      // Publish the speech cutoff alongside the level. Seeing the bar without
+      // the line it has to cross tells you the mic works but not whether Senti
+      // considers you audible — which is the actual question.
+      const threshold = recorder?.getThreshold() ?? 0.02
+      useWakeStore.setState({
+        micLevel: Math.min(1, level.rms * 6),
+        micThreshold: Math.min(1, threshold * 6),
+        speaking: level.rms >= threshold,
+      })
     })
 
     recorder?.stop()

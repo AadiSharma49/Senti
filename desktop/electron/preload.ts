@@ -20,6 +20,9 @@ contextBridge.exposeInMainWorld('senti', {
 
   /** 'signin' normal window (once at start), 'setup' first run, 'hud' tray. */
   setWindowMode: (mode: 'signin' | 'setup' | 'hud' | 'panel') => ipcRenderer.invoke('senti:set-window-mode', mode),
+  /** Fill the display while driving another machine, and give it back after. */
+  enterFullscreen: () => ipcRenderer.invoke('senti:enter-fullscreen'),
+  exitFullscreen: () => ipcRenderer.invoke('senti:exit-fullscreen'),
   hudShow: () => ipcRenderer.invoke('senti:hud-show'),
   hudHide: () => ipcRenderer.invoke('senti:hud-hide'),
   /** Fired from the tray / second launch. Returns an unsubscribe function. */

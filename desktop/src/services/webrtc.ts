@@ -63,7 +63,18 @@ function iceConfig(): RTCConfiguration {
   }
   return { iceServers: servers }
 }
-const POLL_MS = 700
+/**
+ * Handshake polling.
+ *
+ * Connecting takes several round trips — offer, answer, then a stream of ICE
+ * candidates — and each one waits on a poll. At 700ms that added seconds of
+ * staring at a blank screen before video appeared, which is most of what
+ * "taking control is slow" actually was. So: poll fast while negotiating,
+ * then back right off once connected, since a settled connection has almost
+ * nothing left to say.
+ */
+const POLL_FAST_MS = 200
+const POLL_IDLE_MS = 2000
 /** If the peers can't connect in this long, the caller falls back. */
 const CONNECT_TIMEOUT_MS = 15_000
 
@@ -86,10 +97,19 @@ async function signal(sessionId: string, kind: string, payload: unknown): Promis
 /** Poll for messages from the other end until stopped. */
 function pollSignals(
   sessionId: string,
-  onSignal: (kind: string, payload: unknown) => void
+  onSignal: (kind: string, payload: unknown) => void,
+  /** Once this returns true we're connected, so slow right down. */
+  isConnected: () => boolean = () => false
 ): () => void {
   let alive = true
   let busy = false
+  let timer: number | null = null
+
+  const schedule = () => {
+    if (!alive) return
+    timer = window.setTimeout(() => void tick(), isConnected() ? POLL_IDLE_MS : POLL_FAST_MS)
+  }
+
   const tick = async () => {
     if (!alive || busy) return
     busy = true
@@ -109,13 +129,14 @@ function pollSignals(
       // Offline; the next tick retries.
     } finally {
       busy = false
+      schedule()
     }
   }
+
   void tick()
-  const t = window.setInterval(() => void tick(), POLL_MS)
   return () => {
     alive = false
-    clearInterval(t)
+    if (timer !== null) clearTimeout(timer)
   }
 }
 
@@ -177,13 +198,17 @@ export async function startViewerPeer(
   }
   attach(pc, sessionId, onConnected)
 
-  stopPoll = pollSignals(sessionId, (kind, payload) => {
-    if (kind === 'answer') {
-      void pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
-    } else if (kind === 'ice') {
-      void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
-    }
-  })
+  stopPoll = pollSignals(
+    sessionId,
+    (kind, payload) => {
+      if (kind === 'answer') {
+        void pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
+      } else if (kind === 'ice') {
+        void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
+      }
+    },
+    () => pc.connectionState === 'connected'
+  )
 
   const offer = await pc.createOffer()
   await pc.setLocalDescription(offer)
@@ -261,18 +286,22 @@ export async function startHostPeer(
   }
   attach(pc, sessionId, onConnected)
 
-  const stopPoll = pollSignals(sessionId, (kind, payload) => {
-    if (kind === 'offer') {
-      void (async () => {
-        await pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
-        const answer = await pc.createAnswer()
-        await pc.setLocalDescription(answer)
-        await signal(sessionId, 'answer', answer)
-      })()
-    } else if (kind === 'ice') {
-      void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
-    }
-  })
+  const stopPoll = pollSignals(
+    sessionId,
+    (kind, payload) => {
+      if (kind === 'offer') {
+        void (async () => {
+          await pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
+          const answer = await pc.createAnswer()
+          await pc.setLocalDescription(answer)
+          await signal(sessionId, 'answer', answer)
+        })()
+      } else if (kind === 'ice') {
+        void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
+      }
+    },
+    () => pc.connectionState === 'connected'
+  )
 
   return {
     close: () => {

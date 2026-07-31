@@ -32,6 +32,8 @@ export default function SettingsPanel() {
   const lastHeard = useWakeStore((s) => s.lastHeard)
   const wakeStatus = useWakeStore((s) => s.status)
   const micLevel = useWakeStore((s) => s.micLevel)
+  const micThreshold = useWakeStore((s) => s.micThreshold)
+  const speaking = useWakeStore((s) => s.speaking)
   const setPermissions = useSettingsStore((s) => s.setPermissions)
   const voiceProfile = useVoiceProfileStore((s) => s.profile)
   const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
@@ -469,12 +471,24 @@ export default function SettingsPanel() {
                     {/* Talk and watch it move: separates a dead mic from a misheard name. */}
                     <div className="flex items-center gap-2">
                       <span className="text-white/35">Mic</span>
-                      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                      <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-white/10">
                         <div
-                          className="h-full rounded-full bg-accent transition-[width] duration-100"
+                          className={`h-full rounded-full transition-[width] duration-100 ${
+                            speaking ? 'bg-green-400' : 'bg-accent/60'
+                          }`}
                           style={{ width: `${Math.round(micLevel * 100)}%` }}
                         />
+                        {/* The line your voice has to cross to count as speech.
+                            Without it the bar shows the mic works but not
+                            whether Senti considers you audible. */}
+                        <div
+                          className="absolute top-0 h-full w-px bg-white/70"
+                          style={{ left: `${Math.round(micThreshold * 100)}%` }}
+                        />
                       </div>
+                      <span className={`w-14 shrink-0 text-right ${speaking ? 'text-green-400' : 'text-white/30'}`}>
+                        {speaking ? 'speech' : 'quiet'}
+                      </span>
                     </div>
 
                     <div>

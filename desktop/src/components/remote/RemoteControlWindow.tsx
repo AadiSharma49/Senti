@@ -170,6 +170,15 @@ export default function RemoteControlWindow({
     return { x, y }
   }
 
+  // Take the whole display for as long as we're driving, and give it back on
+  // the way out — including if this unmounts for any other reason.
+  useEffect(() => {
+    void window.senti?.enterFullscreen?.()
+    return () => {
+      void window.senti?.exitFullscreen?.()
+    }
+  }, [])
+
   // Track pointer lock, including the user escaping it with the OS shortcut.
   useEffect(() => {
     const onChange = () => setLocked(document.pointerLockElement === surfaceRef.current)

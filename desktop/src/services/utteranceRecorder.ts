@@ -69,6 +69,11 @@ export class UtteranceRecorder {
     return this.state
   }
 
+  /** The current speech cutoff, for the Control Center's mic meter. */
+  getThreshold(): number {
+    return this.vad?.getThreshold() ?? 0.02
+  }
+
   onUtterance(callback: UtteranceCallback): () => void {
     this.utteranceCallbacks.add(callback)
     return () => {

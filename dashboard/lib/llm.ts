@@ -98,8 +98,13 @@ export interface ChatResult {
 
 type CallOutcome =
   | { ok: true; result: ChatResult }
-  /** 'empty' = the model replied with neither text nor a tool call. */
-  | { ok: false; reason: 'model-gone' | 'empty' | 'error' }
+  /**
+   * 'empty'     — replied with neither text nor a tool call.
+   * 'model-gone'— retired model; a different one will work.
+   * 'busy'      — rate limited or a server-side blip; ANOTHER MODEL MAY WORK.
+   * 'error'     — bad key, malformed request; trying again is pointless.
+   */
+  | { ok: false; reason: 'model-gone' | 'empty' | 'busy' | 'error' }
 
 async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<CallOutcome> {
   const messages = [
@@ -122,8 +127,14 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<Ca
       // 404 / "model_not_found" => this model was retired; try the next one.
       const body = await res.text().catch(() => '')
       const modelGone = res.status === 404 || /model_not_found|does not exist/i.test(body)
+      // A rate limit or a 5xx says "not this model, not right now" — it does
+      // NOT say the request was bad. Treating those as fatal was why a single
+      // busy moment surfaced as "my thinking's running slow" while three
+      // perfectly good fallback models sat untried.
+      const busy = res.status === 429 || res.status >= 500
       if (modelGone) console.error(`[senti] model "${model}" unavailable — falling back`)
-      return { ok: false, reason: modelGone ? 'model-gone' : 'error' }
+      else if (busy) console.error(`[senti] model "${model}" busy (${res.status}) — falling back`)
+      return { ok: false, reason: modelGone ? 'model-gone' : busy ? 'busy' : 'error' }
     }
     const data = await res.json()
     const msg = data?.choices?.[0]?.message
@@ -145,7 +156,9 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<Ca
     if (!text && !toolCall) return { ok: false, reason: 'empty' }
     return { ok: true, result: { text: text || null, toolCall } }
   } catch {
-    return { ok: false, reason: 'error' }
+    // A thrown fetch is a network blip, not a bad request — worth another
+    // model rather than an immediate apology to the user.
+    return { ok: false, reason: 'busy' }
   }
 }
 
@@ -170,7 +183,10 @@ async function openAICompatChat(p: Provider, opts: ChatOpts): Promise<ChatResult
     }
 
     if (r.ok) return r.result
-    if (r.reason !== 'model-gone') return null // real failure (auth, rate limit)
+    // Keep walking the chain while another model might succeed. Only a genuine
+    // client error (bad key, malformed request) is worth stopping for, since
+    // every model would reject that one identically.
+    if (r.reason === 'error') return null
   }
   return null
 }
