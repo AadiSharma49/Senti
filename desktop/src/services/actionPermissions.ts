@@ -23,6 +23,8 @@ export type PermissionKey =
 export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   open_app: 'openApps',
   close_app: 'closeApps',
+  close_current: 'closeApps',
+  show_desktop: 'systemControl',
   open_folder: 'files',
   open_file: 'files',
   clean_temp: 'cleanup',
@@ -46,6 +48,8 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
 export const DENIED_PHRASE: Record<string, string> = {
   open_app: 'open apps',
   close_app: 'close apps',
+  close_current: 'close apps',
+  show_desktop: 'minimise windows',
   open_folder: 'open your files and folders',
   open_file: 'open your files and folders',
   clean_temp: 'delete temporary files',

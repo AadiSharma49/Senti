@@ -21,11 +21,6 @@ export async function runAction(action: {
   const target = String(action.args?.name ?? '')
   const denied = (what: string) => `I'm not allowed to ${what}. You can turn that on in Settings.`
 
-  // The single gate, checked once against a table that IS unit-tested — see
-  // actionPermissions.ts. Previously each case checked its own permission
-  // inline, which meant the tests were exercising a table the running code
-  // never consulted: a new action could ship wired to nothing and everything
-  // would still be green.
   if (!isActionAllowed(action.name, perms as unknown as Record<string, boolean>)) {
     return denied(DENIED_PHRASE[action.name] ?? 'do that')
   }
@@ -34,8 +29,6 @@ export async function runAction(action: {
     case 'open_app': {
       const res = await senti?.openApp?.(target)
       if (res?.ok) {
-        // Say what actually happened — "switched to" reads as understanding,
-        // "opening" when it was already open reads as not paying attention.
         return res.focused
           ? `${res.label ?? target} was already open — switched to it.`
           : `Opening ${res.label ?? target}.`
@@ -49,6 +42,18 @@ export async function runAction(action: {
       if (res?.ok) return `Closed ${res.label ?? target}.`
       if (res?.error === 'unknown') return `I can't close ${target} yet.`
       return `I couldn't close ${target}.`
+    }
+
+    case 'close_current': {
+      const res = await senti?.closeCurrentApp?.()
+      if (res?.ok) return `Closed ${res.label}.`
+      if (res?.error === 'nothing') return 'Nothing was in focus to close.'
+      return "I couldn't close the active app just now."
+    }
+
+    case 'show_desktop': {
+      const ok = await senti?.showDesktop?.()
+      return ok ? 'Minimised everything — back to your desktop.' : "I couldn't minimise your windows just now."
     }
 
     case 'clean_temp': {

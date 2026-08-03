@@ -50,6 +50,10 @@ interface SentiAPI {
   /** OS actions (whitelisted or scoped in main). */
   openApp: (name: string) => Promise<{ ok: boolean; label?: string; focused?: boolean; error?: string }>
   closeApp: (name: string) => Promise<{ ok: boolean; label?: string; error?: string }>
+  /** Close whatever window is in the foreground right now. */
+  closeCurrentApp: () => Promise<{ ok: boolean; label: string; error?: string }>
+  /** Minimise every window — back to the desktop. */
+  showDesktop: () => Promise<boolean>
   cleanTemp: () => Promise<{ freedMB: number; files: number }>
   /** Clean up on screen — opens the folder and clears it where you can see. */
   cleanTempVisible: () => Promise<{ freedMB: number; files: number; shown: boolean }>
@@ -66,6 +70,8 @@ interface SentiAPI {
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => Promise<boolean>
   remoteInputStop: () => Promise<boolean>
+  /** Release every held key on the host — called when the session ends or the viewer loses focus. */
+  resetRemoteKeyState: () => Promise<boolean>
   volume: (direction: 'up' | 'down' | 'mute') => Promise<boolean>
 
   /** Call the backend from the main process (token attached there). */

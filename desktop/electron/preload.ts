@@ -77,6 +77,10 @@ contextBridge.exposeInMainWorld('senti', {
   /** OS actions. All whitelisted or scoped in main — never a raw command. */
   openApp: (name: string) => ipcRenderer.invoke('senti:open-app', name),
   closeApp: (name: string) => ipcRenderer.invoke('senti:close-app', name),
+  /** Close whatever window is in the foreground right now. */
+  closeCurrentApp: () => ipcRenderer.invoke('senti:close-current-app'),
+  /** Minimise every window — back to the desktop. */
+  showDesktop: () => ipcRenderer.invoke('senti:show-desktop'),
   cleanTemp: () => ipcRenderer.invoke('senti:clean-temp'),
   /** Clean up on screen — opens the folder and clears it where you can see. */
   cleanTempVisible: () => ipcRenderer.invoke('senti:clean-temp-visible'),
@@ -93,6 +97,8 @@ contextBridge.exposeInMainWorld('senti', {
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => ipcRenderer.invoke('senti:remote-input', events),
   remoteInputStop: () => ipcRenderer.invoke('senti:remote-input-stop'),
+  /** Release every held key on the host — called when the session ends. */
+  resetRemoteKeyState: () => ipcRenderer.invoke('senti:reset-remote-key-state'),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 
   // Backend access — the token is attached in main, never exposed here.

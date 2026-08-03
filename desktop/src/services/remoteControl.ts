@@ -15,16 +15,22 @@ import { startViewerPeer, type PeerHandle } from './webrtc'
  */
 const SESSION_PATH = '/api/device/remote/session'
 const INPUT_PATH = '/api/device/remote/input'
-const FLUSH_MS = 80
+/** Default viewer → target flush cadence. */
+const FLUSH_MS = 16
+/** Heartbeat so abandoned viewers time out on the target. */
 const HEARTBEAT_MS = 6000
+/** A session is dead if the viewer hasn't heartbeated in this long. */
+const VIEWER_STALE_MS = 30_000
 
 export interface RemoteEvent {
   /** `moverel` carries a delta rather than a position — see the game mode. */
-  t: 'move' | 'moverel' | 'click' | 'scroll' | 'type' | 'key'
+  t: 'move' | 'moverel' | 'click' | 'scroll' | 'type' | 'keydown' | 'keyup'
   x?: number
   y?: number
   b?: 'left' | 'right' | 'middle'
   d?: number
+  /** For scroll: 'y' (vertical) or 'x' (horizontal/trackpad). */
+  axis?: string
   text?: string
   k?: string
   mods?: string[]
@@ -39,6 +45,8 @@ let beatTimer: number | null = null
 /** Direct connection to the target, when one comes up. */
 let peer: PeerHandle | null = null
 let peerLive = false
+/** When true, mouse moves are sent as relative deltas (game mode). */
+let gameMode = false
 
 export type StartResult =
   | { ok: true; id: string; method: 'email' | 'pin'; sentTo?: string }
@@ -121,14 +129,15 @@ export async function endSession(): Promise<void> {
 /** Queue an event. Absolute moves coalesce; everything else is kept. */
 export function sendEvent(e: RemoteEvent): void {
   if (!sessionId) return
-  if (e.t === 'move') {
+  if (e.t === 'move' && !gameMode) {
     // Only the newest position matters — older ones are already wrong.
     pendingMove = e
     return
   }
   if (e.t === 'moverel') {
-    // Deltas must ACCUMULATE, never replace. Dropping one loses that much
-    // movement permanently, which in a game reads as the camera sticking.
+    // Deltas must ACCUMULATE, never replace, regardless of mode. Dropping one
+    // loses that much movement permanently, which in a game reads as the
+    // camera sticking.
     const last = queue[queue.length - 1]
     if (last?.t === 'moverel') {
       last.x = (last.x ?? 0) + (e.x ?? 0)
@@ -139,6 +148,12 @@ export function sendEvent(e: RemoteEvent): void {
     return
   }
   queue.push(e)
+}
+
+/** Toggle game mode on/off. In game mode the viewer sends relative mouse
+ *  deltas only (no absolute positions) and the host never coalesces moves. */
+export function setGameMode(on: boolean): void {
+  gameMode = on
 }
 
 async function flush(): Promise<void> {
@@ -168,15 +183,18 @@ async function flush(): Promise<void> {
  */
 export async function connectPeer(onStream: (s: MediaStream) => void): Promise<boolean> {
   if (!sessionId) return false
+  let handle: PeerHandle | null = null
   try {
-    peer = await startViewerPeer(
+    handle = await startViewerPeer(
       sessionId,
       onStream,
       (ok) => {
         peerLive = ok
       }
     )
+    peer = handle
   } catch {
+    if (handle) try { handle.close() } catch { /* ignore */ }
     peer = null
     peerLive = false
     return false
@@ -186,9 +204,18 @@ export async function connectPeer(onStream: (s: MediaStream) => void): Promise<b
   const deadline = Date.now() + 15_000
   while (Date.now() < deadline) {
     if (peerLive) return true
-    if (!sessionId) return false
+    if (!sessionId) {
+      handle?.close()
+      peer = null
+      peerLive = false
+      return false
+    }
     await new Promise((r) => setTimeout(r, 400))
   }
+  // Timed out — close the handle so we don't leak.
+  handle?.close()
+  peer = null
+  peerLive = false
   return false
 }
 

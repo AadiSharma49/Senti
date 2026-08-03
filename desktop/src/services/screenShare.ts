@@ -100,21 +100,41 @@ function emit(): void {
  * The live capture, for WebRTC to send directly to the controlling machine.
  * Starts capture if it isn't already running, so a peer connection never has
  * to care whether frame-uploading happened to be on.
+ *
+ * Returns null if the user cancels the picker, the OS refuses capture, or
+ * the stream's tracks have all ended — every case that would otherwise hand
+ * the caller a dead stream that looks fine but produces no frames.
  */
 export async function getScreenStream(): Promise<MediaStream | null> {
-  if (stream) return stream
+  if (stream) {
+    // A stream exists — but it might be dead (user clicked "Stop sharing" in
+    // the browser's own UI, display slept, driver hiccup). Check the video
+    // track; if it's ended, the stream is useless and must be re-captured.
+    const vTrack = stream.getVideoTracks()[0]
+    if (vTrack && vTrack.readyState === 'live') return stream
+    // Dead stream — clean up and re-capture.
+    void stopScreenShare()
+  }
   const ok = await startScreenShare()
   return ok ? stream : null
 }
 
 async function captureFrame(): Promise<void> {
+  // If capture has been stopped, any tick already queued on the timer must
+  // bail immediately — the stream/video/canvas may already be null.
+  if (!running) return
   // A direct peer connection is already carrying the video; encoding and
   // uploading JPEGs on top of that is pure waste — CPU on this machine and
   // bandwidth that the video stream could be using instead.
   if (uploadPaused) return
   // Skip a tick rather than pile up requests if the network is slow.
   if (inFlight) return
-  if (!video || !canvas || video.videoWidth === 0) return
+  // The stream may have been replaced (track ended, re-captured) since the
+  // last tick — guard against a stale video/canvas.
+  if (!stream || !video || !canvas) return
+  const liveTrack = stream.getVideoTracks()[0]
+  if (!liveTrack || liveTrack.readyState !== 'live') return
+  if (video.videoWidth === 0) return
 
   const scale = Math.min(1, MAX_WIDTH / video.videoWidth)
   const w = Math.round(video.videoWidth * scale)
@@ -193,9 +213,18 @@ export async function startScreenShare(): Promise<boolean> {
   canvas = document.createElement('canvas')
   consecutiveFailures = 0
 
-  // If the capture ends on its own (display sleeps, driver hiccup), reflect
-  // that immediately instead of silently uploading a frozen last frame.
-  stream.getVideoTracks()[0]?.addEventListener('ended', () => void stopScreenShare())
+  // If the capture ends on its own (display sleeps, driver hiccup, or the
+  // user clicks "Stop sharing" in the browser's own floating chrome), restart
+  // it rather than leaving the viewer staring at a frozen frame.
+  const vTrack = stream.getVideoTracks()[0]
+  if (vTrack) {
+    vTrack.addEventListener('ended', () => {
+      if (!running) return
+      // Restart capture in place — the peer connection and frame timer keep
+      // running; only the source stream changes.
+      void startScreenShare()
+    }, { once: true })
+  }
 
   // A screen you can't see because the display went to sleep isn't a live
   // view — hold the machine awake for as long as you're watching it.
@@ -239,6 +268,8 @@ export function setFastFrames(fast: boolean): void {
 export async function stopScreenShare(): Promise<void> {
   if (!running && !stream) return
   running = false
+  // Stop the capture timer FIRST so any in-flight captureFrame tick sees
+  // `!running` and bails before we null out the stream/video/canvas below.
   if (timer !== null) {
     clearInterval(timer)
     timer = null

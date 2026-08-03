@@ -51,6 +51,25 @@ const MIME: Record<string, string> = {
 // this one is somehow taken (rare — the single-instance lock means it's ours).
 const STATIC_PORT_BASE = 47615
 
+function firstExisting(paths: string[]): string | null {
+  for (const p of paths) {
+    try {
+      if (p && existsSync(p)) return p
+    } catch {
+      // Keep trying fallbacks.
+    }
+  }
+  return null
+}
+
+function powershellPath(): string | null {
+  if (process.platform !== 'win32') return null
+  const windir = process.env.SystemRoot || process.env.WINDIR || 'C:\\Windows'
+  const system32 = path.join(windir, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  const sysnative = path.join(windir, 'Sysnative', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
+  return firstExisting([system32, sysnative, 'powershell.exe'])
+}
+
 function startStaticServer(root: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
@@ -337,6 +356,8 @@ function basicSystem(): SystemSnapshot {
 
 /** One PowerShell round-trip for the Windows-specific detail. */
 function windowsDetail(): Promise<Partial<SystemSnapshot>> {
+  const psExe = powershellPath()
+  if (!psExe) return Promise.resolve({})
   const script = `
 $ErrorActionPreference='SilentlyContinue'
 $d = Get-CimInstance Win32_LogicalDisk -Filter "DriveType=3" |
@@ -348,7 +369,7 @@ $s = (Get-CimInstance Win32_StartupCommand | Measure-Object).Count
 `
   return new Promise((resolve) => {
     execFile(
-      'powershell.exe',
+      psExe,
       ['-NoProfile', '-NonInteractive', '-Command', script],
       { timeout: 6000, windowsHide: true, maxBuffer: 1024 * 512 },
       (err, stdout) => {
@@ -616,6 +637,8 @@ const FOCUS_NAMES: Record<string, string[]> = {
 }
 
 function focusApp(label: string, target: string): Promise<boolean> {
+  const psExe = powershellPath()
+  if (!psExe) return Promise.resolve(false)
   // Names come from our own tables, but they're being spliced into a script,
   // so strip anything that isn't a plain process name regardless.
   const names = (FOCUS_NAMES[label] ?? [target.replace(/\.exe$/i, '')])
@@ -627,7 +650,7 @@ function focusApp(label: string, target: string): Promise<boolean> {
   return new Promise((resolve) => {
     try {
       execFile(
-        'powershell.exe',
+        psExe,
         ['-NoProfile', '-NonInteractive', '-Command', prelude + FOCUS_PS],
         { timeout: 6000, windowsHide: true },
         (err, stdout) => resolve(!err && String(stdout).trim() === 'yes')
@@ -922,6 +945,8 @@ function cleanTempDirs(): { freedMB: number; files: number } {
  * the same, and it only ever empties the bin — it can touch nothing else.
  */
 function emptyRecycleBin(): { freedMB: number; files: number } {
+  const psExe = powershellPath()
+  if (!psExe) return { freedMB: 0, files: 0 }
   const ps = [
     "$ErrorActionPreference='SilentlyContinue'",
     '$sh = New-Object -ComObject Shell.Application',
@@ -937,7 +962,7 @@ function emptyRecycleBin(): { freedMB: number; files: number } {
   ].join('; ')
 
   try {
-    const out = execFileSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+    const out = execFileSync(psExe, ['-NoProfile', '-NonInteractive', '-Command', ps], {
       timeout: 30_000,
       windowsHide: true,
       encoding: 'utf8',
@@ -985,10 +1010,12 @@ $proc = (Get-Process -Id $pid2).ProcessName
 `
 
 function activeWindow(): Promise<{ title: string; process: string } | null> {
+  const psExe = powershellPath()
+  if (!psExe) return Promise.resolve(null)
   return new Promise((resolve) => {
     try {
       execFile(
-        'powershell.exe',
+        psExe,
         ['-NoProfile', '-NonInteractive', '-Command', ACTIVE_WINDOW_PS],
         { timeout: 5000, windowsHide: true },
         (err, stdout) => {
@@ -1034,7 +1061,7 @@ public class SentiIn {
 }
 "@
 $MOVE=0x0001; $ABS=0x8000; $LD=0x0002; $LU=0x0004; $RD=0x0008; $RU=0x0010
-$MD=0x0020; $MU=0x0040; $WHEEL=0x0800; $KEYUP=0x0002
+$MD=0x0020; $MU=0x0040; $WHEEL=0x0800; $HWHEEL=0x01000; $KEYUP=0x0002
 
 function Send-Key([byte]$vk, [int]$shiftState) {
   if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,0,[IntPtr]::Zero) }
@@ -1047,24 +1074,22 @@ function Send-Key([byte]$vk, [int]$shiftState) {
   if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,$KEYUP,[IntPtr]::Zero) }
 }
 
+function Key-Down([byte]$vk) { [SentiIn]::keybd_event($vk,0,0,[IntPtr]::Zero) }
+function Key-Up([byte]$vk)   { [SentiIn]::keybd_event($vk,0,0x0002,[IntPtr]::Zero) }
+
 while ($true) {
   $line = [Console]::In.ReadLine()
   if ($null -eq $line) { break }
-  $p = $line.Split(' ')
+  $p = $line.Trim().Split(' ')
   switch ($p[0]) {
     'M' {
       $x = [int]([double]$p[1] * 65535); $y = [int]([double]$p[2] * 65535)
       [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
     }
     'R' {
-      # RELATIVE move: no ABSOLUTE flag, so Windows adds the delta to the
-      # current position. This is the only kind of motion a game reading raw
-      # input understands — absolute jumps make camera control unusable.
       [SentiIn]::mouse_event($MOVE, [int]$p[1], [int]$p[2], 0, [IntPtr]::Zero)
     }
     'C' {
-      # A click with x<0 means "wherever the pointer already is" — during
-      # pointer lock the viewer has no meaningful absolute position to send.
       if ([double]$p[2] -ge 0) {
         $x = [int]([double]$p[2] * 65535); $y = [int]([double]$p[3] * 65535)
         [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
@@ -1080,6 +1105,7 @@ while ($true) {
       }
     }
     'S' { [SentiIn]::mouse_event($WHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
+    'H' { [SentiIn]::mouse_event($HWHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
     'T' {
       $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
       foreach ($ch in $text.ToCharArray()) {
@@ -1089,7 +1115,14 @@ while ($true) {
         Send-Key ([byte]($scan -band 0xFF)) (($scan -shr 8) -band 0xFF)
       }
     }
-    'K' { Send-Key ([byte][int]$p[1]) ([int]$p[2]) }
+    'D' {
+      $vk = [byte]([Convert]::ToInt32($p[1], 16))
+      Key-Down $vk
+    }
+    'U' {
+      $vk = [byte]([Convert]::ToInt32($p[1], 16))
+      Key-Up $vk
+    }
   }
 }
 `
@@ -1099,15 +1132,24 @@ let inputProc: import('child_process').ChildProcess | null = null
 /** Start (or reuse) the injector. Returns false if PowerShell won't start. */
 function ensureInputProc(): boolean {
   if (inputProc && !inputProc.killed) return true
+  const psExe = powershellPath()
+  if (!psExe) {
+    console.error('[RemoteInput] PowerShell not found; remote control input disabled.')
+    return false
+  }
   try {
     const file = path.join(app.getPath('userData'), 'input.ps1')
     mkdirSync(path.dirname(file), { recursive: true })
     writeFileSync(file, INPUT_SCRIPT, 'utf8')
     inputProc = spawn(
-      'powershell.exe',
+      psExe,
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
       { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
     )
+    inputProc.on('error', (err) => {
+      console.error('[RemoteInput] PowerShell injector failed:', err)
+      inputProc = null
+    })
     inputProc.on('exit', () => {
       inputProc = null
     })
@@ -1132,9 +1174,16 @@ const VK: Record<string, number> = {
   Backspace: 0x08, Tab: 0x09, Enter: 0x0d, Escape: 0x1b, ' ': 0x20,
   PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24,
   ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28,
-  Insert: 0x2d, Delete: 0x2e,
+  Insert: 0x2d, Delete: 0x2e, PrintScreen: 0x2c, Pause: 0x13,
+  NumLock: 0x90, CapsLock: 0x14, ScrollLock: 0x91,
+  Meta: 0x5b, ContextMenu: 0x5d,
   F1: 0x70, F2: 0x71, F3: 0x72, F4: 0x73, F5: 0x74, F6: 0x75,
   F7: 0x76, F8: 0x77, F9: 0x78, F10: 0x79, F11: 0x7a, F12: 0x7b,
+  Numpad0: 0x60, Numpad1: 0x61, Numpad2: 0x62, Numpad3: 0x63,
+  Numpad4: 0x64, Numpad5: 0x65, Numpad6: 0x66, Numpad7: 0x67,
+  Numpad8: 0x68, Numpad9: 0x69,
+  NumpadMultiply: 0x6a, NumpadAdd: 0x6b, NumpadEnter: 0x0d,
+  NumpadSubtract: 0x6d, NumpadDecimal: 0x6e, NumpadDivide: 0x6f,
 }
 
 interface RemoteEvent {
@@ -1172,27 +1221,43 @@ function inputLine(e: RemoteEvent): string | null {
     }
     case 'scroll': {
       // Screen-pixel delta -> wheel notches, inverted to match Windows.
-      const notches = Math.max(-10, Math.min(10, Math.round(-(Number(e.d) || 0) / 100)))
+      // axis:'x' means horizontal scroll (trackpad swipe, Shift+scroll).
+      const raw = Number(e.d) || 0
+      const isHoriz = (e as any).axis === 'x'
+      const notches = Math.max(-10, Math.min(10, Math.round(-raw / 100)))
       if (!notches) return null
-      return `S ${notches * 120}`
+      return isHoriz ? `H ${notches * 120}` : `S ${notches * 120}`
     }
     case 'type': {
       const text = String(e.text ?? '').slice(0, 500)
       if (!text) return null
       return `T ${Buffer.from(text, 'utf8').toString('base64')}`
     }
-    case 'key': {
+    case 'keydown': {
       const name = String(e.k)
-      // A single letter or digit maps straight to its virtual-key code, which
-      // is what makes combinations like Ctrl+A expressible at all — the `type`
-      // path can't carry modifiers.
       const vk =
         VK[name] ?? (/^[a-zA-Z0-9]$/.test(name) ? name.toUpperCase().charCodeAt(0) : undefined)
       if (vk === undefined) return null
       const mods = Array.isArray(e.mods) ? e.mods : []
-      // Bit flags the script expects: 1 shift, 2 ctrl, 4 alt.
-      const state = (mods.includes('shift') ? 1 : 0) | (mods.includes('ctrl') ? 2 : 0) | (mods.includes('alt') ? 4 : 0)
-      return `K ${vk} ${state}`
+      const lines: string[] = []
+      if (mods.includes('shift')) lines.push(`D 0x10`)   // shift down
+      if (mods.includes('ctrl'))  lines.push(`D 0x11`)   // ctrl down
+      if (mods.includes('alt'))   lines.push(`D 0x12`)   // alt down
+      lines.push(`D 0x${vk.toString(16)}`)               // key down
+      return lines.join('\n')
+    }
+    case 'keyup': {
+      const name = String(e.k)
+      const vk =
+        VK[name] ?? (/^[a-zA-Z0-9]$/.test(name) ? name.toUpperCase().charCodeAt(0) : undefined)
+      if (vk === undefined) return null
+      const mods = Array.isArray(e.mods) ? e.mods : []
+      const lines: string[] = []
+      lines.push(`U 0x${vk.toString(16)}`)               // key up first
+      if (mods.includes('alt'))   lines.push(`U 0x12`)   // alt up
+      if (mods.includes('ctrl'))  lines.push(`U 0x11`)   // ctrl up
+      if (mods.includes('shift')) lines.push(`U 0x10`)   // shift up
+      return lines.join('\n')
     }
     default:
       return null
@@ -1202,17 +1267,131 @@ function inputLine(e: RemoteEvent): string | null {
 function injectInput(events: unknown): boolean {
   if (!Array.isArray(events) || !events.length) return false
   if (!ensureInputProc() || !inputProc?.stdin) return false
-  const lines = events
-    .map((e) => inputLine(e as RemoteEvent))
-    .filter((l): l is string => !!l)
-  if (!lines.length) return true
+  const psLines: string[] = []
+  for (const e of events) {
+    const ev = e as RemoteEvent
+    switch (ev.t) {
+      // Keyboard: handled directly in-process for zero-latency state tracking.
+      // The PowerShell script is used only for text typing (T) and mouse.
+      case 'keydown':
+        handleRemoteKeyDown(String(ev.k ?? ''), Array.isArray(ev.mods) ? ev.mods : [])
+        continue
+      case 'keyup':
+        handleRemoteKeyUp(String(ev.k ?? ''), Array.isArray(ev.mods) ? ev.mods : [])
+        continue
+      default:
+        break
+    }
+    const line = inputLine(ev)
+    if (typeof line === 'string') {
+      for (const part of line.split('\n')) {
+        const trimmed = part.trim()
+        if (trimmed) psLines.push(trimmed)
+      }
+    }
+  }
+  if (!psLines.length) return true
   try {
-    inputProc.stdin.write(lines.join('\n') + '\n')
+    inputProc.stdin.write(psLines.join('\n') + '\n')
     return true
   } catch {
     stopInputProc()
     return false
   }
+}
+
+// --- Host-side key state tracker -----------------------------------------
+//
+// The viewer sends keydown and keyup events. If a keyup is dropped in
+// transit (unordered data channel, network hiccup), the host would believe
+// that key is forever pressed — WASD stuck, Shift stuck, typing garbage.
+// This set mirrors what the viewer told us, and a watchdog cleans up if
+// the session ends without a tidy keyup.
+//
+// Keyboard events are sent to the long-lived PowerShell injector via stdin
+// (the same path as mouse and text), but we track state HERE so the host
+// can correct drift and the session cleanup can release every key.
+
+/** Virtual-key codes currently held down on this machine. */
+const heldVKs = new Set<number>()
+/** Repeats for held non-modifier keys: vk -> { downTimer, repeatInterval }. */
+const repeatTimers = new Map<number, { down: number; interval: number }>()
+const REPEAT_INITIAL_MS = 400
+const REPEAT_RATE_MS = 32
+
+const MODIFIER_VKS = new Set([0x10, 0x11, 0x12, 0x5b, 0x5c])
+
+function startRepeat(vk: number): void {
+  stopRepeat(vk)
+  // First repeat after a delay, then OS-rate repeats.
+  const downId = window.setTimeout(() => {
+    sendInputLine(`D 0x${vk.toString(16)}`)
+    const intId = window.setInterval(() => {
+      sendInputLine(`D 0x${vk.toString(16)}`)
+    }, REPEAT_RATE_MS)
+    repeatTimers.set(vk, { down: downId, interval: intId })
+  }, REPEAT_INITIAL_MS)
+  repeatTimers.set(vk, { down: downId, interval: -1 })
+}
+
+function stopRepeat(vk: number): void {
+  const existing = repeatTimers.get(vk)
+  if (existing) {
+    clearTimeout(existing.down)
+    clearInterval(existing.interval)
+    repeatTimers.delete(vk)
+  }
+}
+
+function sendInputLine(line: string): void {
+  if (!ensureInputProc() || !inputProc?.stdin) return
+  try {
+    inputProc.stdin.write(line + '\n')
+  } catch {
+    stopInputProc()
+  }
+}
+
+/** Process one keydown from the remote viewer. */
+function handleRemoteKeyDown(rawK: string, mods: string[]): void {
+  const vk = VK[rawK] ?? (/^[a-zA-Z0-9]$/.test(rawK) ? rawK.toUpperCase().charCodeAt(0) : undefined)
+  if (vk === undefined) return
+
+  // Press modifiers first (only if not already held), then the key.
+  if (mods.includes('shift') && !heldVKs.has(0x10)) sendInputLine('D 0x10')
+  if (mods.includes('ctrl')  && !heldVKs.has(0x11)) sendInputLine('D 0x11')
+  if (mods.includes('alt')   && !heldVKs.has(0x12)) sendInputLine('D 0x12')
+  sendInputLine(`D 0x${vk.toString(16)}`)
+  heldVKs.add(vk)
+
+  // Start key repeat for non-modifier keys (Backspace, letters, etc.).
+  if (!MODIFIER_VKS.has(vk)) startRepeat(vk)
+}
+
+/** Process one keyup from the remote viewer. */
+function handleRemoteKeyUp(rawK: string, mods: string[]): void {
+  const vk = VK[rawK] ?? (/^[a-zA-Z0-9]$/.test(rawK) ? rawK.toUpperCase().charCodeAt(0) : undefined)
+  if (vk === undefined) return
+
+  stopRepeat(vk)
+  sendInputLine(`U 0x${vk.toString(16)}`)
+  heldVKs.delete(vk)
+
+  // Release modifiers last, in reverse order.
+  if (mods.includes('alt'))   { sendInputLine('U 0x12'); heldVKs.delete(0x12) }
+  if (mods.includes('ctrl'))  { sendInputLine('U 0x11'); heldVKs.delete(0x11) }
+  if (mods.includes('shift')) { sendInputLine('U 0x10'); heldVKs.delete(0x10) }
+}
+
+/** Call once when a remote session starts. */
+export function resetRemoteKeyState(): void {
+  for (const vk of heldVKs) sendInputLine(`U 0x${vk.toString(16)}`)
+  heldVKs.clear()
+  for (const [, timers] of repeatTimers) {
+    clearTimeout(timers.down)
+    clearInterval(timers.interval)
+  }
+  repeatTimers.clear()
 }
 
 /**
@@ -1334,11 +1513,13 @@ function powerAction(modeRaw: unknown): boolean {
 
 /** Volume via media-key virtual codes: simple, no extra dependency. */
 function changeVolume(direction: 'up' | 'down' | 'mute'): boolean {
+  const psExe = powershellPath()
+  if (!psExe) return false
   const key = direction === 'up' ? 175 : direction === 'down' ? 174 : 173
   const repeat = direction === 'mute' ? 1 : 5 // ~10% per step
   const ps = `$w = New-Object -ComObject WScript.Shell; 1..${repeat} | ForEach-Object { $w.SendKeys([char]${key}) }`
   try {
-    execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', ps], {
+    execFile(psExe, ['-NoProfile', '-NonInteractive', '-Command', ps], {
       timeout: 4000,
       windowsHide: true,
     })
@@ -1371,6 +1552,56 @@ function closeApp(nameRaw: unknown): { ok: boolean; label?: string; error?: stri
     return { ok: true, label: hit.label }
   } catch {
     return { ok: false, error: 'failed' }
+  }
+}
+
+/** Close whatever window is in the foreground right now. */
+async function closeCurrentApp(): Promise<{ ok: boolean; label: string; error?: string }> {
+  const win = await activeWindow()
+  if (!win) return { ok: false, label: '', error: 'nothing' }
+  const proc = win.process.toLowerCase().replace(/\.exe$/i, '')
+  const label = win.title || proc
+  // Use taskkill on the PID so we don't need a name whitelist — we're killing
+  // whatever is ALREADY in front of the user, which is exactly what they asked
+  // for. The PID comes from Windows itself, not from the model.
+  const pidMatch = win.title.match(/pid:(\d+)/i)
+  // activeWindow returns only {title, process} — no PID. Fall back to taskkill
+  // by process name from the window info.
+  const exeMap: Record<string, string> = {
+    explorer: 'explorer.exe',
+    code: 'Code.exe',
+    chrome: 'chrome.exe',
+    msedge: 'msedge.exe',
+    firefox: 'firefox.exe',
+    spotify: 'Spotify.exe',
+    discord: 'Discord.exe',
+    steam: 'steam.exe',
+    notepad: 'notepad.exe',
+    mspaint: 'mspaint.exe',
+    CalculatorApp: 'CalculatorApp.exe',
+    wt: 'WindowsTerminal.exe',
+  }
+  const exe = exeMap[proc] || (proc.endsWith('.exe') ? proc : proc + '.exe')
+  try {
+    spawn('taskkill', ['/IM', exe, '/F'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+    return { ok: true, label }
+  } catch {
+    return { ok: false, label, error: 'failed' }
+  }
+}
+
+function showDesktop(): boolean {
+  try {
+    // The VK code for the Windows "Show Desktop" shortcut (Win+D).
+    const psExe = powershellPath()
+    if (!psExe) return false
+    execFileSync(psExe, [
+      '-NoProfile', '-NonInteractive', '-Command',
+      '(New-Object -ComObject Shell.Application).MinimizeAll()'
+    ], { windowsHide: true, timeout: 4000 })
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -1439,6 +1670,9 @@ async function apiRequest(opts: {
 // no wake word, like holding the button on a walkie-talkie. The surest way to
 // start talking when a room is noisy or you'd rather not say the name.
 const TALK_SHORTCUT = 'CommandOrControl+Shift+Space'
+// Panic button: minimise everything and close whatever is in front — the fastest
+// way out of a game or a fullscreen app, reachable without touching the mouse.
+const DESKTOP_SHORTCUT = 'CommandOrControl+Shift+Q'
 
 function waitForVite(url: string, timeout = 15000): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -1617,6 +1851,16 @@ app.whenReady().then(async () => {
   try {
     globalShortcut.register(TALK_SHORTCUT, () => {
       mainWindow?.webContents.send('senti:talk')
+    })
+  } catch {
+    // ignore if the accelerator is taken by another app
+  }
+
+  // Panic button: minimise everything + close the foreground app from anywhere.
+  try {
+    globalShortcut.register(DESKTOP_SHORTCUT, () => {
+      void closeCurrentApp()
+      void showDesktop()
     })
   } catch {
     // ignore if the accelerator is taken by another app
@@ -1825,6 +2069,8 @@ ipcMain.handle('senti:keep-awake', (_e: unknown, on: unknown, holder: unknown) =
 // model behind it) can only ask, never dictate a command.
 ipcMain.handle('senti:open-app', (_e: unknown, name: unknown) => openApp(name))
 ipcMain.handle('senti:close-app', (_e: unknown, name: unknown) => closeApp(name))
+ipcMain.handle('senti:close-current-app', async () => closeCurrentApp())
+ipcMain.handle('senti:show-desktop', () => showDesktop())
 ipcMain.handle('senti:clean-temp', () => cleanTempDirs())
 /**
  * Clean up where you can watch it. Falls back to the silent sweep when the
@@ -1858,6 +2104,10 @@ ipcMain.handle('senti:active-window', () => activeWindow())
 ipcMain.handle('senti:remote-input', (_e: unknown, events: unknown) => injectInput(events))
 ipcMain.handle('senti:remote-input-stop', () => {
   stopInputProc()
+  return true
+})
+ipcMain.handle('senti:reset-remote-key-state', () => {
+  resetRemoteKeyState()
   return true
 })
 ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {

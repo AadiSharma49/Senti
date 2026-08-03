@@ -84,12 +84,18 @@ export default function RemoteControlWindow({
       const ok = await connectPeer((stream) => {
         if (!alive) return
         const v = videoRef.current
-        if (v && v.srcObject !== stream) v.srcObject = stream
+        if (!v) return
+        if (v.srcObject !== stream) {
+          v.srcObject = stream
+          v.muted = true
+        }
+        void v.play().catch(() => {})
       })
       if (alive && ok) setDirect(true)
     })()
     return () => {
       alive = false
+      void endSession()
     }
   }, [phase])
 
@@ -111,13 +117,20 @@ export default function RemoteControlWindow({
 
   // Keyboard goes to the target while we're live. Capture phase so the app's
   // own shortcuts don't swallow keys meant for the other machine.
+  //
+  // CRITICAL: keydown alone is not enough. Games and held keys need a real
+  // keydown (press) and a real keyup (release) — without keyup, no key is
+  // ever held, WASM doesn't work, and Shift/Ctrl modifiers are useless.
+  // We track held keys in a Set so we only fire on the first press (no
+  // OS auto-repeat spam) and send the matching keyup on release.
+  const heldKeysRef = useRef<Set<string>>(new Set())
+
   useEffect(() => {
     if (phase !== 'live') return
-    const onKey = (e: KeyboardEvent) => {
-      // Escape is the way out; it must stay local or you could never leave.
-      // In game mode the browser uses it to release the captured mouse, so
-      // the first press only unlocks — otherwise stepping out of a game would
-      // also hang up the session, which nobody wants.
+    const held = heldKeysRef.current
+    held.clear()
+
+    const sendDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         if (document.pointerLockElement) return
         onClose()
@@ -129,13 +142,58 @@ export default function RemoteControlWindow({
       if (e.shiftKey) mods.push('shift')
       if (e.altKey) mods.push('alt')
 
-      // A single printable character with no ctrl/alt is text; anything else
-      // is a named key the target maps to a virtual-key code.
-      if (e.key.length === 1 && !e.ctrlKey && !e.altKey) sendEvent({ t: 'type', text: e.key })
-      else sendEvent({ t: 'key', k: e.key, mods })
+      // Printable characters with no modifier: send as text. The host types
+      // the character directly — no keyup needed, the target app sees a
+      // normal character input.
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey) {
+        sendEvent({ t: 'type', text: e.key })
+        return
+      }
+      // Non-printable (WASM, arrows, function keys, etc.): send as a named
+      // keydown. Only on the first press — suppress OS auto-repeat.
+      const id = JSON.stringify({ k: e.key, mods })
+      if (held.has(id)) return
+      held.add(id)
+      sendEvent({ t: 'keydown', k: e.key, mods })
     }
-    window.addEventListener('keydown', onKey, true)
-    return () => window.removeEventListener('keydown', onKey, true)
+
+    const sendUp = (e: KeyboardEvent) => {
+      e.preventDefault()
+      const mods: string[] = []
+      if (e.ctrlKey) mods.push('ctrl')
+      if (e.shiftKey) mods.push('shift')
+      if (e.altKey) mods.push('alt')
+      const id = JSON.stringify({ k: e.key, mods })
+      held.delete(id)
+      sendEvent({ t: 'keyup', k: e.key, mods })
+    }
+
+    // If the user Alt+Tabs or clicks away, release every key on the host
+    // so nothing stays stuck. Also fires on tab hide / screen lock.
+    const releaseAll = () => {
+      for (const id of held) {
+        try {
+          const { k, mods } = JSON.parse(id)
+          sendEvent({ t: 'keyup', k, mods })
+        } catch { /* ignore */ }
+      }
+      held.clear()
+    }
+
+    window.addEventListener('keydown', sendDown, true)
+    window.addEventListener('keyup', sendUp, true)
+    window.addEventListener('blur', releaseAll)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) releaseAll()
+    })
+
+    return () => {
+      window.removeEventListener('keydown', sendDown, true)
+      window.removeEventListener('keyup', sendUp, true)
+      window.removeEventListener('blur', releaseAll)
+      document.removeEventListener('visibilitychange', releaseAll)
+      releaseAll()
+    }
   }, [phase, onClose])
 
   /**
@@ -187,8 +245,16 @@ export default function RemoteControlWindow({
   }, [])
 
   const toggleLock = () => {
-    if (document.pointerLockElement) document.exitPointerLock()
-    else void surfaceRef.current?.requestPointerLock()
+    const next = !locked
+    setLocked(next)
+    if (next) {
+      void surfaceRef.current?.requestPointerLock()
+      // Tell the host to switch to game-optimised encoding.
+      sendEvent({ t: 'quality', preset: 'smooth' } as never)
+    } else {
+      document.exitPointerLock()
+      sendEvent({ t: 'quality', preset: 'balanced' } as never)
+    }
   }
 
   const onMove = (e: React.MouseEvent) => {
@@ -276,11 +342,11 @@ export default function RemoteControlWindow({
               title="Capture the mouse and send movement instead of position — needed for games"
               className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
                 locked
-                  ? 'border-accent bg-accent text-black'
+                  ? 'border-green-400 bg-green-400 text-black'
                   : 'border-white/15 text-white/80 hover:bg-white/10'
               }`}
             >
-              {locked ? 'Game mode on' : 'Game mode'}
+              {locked ? 'Playing — Esc to release' : 'Game mode'}
             </button>
           )}
           <button
@@ -299,15 +365,23 @@ export default function RemoteControlWindow({
           onMouseMove={onMove}
           onMouseDown={onClick}
           onContextMenu={(e) => e.preventDefault()}
-          onWheel={(e) => sendEvent({ t: 'scroll', d: e.deltaY })}
+          onWheel={(e) => {
+            e.preventDefault()
+            // Vertical scroll (deltaY) and horizontal (deltaX, e.g. trackpad
+            // swipe or Shift+scroll) both get through.
+            if (Math.abs(e.deltaY) > 0.5) sendEvent({ t: 'scroll', d: e.deltaY, axis: 'y' })
+            if (Math.abs(e.deltaX) > 0.5) sendEvent({ t: 'scroll', d: e.deltaX, axis: 'x' })
+          }}
         >
           {/* Direct video: full size, smooth. */}
-          {/* NOT muted: the target's system audio rides the same connection,
-              so game and video sound come through here too. */}
+          {/* muted: required for autoplay. System audio from the host rides
+              the WebRTC audio track and reaches here regardless. */}
           <video
             ref={videoRef}
             autoPlay
             playsInline
+            muted
+            onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
             className={`h-full w-full cursor-crosshair select-none object-contain ${direct ? '' : 'hidden'}`}
           />
           {/* Fallback still frames until (or unless) the direct link comes up. */}

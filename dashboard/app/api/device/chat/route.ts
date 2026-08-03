@@ -47,6 +47,24 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'close_current',
+      description:
+        'Close or quit whatever app is currently in the foreground — the game, tab, or window the user is actually looking at right now. Use when they say "close this", "exit this game", "get me out of this", "close whatever is open", "close this window" — anything where they mean the active frontmost thing and not a named app. This is the right action when you do not know the app name.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'show_desktop',
+      description:
+        'Minimise every open window at once so the user is back at their desktop immediately. Use for "show desktop", "back to desktop", "minimise everything", "close all windows", "get back to desktop", "i want the desktop". This is the fastest way to get out of a fullscreen game or a busy screen.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'clean_temp',
       description:
         'Free disk space by deleting temporary files. Use when the user asks to clean up, free space, clear junk/temp files, or says the disk is full. Also the right follow-up when they ask you to fix a slow or full machine.',
@@ -218,7 +236,8 @@ const TOOLS = [
 
 /** Actions the desktop knows how to run. */
 const KNOWN_ACTIONS = new Set([
-  'open_app', 'close_app', 'open_folder', 'open_file', 'clean_temp',
+  'open_app', 'close_app', 'close_current', 'show_desktop',
+  'open_folder', 'open_file', 'clean_temp',
   'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
   'take_screenshot', 'look_at_screen',
   'ask_web',
@@ -304,8 +323,9 @@ function persona(name: string | null, language: string): string {
     "won't get them what they actually want, SAY SO plainly and say why — a real assistant pushes back, it " +
     "doesn't just obey. Offer the better option. But once they've heard you and still want it, it's their " +
     'machine — do it. You are helpful AND honest, never a yes-man. ' +
-    'You genuinely CAN act on this machine: open ANY installed app or game, open files and folders, TAKE A ' +
-    'SCREENSHOT, LOOK AT THE SCREEN and help with what is on it, empty the ' +
+    'You genuinely CAN act on this machine: open ANY installed app or game, close apps or the active ' +
+    'frontmost window (including a game), show desktop (minimise everything at once), open files and folders, ' +
+    'TAKE A SCREENSHOT, LOOK AT THE SCREEN and help with what is on it, empty the ' +
     'recycle bin, clean temp files, control volume, lock/sleep/restart/shut down the PC, share the screen to ' +
     "their phone, search the web, read live tech news, and remember things about them — do those through " +
     "your tools rather than saying you can't. Never claim you can't open an app or game before trying. " +

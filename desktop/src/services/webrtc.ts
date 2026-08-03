@@ -1,4 +1,5 @@
 import { api } from './api'
+import { setQuality, QUALITY, type QualityPreset } from './screenShare'
 
 /**
  * Peer-to-peer remote control: real video, real-time input.
@@ -149,7 +150,14 @@ function attach(
     if (e.candidate) void signal(sessionId, 'ice', e.candidate.toJSON())
   }
   pc.onconnectionstatechange = () => {
-    onState(pc.connectionState === 'connected')
+    const state = pc.connectionState
+    onState(state === 'connected')
+    // A failed connection means the peer is dead — let the host know so it
+    // can fall back to the frame path rather than leaving the viewer staring
+    // at a black screen.
+    if (state === 'failed' || state === 'disconnected') {
+      void pc.close()
+    }
   }
 }
 
@@ -166,6 +174,7 @@ export async function startViewerPeer(
   const pc = new RTCPeerConnection(iceConfig())
   let stopPoll: (() => void) | null = null
   let channelOpen = false
+  let seq = 0
 
   // We only receive; we never send our own screen or mic back.
   const videoTx = pc.addTransceiver('video', { direction: 'recvonly' })
@@ -185,7 +194,11 @@ export async function startViewerPeer(
   } catch {
     // Unsupported on this build — the default ordering still works.
   }
-  const channel = pc.createDataChannel('input', { ordered: true })
+  // ordered:false + maxRetransmits:0 removes head-of-line blocking: every
+  // click and mouse move ships immediately and stale ones are dropped rather
+  // than waiting to be delivered in sequence. A sequence counter lets the host
+  // discard anything older than what it has already applied.
+  const channel = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 })
   channel.onopen = () => {
     channelOpen = true
   }
@@ -261,9 +274,12 @@ export async function startHostPeer(
     try {
       const params = sender.getParameters()
       if (!params.encodings || !params.encodings.length) params.encodings = [{}]
-      params.encodings[0].maxBitrate = 12_000_000 // 12 Mbps: comfortable 1080p
+      // High ceiling for game action: 1080p at 60fps with motion-optimised
+      // encoding. The viewer can override this via a quality control message
+      // on the data channel once it's open.
+      params.encodings[0].maxBitrate = 16_000_000
       params.encodings[0].maxFramerate = 60
-      // Not in the DOM types across versions, but honoured by Chromium.
+      params.encodings[0].scaleResolutionDownBy = 1.0
       ;(params as RTCRtpSendParameters & { degradationPreference?: string }).degradationPreference =
         'maintain-framerate'
       await sender.setParameters(params)
@@ -276,9 +292,19 @@ export async function startHostPeer(
     const ch = e.channel
     ch.onmessage = (msg) => {
       try {
-        // Batched or single — accept both so the viewer can coalesce moves.
         const parsed = JSON.parse(String(msg.data))
-        onInput(Array.isArray(parsed) ? parsed : [parsed])
+        // Batched input events or single — accept both.
+        const input: any[] = []
+        const items = Array.isArray(parsed) ? parsed : [parsed]
+        for (const item of items) {
+          // Control messages from the viewer: quality preset changes.
+          if (item?.t === 'quality' && item.preset && item.preset in QUALITY) {
+            void setQuality(item.preset as QualityPreset)
+            continue
+          }
+          input.push(item)
+        }
+        if (input.length) onInput(input)
       } catch {
         // Ignore anything we can't read; never trust the wire blindly.
       }

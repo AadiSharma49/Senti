@@ -28,6 +28,10 @@ const INPUT_PATH = '/api/device/remote/input'
 const POLL_MS = 150
 /** When nobody is driving, checking every 150ms is pure waste. */
 const IDLE_POLL_MS = 4000
+/** When the peer is connected the HTTP path is only a fallback, but it still
+ *  needs to be fast enough that a dropped peer doesn't add a full second of
+ *  stale input before the next drain. */
+const PEER_POLL_MS = 50
 
 let timer: number | null = null
 let busy = false
@@ -94,8 +98,9 @@ async function tick(): Promise<void> {
     // A direct connection carries the video, so uploading JPEGs is pure waste.
     pauseFrameUpload(peerConnected)
     setFastFrames(!peerConnected)
-    // With a peer up, the HTTP queue is only a fallback — poll it lazily.
-    nextDelay = peerConnected ? 1000 : POLL_MS
+    // With a peer up the HTTP queue is only a fallback — poll it fast enough
+    // that a peer hiccup doesn't add a second of dead input.
+    nextDelay = peerConnected ? PEER_POLL_MS : POLL_MS
   } catch {
     // Offline — fall back to the idle cadence and try again.
   } finally {
@@ -167,6 +172,7 @@ async function endLocally(): Promise<void> {
   closePeer()
   setFastFrames(false)
   void window.senti?.remoteInputStop?.()
+  void window.senti?.resetRemoteKeyState?.()
   void window.senti?.keepAwake?.(false, 'remoteControl')
   emit()
 }
