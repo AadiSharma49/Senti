@@ -48,15 +48,23 @@ export interface SettingsState {
     proactive: boolean
     /** Volume and locking the workstation. */
     systemControl: boolean
-    /**
-     * Keep listening in the background for "Senti …" so you never open the app.
-     * The listening is entirely on-device — audio is never uploaded, and only
-     * the text of a command leaves after the wake word fires.
-     */
-    alwaysListening: boolean
-  }
+  /**
+   * Keep listening in the background for "Senti …" so you never open the app.
+   * The listening is entirely on-device — audio is never uploaded, and only
+   * the text of a command leaves after the wake word fires.
+   */
+  alwaysListening: boolean
+}
 
-  setSecurity: (s: Partial<SettingsState['security']>) => void
+/**
+ * Local-only mode: no cloud APIs. All AI runs on this machine via Ollama
+ * + Piper. Zero data leaves the PC. Requires Ollama + Piper to be installed.
+ */
+localMode: boolean
+
+setLocalMode: (on: boolean) => void
+
+setSecurity: (s: Partial<SettingsState['security']>) => void
   setPermissions: (p: Partial<SettingsState['permissions']>) => void
   /**
    * Carry out tasks ON SCREEN where you can watch, rather than silently.
@@ -123,8 +131,6 @@ const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   seeScreen: true,
   screenShare: true,
   clipboardSync: true,
-  // Someone driving your mouse and keyboard is the biggest permission here —
-  // it stays off until you deliberately turn it on and set a PIN.
   remoteControl: false,
   proactive: true,
   systemControl: true,
@@ -142,10 +148,16 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   setupCompleted: loadSetupCompleted(),
   showWork: safe<boolean>('senti:showWork', true),
+  localMode: safe<boolean>('senti:localMode', false),
 
   setShowWork: (on) => {
     persist('senti:showWork', on)
     set({ showWork: on })
+  },
+
+  setLocalMode: (on: boolean) => {
+    persist('senti:localMode', on)
+    set({ localMode: on })
   },
 
   setSecurity: (s) => {

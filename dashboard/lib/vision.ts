@@ -125,3 +125,142 @@ export async function describeImage(
   if (geminiEnabled) return askGeminiVision(image, question, language)
   return null
 }
+
+/**
+ * Background screen context: ask the vision model for a structured summary of
+ * what's on screen — apps, activity, label. Used by the background watcher
+ * so Senti always knows what you're doing without being asked.
+ */
+export interface ScreenContextResult {
+  summary: string
+  apps: string[]
+  activity: string
+  label: string
+}
+
+function contextPrompt(): string {
+  return (
+    'You are Senti, looking at a screenshot of your owner\'s screen right now. ' +
+    'Return a JSON object with this exact shape:\n' +
+    '{\n' +
+    '  "summary": "1-2 sentences about what is happening on screen right now",\n' +
+    '  "apps": ["list of app names you can identify, most prominent first"],\n' +
+    '  "activity": "one of: coding, gaming, browsing, watching, reading, writing, working, idle",\n' +
+    '  "label": "short human label like \'Coding in VS Code\' or \'Playing Valorant\'"\n' +
+    '}\n' +
+    'Rules: summary must be under 200 chars. apps must have 1-6 entries. ' +
+    'activity must be exactly one of the listed values. label under 60 chars. ' +
+    'No markdown, no commentary, just the JSON.'
+  )
+}
+
+export async function describeScreenContext(image: string): Promise<ScreenContextResult | null> {
+  const groq = await askGroqContext(image)
+  if (groq) return groq
+  if (geminiEnabled) return askGeminiContext(image)
+  return null
+}
+
+async function askGroqContext(image: string): Promise<ScreenContextResult | null> {
+  if (!GROQ_KEY) return null
+  for (const model of GROQ_VISION) {
+    try {
+      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${GROQ_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model,
+          max_tokens: 400,
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: contextPrompt() },
+                { type: 'image_url', image_url: { url: image } },
+              ],
+            },
+          ],
+        }),
+        signal: AbortSignal.timeout(30_000),
+      })
+      if (!res.ok) continue
+      const data = await res.json()
+      const text = clean(data?.choices?.[0]?.message?.content ?? '')
+      if (!text) continue
+      const parsed = parseContextJSON(text)
+      if (parsed) return parsed
+    } catch {
+      // Try next model.
+    }
+  }
+  return null
+}
+
+async function askGeminiContext(image: string): Promise<ScreenContextResult | null> {
+  if (!GEMINI_KEY) return null
+  const m = image.match(/^data:(image\/\w+);base64,(.+)$/)
+  if (!m) return null
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { text: contextPrompt() },
+                { inline_data: { mime_type: m[1], data: m[2] } },
+              ],
+            },
+          ],
+          generationConfig: {
+            maxOutputTokens: 300,
+            temperature: 0.3,
+            responseMimeType: 'application/json',
+          },
+        }),
+        signal: AbortSignal.timeout(30_000),
+      }
+    )
+    if (!res.ok) return null
+    const data = await res.json()
+    const parts = data?.candidates?.[0]?.content?.parts
+    const text = Array.isArray(parts) ? parts.map((p: { text?: string }) => p.text || '').join(' ') : ''
+    const cleaned = clean(text)
+    if (!cleaned) return null
+    const parsed = parseContextJSON(cleaned)
+    if (parsed) return parsed
+  } catch {
+    // ignore
+  }
+  return null
+}
+
+function parseContextJSON(text: string): ScreenContextResult | null {
+  try {
+    // Extract JSON from the response — some models wrap it in markdown fences.
+    const match = text.match(/\{[\s\S]*\}/)
+    if (!match) return null
+    const obj = JSON.parse(match[0])
+    if (!obj || typeof obj !== 'object') return null
+    return {
+      summary: String(obj.summary || '').slice(0, 500),
+      apps: Array.isArray(obj.apps) ? obj.apps.slice(0, 8).map(String) : [],
+      activity: normalizeActivity(String(obj.activity || '')),
+      label: String(obj.label || obj.summary || 'Unknown').slice(0, 80),
+    }
+  } catch {
+    return null
+  }
+}
+
+function normalizeActivity(raw: string): ScreenContextResult['activity'] {
+  const s = raw.toLowerCase().trim()
+  const valid = ['coding', 'gaming', 'browsing', 'watching', 'reading', 'writing', 'working', 'idle']
+  return valid.includes(s) ? (s as ScreenContextResult['activity']) : 'unknown'
+}

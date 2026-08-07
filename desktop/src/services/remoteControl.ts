@@ -16,11 +16,13 @@ import { startViewerPeer, type PeerHandle } from './webrtc'
 const SESSION_PATH = '/api/device/remote/session'
 const INPUT_PATH = '/api/device/remote/input'
 /** Default viewer → target flush cadence. */
-const FLUSH_MS = 16
+const FLUSH_MS = 8
 /** Heartbeat so abandoned viewers time out on the target. */
 const HEARTBEAT_MS = 6000
 /** A session is dead if the viewer hasn't heartbeated in this long. */
 const VIEWER_STALE_MS = 30_000
+/** Prevent overlapping async flushes — a slow HTTP call must not delay the next batch. */
+let flushing = false
 
 export interface RemoteEvent {
   /** `moverel` carries a delta rather than a position — see the game mode. */
@@ -129,15 +131,19 @@ export async function endSession(): Promise<void> {
 /** Queue an event. Absolute moves coalesce; everything else is kept. */
 export function sendEvent(e: RemoteEvent): void {
   if (!sessionId) return
+
+  // In game mode, critical events go out IMMEDIATELY — no batching, no waiting.
+  // This is what makes fast key presses feel real-time.
+  if (gameMode && (e.t === 'keydown' || e.t === 'keyup' || e.t === 'click')) {
+    void immediateSend([e])
+    return
+  }
+
   if (e.t === 'move' && !gameMode) {
-    // Only the newest position matters — older ones are already wrong.
     pendingMove = e
     return
   }
   if (e.t === 'moverel') {
-    // Deltas must ACCUMULATE, never replace, regardless of mode. Dropping one
-    // loses that much movement permanently, which in a game reads as the
-    // camera sticking.
     const last = queue[queue.length - 1]
     if (last?.t === 'moverel') {
       last.x = (last.x ?? 0) + (e.x ?? 0)
@@ -150,29 +156,31 @@ export function sendEvent(e: RemoteEvent): void {
   queue.push(e)
 }
 
-/** Toggle game mode on/off. In game mode the viewer sends relative mouse
- *  deltas only (no absolute positions) and the host never coalesces moves. */
-export function setGameMode(on: boolean): void {
-  gameMode = on
+async function immediateSend(events: RemoteEvent[]): Promise<void> {
+  if (!sessionId) return
+  // Peer data channel is instant — no HTTP round trip.
+  if (peerLive && peer?.send(events)) return
+  // Fallback: fire and forget HTTP, don't wait.
+  void api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events } }).catch(() => {
+    // Dropped input is better than a growing backlog.
+  })
 }
 
 async function flush(): Promise<void> {
-  if (!sessionId) return
-  // A move must be applied BEFORE the click that follows it, or the click
-  // lands wherever the pointer happened to be.
+  if (!sessionId || flushing) return
   const batch = pendingMove ? [pendingMove, ...queue] : queue
   pendingMove = null
   queue = []
   if (!batch.length) return
 
-  // Straight down the data channel when it's up — no HTTP round trip, which
-  // is what makes clicking feel immediate instead of ~150ms behind.
-  if (peerLive && peer?.send(batch)) return
-
+  flushing = true
   try {
+    if (peerLive && peer?.send(batch)) return
     await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
   } catch {
     // Dropped input is better than a growing backlog of stale clicks.
+  } finally {
+    flushing = false
   }
 }
 

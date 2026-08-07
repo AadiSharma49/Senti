@@ -19,8 +19,28 @@ contextBridge.exposeInMainWorld('senti', {
   /** Fill the display while driving another machine, and give it back after. */
   enterFullscreen: () => ipcRenderer.invoke('senti:enter-fullscreen'),
   exitFullscreen: () => ipcRenderer.invoke('senti:exit-fullscreen'),
+  /** Show the HUD (big orb) while Senti is being spoken to. */
   hudShow: () => ipcRenderer.invoke('senti:hud-show'),
+  /** Shrink back to the small corner presence. */
   hudHide: () => ipcRenderer.invoke('senti:hud-hide'),
+  /** Fully hide the Senti window — it keeps listening in the background. */
+  hideWindow: () => ipcRenderer.invoke('senti:hide-window'),
+  /** Restore the Senti window to HUD mode after it was hidden. */
+  restoreWindow: () => ipcRenderer.invoke('senti:restore-window'),
+  /** Start/stop the background screen watcher. */
+  startScreenContext: () => ipcRenderer.invoke('senti:start-screen-context'),
+  stopScreenContext: () => ipcRenderer.invoke('senti:stop-screen-context'),
+  /** Code bridge: VS Code ↔ Senti. */
+  startCodeBridge: () => ipcRenderer.invoke('senti:start-code-bridge'),
+  stopCodeBridge: () => ipcRenderer.invoke('senti:stop-code-bridge'),
+  sendToVSCode: (msg: unknown) => ipcRenderer.invoke('senti:send-to-vscode', msg),
+  isCodeBridgeConnected: () => ipcRenderer.invoke('senti:is-code-bridge-connected'),
+  /** Listen for messages from the VS Code extension. */
+  onCodeBridgeMessage: (cb: (msg: unknown) => void) => {
+    const handler = (_e: unknown, msg: unknown) => cb(msg)
+    ipcRenderer.on('senti:code-bridge-message', handler)
+    return () => ipcRenderer.removeListener('senti:code-bridge-message', handler)
+  },
   /** Fired from the tray / second launch. Returns an unsubscribe function. */
   onOpenSettings: (cb: () => void) => {
     const handler = () => cb()

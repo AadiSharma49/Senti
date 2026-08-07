@@ -46,7 +46,9 @@ export async function askSenti(
   messages: ChatTurn[],
   lang: string,
   /** Plain-text vitals for this machine, so Senti can answer about it. */
-  system?: string | null
+  system?: string | null,
+  /** Live screen context from the background watcher. */
+  screenContext?: Record<string, unknown> | null
 ): Promise<Reply> {
   // Rank against the newest user turn — that's what the reply must serve.
   const latest = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
@@ -58,7 +60,7 @@ export async function askSenti(
     error?: string
   }>(CHAT_PATH, {
     method: 'POST',
-    body: { messages, language: lang, system: system || undefined, memories },
+    body: { messages, language: lang, system: system || undefined, memories, screenContext },
   })
 
   if (!res.ok) {

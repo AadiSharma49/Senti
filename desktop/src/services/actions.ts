@@ -2,6 +2,15 @@ import { useSettingsStore } from '../state/settingsStore'
 import { isActionAllowed, DENIED_PHRASE } from './actionPermissions'
 import { startScreenShare, stopScreenShare } from './screenShare'
 import { lookAtScreen } from './vision'
+import {
+  readActiveFile,
+  readFile,
+  writeFile,
+  listFolder,
+  runInTerminal,
+  getDiagnostics,
+  isCodeBridgeConnected,
+} from './codeBridge'
 
 /**
  * Carry out an action the model asked for.
@@ -154,6 +163,65 @@ export async function runAction(action: {
       const ok = await senti?.volume?.(d)
       if (!ok) return "I couldn't change the volume."
       return d === 'mute' ? 'Muted.' : d === 'up' ? 'Turning it up.' : 'Turning it down.'
+    }
+
+    case 'read_file': {
+      const path = String(action.args?.path ?? '')
+      if (!path) return 'Which file do you want me to read?'
+      const content = await readFile(path)
+      if (!content) return `I couldn't read ${path} — is VS Code open and the Senti Code Bridge connected?`
+      return `Here's what's in ${path}:\n${content.text.slice(0, 3000)}${content.text.length > 3000 ? '\n... (truncated)' : ''}`
+    }
+
+    case 'write_file': {
+      const path = String(action.args?.path ?? '')
+      const text = String(action.args?.text ?? '')
+      if (!path || !text) return 'I need a file path and content to write.'
+      const ok = await writeFile(path, text)
+      if (!ok) return `I couldn't write to ${path} — is VS Code open and the Senti Code Bridge connected?`
+      return `Done. Wrote ${text.length} characters to ${path}.`
+    }
+
+    case 'run_command': {
+      const command = String(action.args?.command ?? '')
+      if (!command) return 'What command should I run?'
+      const ok = await runInTerminal(command)
+      if (!ok) return `I couldn't run that — is VS Code open and the Senti Code Bridge connected?`
+      return `Sent "${command}" to the terminal. Check the output there.`
+    }
+
+    case 'list_folder': {
+      const folder = String(action.args?.folder ?? '')
+      if (!folder) return 'Which folder should I list?'
+      const listing = await listFolder(folder)
+      if (!listing) return `I couldn't list ${folder} — is VS Code open and the Senti Code Bridge connected?`
+      const files = listing.files.slice(0, 20).join(', ') || '(empty)'
+      const folders = listing.folders.slice(0, 10).join(', ') || '(none)'
+      return `${folder} contains:\nFiles: ${files}\nFolders: ${folders}`
+    }
+
+    case 'get_active_file': {
+      const active = await readActiveFile()
+      if (!active) return 'No file is open in the editor right now.'
+      return `The active file is ${active.path} (${active.language}):\n${active.text.slice(0, 3000)}${active.text.length > 3000 ? '\n... (truncated)' : ''}`
+    }
+
+    case 'get_diagnostics': {
+      const diags = await getDiagnostics()
+      const entries: string[] = []
+      for (const [path, items] of Object.entries(diags).slice(0, 10)) {
+        for (const d of items.slice(0, 5)) {
+          entries.push(`${path}:${d.line} — ${d.severity}: ${d.message}`)
+        }
+      }
+      if (!entries.length) return 'No errors or warnings — clean code.'
+      return `Found ${entries.length} issue(s):\n${entries.slice(0, 15).join('\n')}`
+    }
+
+    case 'plan': {
+      // The plan tool is handled by the LLM itself — it just acknowledges
+      // and continues executing steps. No system action needed.
+      return null
     }
 
     default:

@@ -46,7 +46,7 @@ function bearer(req: Request): string | null {
 }
 
 export type DeviceAuth =
-  | { ok: true; device: { id: string; userId: string; name: string } }
+  | { ok: true; device: { id: string; userId: string; name: string; localMode: boolean } }
   | { ok: false; response: NextResponse }
 
 /**
@@ -85,7 +85,7 @@ export async function authenticateDevice(req: Request, route: keyof typeof LIMIT
     return { ok: false, response: deny('Invalid device token', 401) }
   }
 
-  return { ok: true, device: { id: device.id, userId: device.userId, name: device.name } }
+  return { ok: true, device: { id: device.id, userId: device.userId, name: device.name, localMode: device.localMode } }
 }
 
 /** Responses from device routes are per-device and must never be cached. */

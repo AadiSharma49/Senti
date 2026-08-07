@@ -1,15 +1,17 @@
 import { NextResponse } from 'next/server'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
-import { describeImage } from '@/lib/vision'
+import { describeImage, describeScreenContext, type ScreenContextResult } from '@/lib/vision'
 import { generateSpeech } from '@/lib/tts'
 
 /**
  * "Look at my screen and help me with this."
  *
- * The desktop grabs ONE frame — because you asked, at the moment you asked —
- * and sends it here to be described. There is no history: the image is used
- * for this answer and never stored, which is the difference between a feature
- * and a log of everything you've ever had on screen.
+ * Two modes:
+ *  1. USER ASKED: desktop grabs one frame, sends it here, gets a text answer.
+ *     The image is used for this answer and never stored.
+ *  2. BACKGROUND WATCH: every 3s the desktop sends a frame with `context: true`
+ *     in the body. We return structured JSON (apps, activity, label) instead
+ *     of a spoken reply — no TTS needed, the desktop just stores the context.
  */
 export const runtime = 'nodejs'
 
@@ -24,10 +26,21 @@ export async function POST(req: Request) {
   const image = typeof body.image === 'string' ? body.image : ''
   const question = typeof body.question === 'string' ? body.question.slice(0, 400) : ''
   const language = typeof body.language === 'string' ? body.language.slice(0, 20) : 'en-US'
+  const isContext = body.context === true
 
   if (!image.startsWith('data:image') || image.length > MAX_IMAGE_CHARS)
     return NextResponse.json({ error: 'Bad image' }, { status: 400, headers: NO_STORE })
 
+  // Background watcher: return structured context, no TTS.
+  if (isContext) {
+    const ctx = await describeScreenContext(image)
+    if (!ctx) {
+      return NextResponse.json({ error: 'Vision busy' }, { status: 503, headers: NO_STORE })
+    }
+    return NextResponse.json({ context: ctx }, { headers: NO_STORE })
+  }
+
+  // User asked: get a text answer and voice it.
   const answer = await describeImage(image, question || 'What am I looking at, and what should I do?', language)
   if (!answer) {
     const spoken = "I couldn't get a look at your screen just now — my eyes are busy. Try me again in a moment."

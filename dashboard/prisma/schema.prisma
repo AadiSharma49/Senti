@@ -79,6 +79,10 @@ model Device {
   lastSeen      DateTime @default(now())
   createdAt     DateTime @default(now())
 
+  /// When true, all AI runs locally on this device (Ollama + Piper).
+  /// No cloud APIs are used for chat, vision, or TTS.
+  localMode     Boolean  @default(false)
+
   /// Live status the desktop pushes so you can check it from your phone.
   /// activity: what Senti is doing now ("Idle", "Cleaning temp files", …)
   activity      String?

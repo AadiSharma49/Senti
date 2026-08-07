@@ -100,6 +100,39 @@ function normalize(word: string): string {
   return word.toLowerCase().replace(/[^a-z0-9]/g, '')
 }
 
+/**
+ * Phrases that dismiss Senti while it's dormant — "close", "shut up",
+ * "go away", "hide", etc.
+ *
+ * Like COMMAND_VERBS, these are things nobody says to a person in the room.
+ * They're stripped from the front of an utterance and the remainder is
+ * ignored — the point is the dismiss, not the rest of the sentence.
+ */
+const DISMISS_PHRASES = [
+  'close', 'shut up', 'shut it', 'go away', 'go to sleep', 'hide',
+  'disappear', 'leave me alone', 'stop listening', 'stop', 'be quiet',
+  'quiet', 'silence', 'hush', 'go hide', 'go dormant', 'go background',
+  'get out', 'go on', 'go off', 'that is all', 'that will be all',
+  'dismiss', 'leave it', 'leave me be', 'let me work', 'let me play',
+  'let me be', 'stop talking', 'enough', 'okay that is enough',
+  'alright that is enough', 'go', 'vanish',
+]
+
+/**
+ * Phrases that bring Senti back while it's dismissed — "hey bro",
+ * "come back", "senti", etc. Same logic as wake-up: the name or a
+ * friendly address is enough.
+ */
+const RESTORE_PHRASES = [
+  'hey bro', 'hey buddy', 'hey senti', 'come back', 'wake up',
+  'you back', 'are you there', 'senti', 'buddy', 'bro', 'mate',
+  'hey', 'hi', 'hello', 'yo', 'you there', 'listen up',
+]
+
+export interface DismissMatch {
+  dismissed: boolean
+}
+
 export interface WakeMatch {
   /** Was Senti addressed at all? */
   woke: boolean
@@ -114,6 +147,23 @@ export interface WakeMatch {
  * ORIGINAL text, so capitalisation and apostrophes survive into the request —
  * "what's my RAM" must not arrive as "what s my ram".
  */
+export function parseDismiss(textRaw: string): DismissMatch {
+  const norm = textRaw.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim()
+  const words = norm.split(' ').filter(Boolean)
+  if (!words.length) return { dismissed: false }
+
+  // Check the whole phrase first (e.g. "shut up", "go away", "let me play").
+  const whole = words.join(' ')
+  if (DISMISS_PHRASES.includes(whole)) return { dismissed: true }
+
+  // Single-word dismisses ("close", "hide", "stop") only count when the
+  // utterance is JUST that word — not when it starts a longer sentence.
+  // "Close" = dismiss. "Close the door" = not a dismiss.
+  if (words.length === 1 && DISMISS_PHRASES.includes(words[0])) return { dismissed: true }
+
+  return { dismissed: false }
+}
+
 export function parseWake(textRaw: string): WakeMatch {
   let words = textRaw.trim().split(/\s+/).filter(Boolean)
   if (words.length === 0) return { woke: false, command: '' }

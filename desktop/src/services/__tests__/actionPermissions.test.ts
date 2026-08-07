@@ -98,6 +98,7 @@ describe('action permissions', () => {
       .map(([a]) => a)
       .sort()
     // remember only writes Senti's own memory file.
-    expect(exempt).toEqual(['remember'])
+    // plan is handled by the LLM itself — no system action.
+    expect(exempt).toEqual(['plan', 'remember'])
   })
 })

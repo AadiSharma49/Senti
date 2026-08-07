@@ -12,6 +12,11 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveInside } from './pathSafety'
 
+// WebSocket server for the VS Code extension (code bridge).
+// Dynamic import so the desktop app can run without ws installed.
+let codeBridgeWss: any = null
+let codeBridgeClient: any = null
+
 // ESM compatibility: Define __dirname and __filename
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -1847,6 +1852,10 @@ app.whenReady().then(async () => {
 
   createWindow()
 
+  // Tray icon from the start — Senti is always listening in the background,
+  // so the tray must always be present even when the window is fully hidden.
+  buildTray()
+
   // Tap-to-talk from anywhere.
   try {
     globalShortcut.register(TALK_SHORTCUT, () => {
@@ -2223,6 +2232,7 @@ function setWindowMode(mode: WindowMode): void {
     mainWindow.show()
     mainWindow.focus()
   }
+  updateTrayMenu()
 }
 
 /** Grow the orb to centre-screen while Senti is being spoken to. */
@@ -2270,25 +2280,60 @@ function buildTray(): void {
   if (tray) return
   try {
     tray = new Tray(trayIcon())
-    tray.setToolTip('Senti — listening for you')
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: 'Open Senti (Settings)', click: () => openSettingsWindow() },
-        { type: 'separator' },
-        {
-          label: 'Quit Senti',
-          click: () => {
-            quitting = true
-            app.quit()
-          },
-        },
-      ])
-    )
-    // Left-click the tray icon opens Settings — the natural "open the app".
-    tray.on('click', () => openSettingsWindow())
+    updateTrayMenu()
+    // Left-click the tray icon opens / restores Senti — the natural "open the app".
+    tray.on('click', () => {
+      if (mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible()) {
+        // If already visible, focus it.
+        mainWindow.focus()
+      } else {
+        restoreWindowFromTray()
+      }
+    })
   } catch {
     // A missing tray shouldn't stop Senti from running.
   }
+}
+
+function updateTrayMenu(): void {
+  if (!tray) return
+  const isHidden = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: isHidden ? 'Show Senti' : 'Hide Senti',
+      click: () => {
+        if (isHidden) restoreWindowFromTray()
+        else hideWindowFromTray()
+      },
+    },
+    { type: 'separator' },
+    {
+      label: 'Settings',
+      click: () => openSettingsWindow(),
+    },
+    {
+      label: 'Quit Senti',
+      click: () => {
+        quitting = true
+        app.quit()
+      },
+    },
+  ]
+  tray.setContextMenu(Menu.buildFromTemplate(template))
+  tray.setToolTip(isHidden ? 'Senti — hidden, listening' : 'Senti — listening for you')
+}
+
+function hideWindowFromTray(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  mainWindow.hide()
+  updateTrayMenu()
+}
+
+function restoreWindowFromTray(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return
+  setWindowMode('hud')
+  mainWindow.showInactive()
+  updateTrayMenu()
 }
 
 // Background operation: after unlock Senti becomes a hidden HUD in the tray so
@@ -2332,6 +2377,102 @@ ipcMain.handle('senti:hud-show', () => {
 ipcMain.handle('senti:hud-hide', () => {
   hideHud()
   return true
+})
+
+/** Fully hide the Senti window — it keeps listening in the background. */
+ipcMain.handle('senti:hide-window', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  mainWindow.hide()
+  return true
+})
+/** Restore the Senti window to HUD mode after it was hidden. */
+ipcMain.handle('senti:restore-window', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) return false
+  setWindowMode('hud')
+  mainWindow.showInactive()
+  return true
+})
+
+/** Start/stop the background screen watcher (called from renderer). */
+ipcMain.handle('senti:start-screen-context', () => {
+  // The actual capture loop runs in the renderer; main just records the
+  // intent so it can gate on permissions if needed later.
+  return true
+})
+ipcMain.handle('senti:stop-screen-context', () => {
+  return true
+})
+
+// --- Code Bridge: VS Code ↔ Senti via WebSocket --------------------------
+//
+// The VS Code extension connects to localhost:9876. Main forwards messages
+// to/from the renderer via IPC so Senti's code tools can read files, write
+// code, run terminal commands, etc.
+
+ipcMain.handle('senti:start-code-bridge', async () => {
+  if (codeBridgeWss) return true
+  try {
+    const ws = await import('ws')
+    const ServerCtor = (ws as any).Server || (ws as any).default.Server
+    if (!ServerCtor) return false
+    codeBridgeWss = new ServerCtor({ port: 9876, host: '127.0.0.1' })
+
+    codeBridgeWss.on('connection', (socket: any) => {
+      codeBridgeClient = socket
+      mainWindow?.webContents.send('senti:code-bridge-message', { type: 'connected' })
+
+      socket.on('message', (data: Buffer) => {
+        try {
+          const msg = JSON.parse(data.toString())
+          mainWindow?.webContents.send('senti:code-bridge-message', msg)
+        } catch {
+          // ignore
+        }
+      })
+
+      socket.on('close', () => {
+        codeBridgeClient = null
+        mainWindow?.webContents.send('senti:code-bridge-message', { type: 'disconnected' })
+      })
+    })
+
+    if (codeBridgeWss) {
+      codeBridgeWss.on('error', () => {
+        // Port in use or other error — VS Code extension will retry.
+      })
+    }
+
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('senti:stop-code-bridge', () => {
+  if (codeBridgeWss) {
+    try {
+      codeBridgeWss.close()
+    } catch {
+      // ignore
+    }
+    codeBridgeWss = null
+    codeBridgeClient = null
+  }
+  return true
+})
+
+ipcMain.handle('senti:send-to-vscode', (_e: unknown, msg: unknown) => {
+  if (!codeBridgeClient || codeBridgeClient.readyState !== 1) return false
+  try {
+    codeBridgeClient.send(JSON.stringify(msg))
+    return true
+  } catch {
+    return false
+  }
+})
+
+ipcMain.handle('senti:is-code-bridge-connected', () => {
+  return codeBridgeClient !== null && codeBridgeClient.readyState === 1
 })
 
 ipcMain.handle('senti:quit', () => {

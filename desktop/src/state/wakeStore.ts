@@ -6,11 +6,23 @@ import { askSenti, type ChatTurn } from '../services/assistantService'
 import { getSystemSnapshot, describeSystem } from '../services/systemInfo'
 import { say, deviceLang } from '../services/greetingService'
 import { runAction } from '../services/actions'
-import { parseWake } from '../services/wakeParse'
+import { parseWake, parseDismiss } from '../services/wakeParse'
 import { reportActivity } from '../services/statusReporter'
 import { useSettingsStore } from './settingsStore'
 import { useUiStore } from './uiStore'
+import { useScreenContextStore } from './screenContextStore'
+import type { ScreenContext } from './screenContextStore'
 import type { Utterance } from '../types/audio'
+
+// Local brain (Ollama) — imported lazily so it doesn't block startup when
+// local mode is off.
+let localBrainModule: typeof import('../services/localBrain') | null = null
+async function getLocalBrain() {
+  if (!localBrainModule) {
+    localBrainModule = await import('../services/localBrain')
+  }
+  return localBrainModule
+}
 
 /**
  * wakeStore — talking to Senti, hands-free.
@@ -43,6 +55,13 @@ export type WakeState =
   | 'heard' // just engaged
   | 'working' // thinking / acting
   | 'speaking'
+
+/**
+ * Senti can be fully hidden (dismissed) while still listening. The window
+ * disappears but the mic stays open — say a dismiss phrase and Senti vanishes;
+ * say a wake phrase and it comes back. This is the "background buddy" mode.
+ */
+export type Visibility = 'visible' | 'hidden'
 
 const MAX_UTTERANCE_SEC = 15
 const SILENCE_FRAMES = 22
@@ -90,11 +109,22 @@ export interface WakeStore {
   micThreshold: number
   /** Whether right now is being treated as speech — the meter turns green. */
   speaking: boolean
+  /**
+   * Whether the Senti window is fully hidden right now. While hidden the mic
+   * stays open and Senti still listens — you just can't see it. A wake phrase
+   * ("hey Senti", "buddy", your name) brings it back; a dismiss phrase ("shut
+   * up", "go away", "close") hides it again.
+   */
+  hidden: boolean
 
   start: () => Promise<void>
   stop: () => void
   /** Open a conversation on demand — the talk hotkey and the orb use this. */
   engage: () => void
+  /** Hide Senti completely — still listening, just invisible. */
+  dismiss: () => void
+  /** Bring Senti back — shows the window and opens a conversation. */
+  restore: () => void
 }
 
 /**
@@ -179,6 +209,26 @@ function endConversation(spokenOff: boolean): void {
   if (spokenOff) void say({ text: 'Okay.', audio: null }, deviceLang())
 }
 
+/** Hide Senti completely — window disappears, mic stays open, listening continues. */
+function dismissSenti(): void {
+  useWakeStore.setState({ hidden: true, state: 'listening', detail: '' })
+  setHud(false)
+  void window.senti?.hideWindow?.()
+  void say({ text: 'Okay.', audio: null }, deviceLang())
+  // Stop watching the screen while hidden — the user dismissed Senti, which
+  // means they want it out of their life for now. Screen access stops.
+  import('../services/screenContext').then(({ stopScreenContext }) => stopScreenContext()).catch(() => {})
+}
+
+/** Bring Senti back — shows the window and opens a conversation. */
+function restoreSenti(): void {
+  useWakeStore.setState({ hidden: false, state: 'heard', detail: 'Listening…' })
+  setHud(true)
+  void window.senti?.restoreWindow?.()
+  // Resume screen watching now that the user has called Senti back.
+  import('../services/screenContext').then(({ startScreenContext }) => startScreenContext()).catch(() => {})
+}
+
 export const useWakeStore = create<WakeStore>((set, get) => ({
   state: 'off',
   detail: '',
@@ -189,6 +239,7 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   micLevel: 0,
   micThreshold: 0,
   speaking: false,
+  hidden: false,
 
   start: async () => {
     if (get().state !== 'off') return
@@ -252,7 +303,11 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     })
     recorder.onUtterance((u) => void onUtterance(u))
     recorder.start(audioCapture)
-    set({ state: 'listening', detail: '', enabled: true, status: 'Listening.' })
+    set({ state: 'listening', detail: '', enabled: true, status: 'Listening.', hidden: false })
+    // Start the background screen watcher so Senti can see what the user is
+    // doing. It runs at low frequency (every 3s) and only when Senti is
+    // actually listening — dismissed = no watching = no screen access.
+    import('../services/screenContext').then(({ startScreenContext }) => startScreenContext()).catch(() => {})
   },
 
   stop: () => {
@@ -268,7 +323,7 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     recorder = null
     audioCapture.stop()
     setHud(false)
-    set({ state: 'off', detail: '', enabled: false, talking: false, status: 'Not listening.', micLevel: 0 })
+    set({ state: 'off', detail: '', enabled: false, talking: false, hidden: false, status: 'Not listening.', micLevel: 0 })
   },
 
   engage: () => {
@@ -276,6 +331,14 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     // isn't even listening (permission off), there's nothing to open.
     if (get().state === 'off') return
     beginConversation()
+  },
+
+  dismiss: () => {
+    dismissSenti()
+  },
+
+  restore: () => {
+    restoreSenti()
   },
 }))
 
@@ -304,7 +367,30 @@ async function onUtterance(utterance: Utterance): Promise<void> {
       return
     }
 
-    // Dormant: something has to engage Senti before it will answer.
+    // Dormant (not in a conversation): check for a Dismiss first, then a
+    // Wake. Dismiss is higher priority because while hidden the user's intent
+    // is almost always "come back" when they speak, and a stray "close" while
+    // the window is already hidden should stay a no-op.
+    const storeNow = useWakeStore.getState()
+    if (storeNow.hidden) {
+      // Hidden: only wake phrases matter. Dismiss is already done.
+      const { woke, command } = parseWake(heard)
+      if (!woke) return
+      restoreSenti()
+      beginConversation()
+      if (command) await handleTurn(command)
+      else await ackEngaged()
+      return
+    }
+
+    // Visible but dormant: a dismiss phrase hides Senti immediately.
+    const dismissResult = parseDismiss(heard)
+    if (dismissResult.dismissed) {
+      dismissSenti()
+      return
+    }
+
+    // Normal wake-up path.
     const { woke, command } = parseWake(heard)
     if (!woke) return // not for us — stay quiet, keep listening
 
@@ -334,29 +420,56 @@ async function ackEngaged(): Promise<void> {
 async function handleTurn(text: string): Promise<void> {
   setHud(true)
   useWakeStore.setState({ state: 'working', detail: text })
-  // So your phone sees what you're doing, live.
   reportActivity(text, true)
 
   const lang = deviceLang()
   const snap = await getSystemSnapshot()
   history.push({ role: 'user', content: text })
-  const reply = await askSenti(history.slice(-HISTORY_TURNS), lang, snap ? describeSystem(snap) : null)
 
-  // The reply can be an answer, an action, or both.
-  let spoken = reply.text
-  if (reply.action) {
-    useWakeStore.setState({ detail: 'Working…' })
-    const outcome = await runAction(reply.action)
-    if (outcome) spoken = outcome
+  // Grab the latest screen context so the LLM can see what's on screen.
+  const screenCtx = useScreenContextStore.getState().current
+  const ctxForLlm = screenCtx
+    ? { summary: screenCtx.summary, apps: screenCtx.apps, activity: screenCtx.activity, label: screenCtx.label }
+    : undefined
+
+  // Local mode: no cloud, all Ollama + Piper on this machine.
+  const localMode = useSettingsStore.getState().localMode
+
+  let spoken: string
+  let replyAudio: string | null = null
+
+  if (localMode) {
+    const brain = await getLocalBrain()
+    const reply = await brain.localAsk(
+      history.slice(-HISTORY_TURNS).map((m) => ({ role: m.role, content: m.content })),
+      snap ? describeSystem(snap) : null,
+      ctxForLlm
+    )
+    spoken = reply.text
+    replyAudio = reply.audio
+  } else {
+    const reply = await askSenti(
+      history.slice(-HISTORY_TURNS),
+      lang,
+      snap ? describeSystem(snap) : null,
+      ctxForLlm
+    )
+    spoken = reply.text
+    replyAudio = reply.audio
+
+    if (reply.action) {
+      useWakeStore.setState({ detail: 'Working…' })
+      const outcome = await runAction(reply.action)
+      if (outcome) spoken = outcome
+    }
   }
 
   history.push({ role: 'assistant', content: spoken })
   reportActivity(spoken.slice(0, 120), false)
 
   useWakeStore.setState({ state: 'speaking', detail: spoken })
-  await say({ text: spoken, audio: spoken === reply.text ? reply.audio : null }, lang)
+  await say({ text: spoken, audio: replyAudio }, lang)
 
-  // Stay in the conversation, ready for whatever you say next.
   if (inConversation) {
     keepConversationAlive()
     useWakeStore.setState({ state: 'listening', detail: 'Listening…' })

@@ -24,8 +24,24 @@ interface SentiAPI {
   /** Fill the display while driving another machine, and give it back after. */
   enterFullscreen: () => Promise<boolean>
   exitFullscreen: () => Promise<boolean>
+  /** Show the HUD (big orb) while Senti is being spoken to. */
   hudShow: () => Promise<boolean>
+  /** Shrink back to the small corner presence. */
   hudHide: () => Promise<boolean>
+  /** Fully hide the Senti window — it keeps listening in the background. */
+  hideWindow: () => Promise<boolean>
+  /** Restore the Senti window to HUD mode after it was hidden. */
+  restoreWindow: () => Promise<boolean>
+  /** Start/stop the background screen watcher. */
+  startScreenContext: () => Promise<boolean>
+  stopScreenContext: () => Promise<boolean>
+  /** Code bridge: VS Code ↔ Senti via WebSocket. */
+  startCodeBridge: () => Promise<boolean>
+  stopCodeBridge: () => Promise<boolean>
+  sendToVSCode: (msg: unknown) => Promise<boolean>
+  isCodeBridgeConnected: () => Promise<boolean>
+  /** Listen for messages from the VS Code extension. */
+  onCodeBridgeMessage: (cb: (msg: unknown) => void) => () => void
   /** Fired from the tray / second launch to open Settings. Returns unsubscribe. */
   onOpenSettings: (cb: () => void) => () => void
   /** Tap-to-talk hotkey pressed — open a conversation. Returns unsubscribe. */

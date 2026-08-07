@@ -75,6 +75,8 @@ let timer: number | null = null
 let running = false
 let consecutiveFailures = 0
 let inFlight = false
+let lastVideoW = 0
+let lastVideoH = 0
 /** True while a direct peer connection is carrying the video instead. */
 let uploadPaused = false
 /** Notified when sharing starts/stops, so the UI can show the indicator. */
@@ -220,10 +222,35 @@ export async function startScreenShare(): Promise<boolean> {
   if (vTrack) {
     vTrack.addEventListener('ended', () => {
       if (!running) return
-      // Restart capture in place — the peer connection and frame timer keep
-      // running; only the source stream changes.
       void startScreenShare()
     }, { once: true })
+  }
+
+  // Detect display configuration changes (Alt+Tab, resolution change, monitor
+  // hotplug). The video element fires resize when the underlying display
+  // changes — restart capture so we don't keep encoding the old config.
+  const onVideoResize = () => {
+    if (!running || !video) return
+    const newW = video.videoWidth
+    const newH = video.videoHeight
+    lastVideoW = newW
+    lastVideoH = newH
+    if (newW > 0 && newH > 0) {
+      // Resolution changed — restart capture from the new display config.
+      void startScreenShare()
+    }
+  }
+  video.addEventListener('resize', onVideoResize, { once: false })
+
+  // Windows fires this when the display surface changes (fullscreen game,
+  // display mode switch, monitor plug/unplug). Restart capture.
+  const onSurfaceChange = () => {
+    if (!running) return
+    void startScreenShare()
+  }
+  if ('displaySurface' in MediaStreamTrack.prototype) {
+    // @ts-ignore — displaySurface is a newer API
+    vTrack?.addEventListener('displaySurfaceChange', onSurfaceChange)
   }
 
   // A screen you can't see because the display went to sleep isn't a live
@@ -278,6 +305,8 @@ export async function stopScreenShare(): Promise<void> {
   stream = null
   video = null
   canvas = null
+  lastVideoW = 0
+  lastVideoH = 0
   consecutiveFailures = 0
   emit()
   void window.senti?.keepAwake?.(false, 'screenShare')

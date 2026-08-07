@@ -232,6 +232,106 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'read_file',
+      description: 'Read the content of a file in the user\'s project. Use this when you need to see what\'s in a specific file — e.g. "read the server file", "show me the config", "what\'s in package.json". Always prefer reading the actual file over guessing what\'s in it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Full path to the file, or relative to the workspace. e.g. "src/index.ts", "package.json"' },
+        },
+        required: ['path'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'write_file',
+      description: 'Write content to a file — creating or overwriting it. Use this to actually build code, create config files, add routes, write components, etc. When the user says "build a chat app", "create a server", "add a login page" — this is the tool that does the work. ALWAYS write the complete file content, not just a snippet.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Full path or workspace-relative path. e.g. "src/server.ts", "package.json"' },
+          text: { type: 'string', description: 'The complete file content to write. Must be the full file, not a partial update.' },
+        },
+        required: ['path', 'text'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'run_command',
+      description: 'Run a shell command in the project terminal — npm install, npm run dev, git commit, etc. Use for installing dependencies, starting servers, running builds, git operations. The output comes back so you can see if it worked.',
+      parameters: {
+        type: 'object',
+        properties: {
+          command: { type: 'string', description: 'The shell command to run. e.g. "npm install", "npm run dev", "git status"' },
+        },
+        required: ['command'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_folder',
+      description: 'List files and folders in a directory. Use to understand the project structure before writing files — "what\'s in the src folder", "show me the project structure", "what files exist here".',
+      parameters: {
+        type: 'object',
+        properties: {
+          folder: { type: 'string', description: 'Path to the folder. e.g. "src", ".", "src/components"' },
+        },
+        required: ['folder'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_active_file',
+      description: 'Get the content of whatever file is currently open in the user\'s editor. Use when they say "what am I looking at", "what\'s open", "read this file" without naming it — the active editor IS the file.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_diagnostics',
+      description: 'Get the current errors and warnings from the editor. Use when something isn\'t working — "what\'s broken", "show me errors", "why isn\'t this compiling".',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'plan',
+      description: 'Create a step-by-step plan for a complex task BEFORE executing it. Use this when the user asks you to build, create, or fix something that requires multiple steps — e.g. "build a chat app", "create a React project", "set up authentication". The plan is a numbered list of steps you will execute. After creating the plan, execute each step one by one using the other tools (write_file, run_command, etc.). Do NOT announce the plan to the user — just create it and execute it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          goal: { type: 'string', description: 'The high-level goal the user asked for, in your own words.' },
+          steps: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                step: { type: 'number', description: 'Step number, starting from 1.' },
+                action: { type: 'string', description: 'What to do in this step — which tool to use and what arguments.' },
+                tool: { type: 'string', description: 'Which tool to use: run_command, write_file, list_folder, read_file, etc.' },
+              },
+              required: ['step', 'action', 'tool'],
+            },
+            description: 'Ordered list of steps to accomplish the goal.',
+          },
+        },
+        required: ['goal', 'steps'],
+      },
+    },
+  },
 ]
 
 /** Actions the desktop knows how to run. */
@@ -241,6 +341,7 @@ const KNOWN_ACTIONS = new Set([
   'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
   'take_screenshot', 'look_at_screen',
   'ask_web',
+  'read_file', 'write_file', 'run_command', 'list_folder', 'get_active_file', 'get_diagnostics', 'plan',
 ])
 import { generateSpeech } from '@/lib/tts'
 
@@ -293,6 +394,31 @@ function memoryContext(memories: string[]): string {
   )
 }
 
+function screenContextPrompt(ctx: unknown): string {
+  if (!ctx || typeof ctx !== 'object') return ''
+  const c = ctx as { summary?: string; apps?: string[]; activity?: string; label?: string }
+  const summary = typeof c.summary === 'string' ? c.summary : ''
+  const apps = Array.isArray(c.apps) ? c.apps.filter((a): a is string => typeof a === 'string').slice(0, 6) : []
+  const activity = typeof c.activity === 'string' ? c.activity : ''
+  const label = typeof c.label === 'string' ? c.label : ''
+
+  if (!summary && !apps.length) return ''
+
+  const appList = apps.length ? `\nApps open: ${apps.join(', ')}` : ''
+  const activityLine = activity ? `\nActivity: ${activity}` : ''
+  const labelLine = label ? `\nCurrent view: ${label}` : ''
+
+  return (
+    '\n\nWHAT SENTI SEES ON SCREEN RIGHT NOW (this is live, from seconds ago — use it ' +
+    'as if you are looking over their shoulder):\n' +
+    `${summary || '(no description)'}${appList}${activityLine}${labelLine}` +
+    '\nUse what you see. If they are coding, comment on their code. If they are playing a ' +
+    'game, say what you notice. If they are stuck on something, help with what is actually ' +
+    'on screen. Never say you can\'t see the screen — you can, this is live context. ' +
+    'If the context is old or the screen is blank, just say what you see and ask what they need.'
+  )
+}
+
 function persona(name: string | null, language: string): string {
   const who = name
     ? `Your owner's name is ${name}. Use their first name occasionally and naturally, not in every line.`
@@ -338,7 +464,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
   const { device } = auth
 
-  let body: { messages?: ChatMsg[]; language?: string; system?: string; memories?: unknown }
+  let body: { messages?: ChatMsg[]; language?: string; system?: string; memories?: unknown; screenContext?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -366,8 +492,12 @@ export async function POST(req: Request) {
     ? body.memories.filter((m): m is string => typeof m === 'string' && !!m.trim()).slice(-40).map((m) => m.slice(0, 300))
     : []
 
+  // Live screen context from the background watcher — tells the LLM what the
+  // user is doing RIGHT NOW so it can help without being asked.
+  const screenCtx = body.screenContext
+
   const result = await llmChatRich({
-    system: persona(name, language) + systemContext(system) + memoryContext(memories),
+    system: persona(name, language) + systemContext(system) + memoryContext(memories) + screenContextPrompt(screenCtx),
     messages,
     search: true,
     maxTokens: 400,
@@ -473,6 +603,20 @@ export async function POST(req: Request) {
           ? `${args.mode === 'sleep' ? 'Putting your PC to sleep' : args.mode === 'restart' ? 'Restarting your PC' : 'Shutting your PC down'}.`
           : call.name === 'remember'
           ? "Got it, I'll remember that."
+          : call.name === 'read_file'
+          ? `Reading ${args.path ?? 'that file'}.`
+          : call.name === 'write_file'
+          ? `Writing to ${args.path ?? 'that file'}.`
+          : call.name === 'run_command'
+          ? `Running ${args.command ?? 'that command'}.`
+          : call.name === 'list_folder'
+          ? `Listing ${args.folder ?? 'that folder'}.`
+          : call.name === 'get_active_file'
+          ? 'Reading the active file.'
+          : call.name === 'get_diagnostics'
+          ? 'Checking for errors.'
+          : call.name === 'plan'
+          ? 'On it — breaking this into steps.'
           : 'Done.'
     }
   }

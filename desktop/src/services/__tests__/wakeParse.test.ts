@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseWake } from '../wakeParse'
+import { parseWake, parseDismiss } from '../wakeParse'
 
 /**
  * The wake parser fails SILENTLY when it breaks — Senti simply doesn't answer,
@@ -138,5 +138,59 @@ describe('parseWake — must stay quiet', () => {
 
   it.each(silent)('ignores %j', (input) => {
     expect(parseWake(input).woke).toBe(false)
+  })
+})
+
+describe('parseDismiss', () => {
+  const shouldDismiss = [
+    'close',
+    'Close',
+    'shut up',
+    'shut it',
+    'go away',
+    'go to sleep',
+    'hide',
+    'disappear',
+    'leave me alone',
+    'stop listening',
+    'stop',
+    'be quiet',
+    'quiet',
+    'silence',
+    'hush',
+    'go hide',
+    'go dormant',
+    'go background',
+    'get out',
+    'dismiss',
+    'leave me be',
+    'let me work',
+    'let me play',
+    'let me be',
+    'stop talking',
+    'enough',
+    'okay that is enough',
+    'vanish',
+  ]
+
+  it.each(shouldDismiss)('dismisses on %j', (input) => {
+    expect(parseDismiss(input).dismissed).toBe(true)
+  })
+
+  const shouldNotDismiss = [
+    'hello',
+    'how are you',
+    'I will close this later',
+    'close the door slowly',
+    'I want to hide the files',
+    'stop by the store',
+    'let me think about it',
+    'go for a walk',
+    '',
+    '   ',
+  ]
+
+  it.each(shouldNotDismiss)('does not dismiss on %j', (input) => {
+    expect(parseDismiss(input).dismissed).toBe(false)
   })
 })

@@ -1,0 +1,30 @@
+{
+  "name": "senti-code-bridge",
+  "displayName": "Senti Code Bridge",
+  "description": "Connects VS Code to Senti — lets Senti read, write, and run code alongside you.",
+  "version": "0.1.0",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "senti.connect", "title": "Senti: Connect to Senti" },
+      { "command": "senti.disconnect", "title": "Senti: Disconnect" },
+      { "command": "senti.readFile", "title": "Senti: Read Active File" },
+      { "command": "senti.runTerminal", "title": "Senti: Run in Terminal" },
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "tsc",
+    "compile": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.80.0",
+    "typescript": "^5.3.0"
+  }
+}
