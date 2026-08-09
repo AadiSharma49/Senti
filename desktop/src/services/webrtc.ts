@@ -144,7 +144,8 @@ function pollSignals(
 function attach(
   pc: RTCPeerConnection,
   sessionId: string,
-  onState: (connected: boolean) => void
+  onState: (connected: boolean) => void,
+  onDisconnected?: () => void
 ): void {
   pc.onicecandidate = (e) => {
     if (e.candidate) void signal(sessionId, 'ice', e.candidate.toJSON())
@@ -152,11 +153,8 @@ function attach(
   pc.onconnectionstatechange = () => {
     const state = pc.connectionState
     onState(state === 'connected')
-    // A failed connection means the peer is dead — let the host know so it
-    // can fall back to the frame path rather than leaving the viewer staring
-    // at a black screen.
-    if (state === 'failed' || state === 'disconnected') {
-      void pc.close()
+    if ((state === 'failed' || state === 'disconnected') && onDisconnected) {
+      onDisconnected()
     }
   }
 }

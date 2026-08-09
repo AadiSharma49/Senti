@@ -11,69 +11,30 @@ export interface SettingsState {
 
   setupCompleted: boolean
 
-
-  /**
-   * The permission dial. Senti only ever does what you have switched on — an
-   * AI with access to your PC is frightening; an AI with exactly the access you
-   * granted is not.
-   */
   permissions: {
-    /** Open apps and websites. */
     openApps: boolean
-    /** Close running apps. */
     closeApps: boolean
-    /** Delete temp files to free disk space. */
     cleanup: boolean
-    /** Open your files and folders (read-only: opens them, never edits/deletes). */
     files: boolean
-    /**
-     * Let Senti take a screenshot and look at it — ONLY when you ask. There
-     * is no background capture; nothing happens unless you say so.
-     */
     seeScreen: boolean
-    /** Stream this PC's screen to your own phone/laptop for a live remote view. */
     screenShare: boolean
-    /** Sync the clipboard between your devices: copy here, paste there. */
     clipboardSync: boolean
-    /**
-     * Let another of YOUR devices take mouse/keyboard control of this one.
-     * Off by default — and even on, nothing connects without the remote PIN.
-     */
     remoteControl: boolean
-    /**
-     * Let Senti start conversations — notice what you're doing and say
-     * something unprompted. It reads the foreground window's TITLE only, on
-     * this machine; screen contents are never captured or sent.
-     */
     proactive: boolean
-    /** Volume and locking the workstation. */
     systemControl: boolean
-  /**
-   * Keep listening in the background for "Senti …" so you never open the app.
-   * The listening is entirely on-device — audio is never uploaded, and only
-   * the text of a command leaves after the wake word fires.
-   */
-  alwaysListening: boolean
-}
+    alwaysListening: boolean
+  }
 
-/**
- * Local-only mode: no cloud APIs. All AI runs on this machine via Ollama
- * + Piper. Zero data leaves the PC. Requires Ollama + Piper to be installed.
- */
-localMode: boolean
-
-setLocalMode: (on: boolean) => void
-
-setSecurity: (s: Partial<SettingsState['security']>) => void
-  setPermissions: (p: Partial<SettingsState['permissions']>) => void
-  /**
-   * Carry out tasks ON SCREEN where you can watch, rather than silently.
-   * Slower and it can be interrupted, but you see the work instead of being
-   * told about it.
-   */
   showWork: boolean
 
+  localMode: boolean
+  alwaysRespond: boolean
+
+  setSecurity: (s: Partial<SettingsState['security']>) => void
+  setPermissions: (p: Partial<SettingsState['permissions']>) => void
   setShowWork: (on: boolean) => void
+  setLocalMode: (on: boolean) => void
+  setAlwaysRespond: (on: boolean) => void
   setSetupCompleted: (completed: boolean) => void
   resetConfiguration: () => void
 }
@@ -88,7 +49,7 @@ const safe = <T,>(key: string, fallback: T): T => {
   }
 }
 
-const persist = (key: string, value: any) => {
+const persist = (key: string, value: unknown) => {
   try {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {}
@@ -101,16 +62,11 @@ const DEFAULT_SECURITY: SettingsState['security'] = {
   pin: '1234',
 }
 
-// Merge with defaults so configs saved by older versions (missing newer
-// fields like enabledMethods) can never produce undefined properties.
 const loadSecurity = (): SettingsState['security'] => ({
   ...DEFAULT_SECURITY,
   ...safe<Partial<SettingsState['security']>>('senti:security', {}),
 })
 
-// Setup flag: prefer the file-backed value from Electron main (origin-
-// independent — survives a local-server port change), fall back to
-// localStorage in dev/browser.
 const loadSetupCompleted = (): boolean => {
   try {
     const fromMain = window.senti?.setupCompletedAtBoot
@@ -121,8 +77,6 @@ const loadSetupCompleted = (): boolean => {
   return safe('senti:setupCompleted', false)
 }
 
-// Opening things and volume are harmless; deleting files and killing apps are
-// the ones a user should switch on deliberately.
 const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   openApps: true,
   closeApps: false,
@@ -149,6 +103,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setupCompleted: loadSetupCompleted(),
   showWork: safe<boolean>('senti:showWork', true),
   localMode: safe<boolean>('senti:localMode', false),
+  alwaysRespond: safe<boolean>('senti:alwaysRespond', false),
 
   setShowWork: (on) => {
     persist('senti:showWork', on)
@@ -158,6 +113,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setLocalMode: (on: boolean) => {
     persist('senti:localMode', on)
     set({ localMode: on })
+  },
+
+  setAlwaysRespond: (on: boolean) => {
+    persist('senti:alwaysRespond', on)
+    set({ alwaysRespond: on })
   },
 
   setSecurity: (s) => {
@@ -174,7 +134,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
   setSetupCompleted: (completed) => {
     persist('senti:setupCompleted', completed)
-    // Also persist to the file in main, so it survives an origin change.
     try {
       void window.senti?.persistSetupCompleted?.(completed)
     } catch {}
@@ -190,7 +149,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     } catch {
       // ignore storage errors
     }
-    // Clear the file-backed flag too, so a reset really re-runs setup.
     try {
       void window.senti?.persistSetupCompleted?.(false)
     } catch {}

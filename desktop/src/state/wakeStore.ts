@@ -347,7 +347,6 @@ async function onUtterance(utterance: Utterance): Promise<void> {
   const store = useWakeStore.getState()
   if (store.state === 'off') return
 
-  // Too short to be speech worth transcribing.
   if (utterance.duration < 0.4) return
 
   busy = true
@@ -356,8 +355,9 @@ async function onUtterance(utterance: Utterance): Promise<void> {
     if (!heard) return
     useWakeStore.setState({ lastHeard: heard })
 
+    const alwaysRespond = useSettingsStore.getState().alwaysRespond
+
     if (inConversation) {
-      // The conversation is open — anything you say is for Senti.
       if (isEndPhrase(heard)) {
         endConversation(true)
         return
@@ -367,41 +367,33 @@ async function onUtterance(utterance: Utterance): Promise<void> {
       return
     }
 
-    // Dormant (not in a conversation): check for a Dismiss first, then a
-    // Wake. Dismiss is higher priority because while hidden the user's intent
-    // is almost always "come back" when they speak, and a stray "close" while
-    // the window is already hidden should stay a no-op.
     const storeNow = useWakeStore.getState()
     if (storeNow.hidden) {
-      // Hidden: only wake phrases matter. Dismiss is already done.
-      const { woke, command } = parseWake(heard)
-      if (!woke) return
+      if (!alwaysRespond) {
+        const { woke } = parseWake(heard)
+        if (!woke) return
+      }
       restoreSenti()
       beginConversation()
-      if (command) await handleTurn(command)
-      else await ackEngaged()
+      await handleTurn(heard)
       return
     }
 
-    // Visible but dormant: a dismiss phrase hides Senti immediately.
     const dismissResult = parseDismiss(heard)
     if (dismissResult.dismissed) {
       dismissSenti()
       return
     }
 
-    // Normal wake-up path.
-    const { woke, command } = parseWake(heard)
-    if (!woke) return // not for us — stay quiet, keep listening
+    if (!alwaysRespond) {
+      const { woke } = parseWake(heard)
+      if (!woke) return
+    }
 
     beginConversation()
-    // A bare "hey Senti" opens the conversation with a quick spoken ack; a
-    // "hey Senti, open Chrome" runs the command as the first turn.
+    const { command } = parseWake(heard)
     if (command) await handleTurn(command)
     else await ackEngaged()
-  } catch {
-    useWakeStore.setState({ state: inConversation ? 'listening' : 'listening', detail: '' })
-    if (!inConversation) setHud(false)
   } finally {
     busy = false
   }

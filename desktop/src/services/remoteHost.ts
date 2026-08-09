@@ -41,6 +41,8 @@ let activeSessionId: string | null = null
 /** The direct peer connection, when one is up. */
 let peer: PeerHandle | null = null
 let peerConnected = false
+let peerReconnectAttempts = 0
+const MAX_PEER_RECONNECT = 5
 const listeners = new Set<(on: boolean) => void>()
 
 /** Notified when this machine starts/stops being remotely controlled. */
@@ -134,22 +136,48 @@ async function applyIncoming(events: unknown[]): Promise<void> {
  * Offer this machine's screen over a direct connection, and take input back on
  * the data channel. If it never connects, the frame + HTTP path is still
  * running underneath, so control degrades instead of breaking.
+ *
+ * Auto-reconnects if the peer drops — keeps the screen share running and
+ * re-establishes the data channel without user intervention.
  */
 async function openPeer(sessionId: string): Promise<void> {
   closePeer()
-  try {
-    const screen = await getScreenStream()
-    if (!screen) return
-    peer = await startHostPeer(
-      sessionId,
-      screen,
-      (events) => void applyIncoming(events),
-      (ok) => {
-        peerConnected = ok
-      }
-    )
-  } catch {
-    closePeer()
+  peerReconnectAttempts = 0
+
+  const tryConnect = async (): Promise<boolean> => {
+    try {
+      const screen = await getScreenStream()
+      if (!screen) return false
+      peer = await startHostPeer(
+        sessionId,
+        screen,
+        (events) => void applyIncoming(events),
+        (ok) => {
+          peerConnected = ok
+          if (ok) peerReconnectAttempts = 0
+        }
+      )
+      return true
+    } catch {
+      closePeer()
+      return false
+    }
+  }
+
+  const connected = await tryConnect()
+  if (!connected) return
+
+  // Auto-reconnect loop: if the peer drops, keep trying.
+  while (peerReconnectAttempts < MAX_PEER_RECONNECT && activeSessionId === sessionId) {
+    await new Promise((r) => setTimeout(r, 1500))
+    if (!peerConnected && activeSessionId === sessionId) {
+      peerReconnectAttempts++
+      const ok = await tryConnect()
+      if (ok) continue
+    }
+    // If peer is connected, break the reconnect loop and let the normal
+    // connection state change handler manage future drops.
+    if (peerConnected) break
   }
 }
 

@@ -43,6 +43,7 @@ export class AudioCapture {
   private deviceLabel: string | null = null
 
   private stream: MediaStream | null = null
+  private systemStream: MediaStream | null = null
   private audioContext: AudioContext | null = null
   private source: MediaStreamAudioSourceNode | null = null
   private processor: ScriptProcessorNode | null = null
@@ -109,13 +110,6 @@ export class AudioCapture {
     try {
       this.setState('requesting')
 
-      // Request microphone access.
-      //
-      // Honouring a SAVED device is the fix for the most common "Senti can't
-      // hear me": Windows' default input is often the wrong one (a webcam mic,
-      // a disconnected headset, a virtual cable), and no amount of tuning the
-      // wake word helps when the audio is coming from a dead device. If the
-      // saved one is gone, fall back to the default rather than failing shut.
       const preferred = AudioCapture.preferredDeviceId()
       try {
         this.stream = await navigator.mediaDevices.getUserMedia({
@@ -127,23 +121,14 @@ export class AudioCapture {
       }
       this.deviceLabel = this.stream.getAudioTracks()[0]?.label || null
 
-      // Create audio context
       this.audioContext = new AudioContext({ sampleRate: this.config.sampleRate })
-
-      // Create source from stream
       this.source = this.audioContext.createMediaStreamSource(this.stream)
-
-      // ScriptProcessorNode delivers contiguous PCM buffers.
-      // Buffer size 2048 at 44.1kHz -> one frame every ~46ms.
       this.processor = this.audioContext.createScriptProcessor(this.config.fftSize, 1, 1)
       this.processor.onaudioprocess = (event) => this.handleAudioProcess(event)
 
       this.source.connect(this.processor)
-      // Processor must be connected to destination to run; its output
-      // buffer is left as silence so no mic audio reaches the speakers.
       this.processor.connect(this.audioContext.destination)
 
-      // Resume context if suspended (browser autoplay policy)
       if (this.audioContext.state === 'suspended') {
         await this.audioContext.resume()
       }
@@ -155,22 +140,38 @@ export class AudioCapture {
     }
   }
 
+  /** Capture system audio (speaker output) via getDisplayMedia loopback.
+   *  Returns the MediaStream so the caller can mix it with mic audio. */
+  async captureSystemAudio(): Promise<MediaStream | null> {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: false,
+        audio: true,
+      })
+      return stream
+    } catch {
+      return null
+    }
+  }
+
   /** Stop capturing audio and release resources */
   stop(): void {
-    // Stop and release the processor
+    if (this.systemStream) {
+      this.systemStream.getTracks().forEach((t) => t.stop())
+      this.systemStream = null
+    }
+
     if (this.processor) {
       this.processor.onaudioprocess = null
       this.processor.disconnect()
       this.processor = null
     }
 
-    // Stop and release media stream tracks
     if (this.stream) {
       this.stream.getTracks().forEach((t) => t.stop())
       this.stream = null
     }
 
-    // Disconnect and close audio context
     if (this.source) {
       this.source.disconnect()
       this.source = null

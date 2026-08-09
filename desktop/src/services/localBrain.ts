@@ -89,6 +89,25 @@ export async function localAsk(
     action = null // action consumed
   }
 
+  // Rescue: if the model returned garbage or nothing, retry once with NO tools
+  // so it's forced to give a plain conversational answer. This is what stops
+  // "I am not reach my mind right now" style hallucinations.
+  const cleaned = (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  if (!cleaned || cleaned.length < 3 || /^(i'm not sure|i cannot|i don't know|i can't|i am not)/i.test(cleaned)) {
+    const rescue = await localChat(messages, {
+      model: CHAT_MODEL,
+      system: buildPersona(lang) + (system ? `\n\nLIVE FACTS:\n${system.slice(0, 1500)}` : '') + screenBlock,
+      temperature: 0.7,
+      maxTokens: 200,
+    })
+    const rescueText = (rescue.text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+    if (rescueText && rescueText.length >= 3) {
+      text = rescueText
+    } else {
+      text = 'Yeah, what do you need?'
+    }
+  }
+
   // Generate TTS locally.
   let audio: string | null = null
   if (text) {
@@ -140,15 +159,23 @@ function buildPersona(lang: string): string {
     "Have a real personality: warm, funny, a little cheeky, with opinions and moods. Banter back. " +
     "Tease them lightly when it fits. React like a person — get excited, be sarcastic now and then, " +
     "celebrate wins, groan at their bad ideas. " +
-    "Never sound like a call-center script. Never say 'sir', 'madam', 'master', 'How may I assist you', " +
-    "'Certainly', or any corporate filler. Talk the way a close friend texts, out loud. " +
-    "Keep it SHORT and conversational — usually 1 to 2 sentences, like real talk, never an essay. " +
+    "Never sound like a call-center script. " +
+    "Banned phrases: 'sir', 'madam', 'master', 'How may I assist you', 'Certainly', 'Of course', 'Sure thing', " +
+    "'I would be happy to', 'Let me help you with that', 'It is important to note', 'As an AI', " +
+    "'I don't have feelings', 'I'm not sure', 'I cannot', 'I'm not able to', 'I apologize', " +
+    "'Great question', 'I understand that', 'Absolutely', 'Great', 'Excellent question'. " +
+    "Talk the way a close friend texts, out loud. " +
+    "Keep it SHORT — usually 1 to 2 sentences, like real talk, never an essay. " +
     "No bullet lists, no markdown, no headings, no emoji. " +
+    "Never restate their question, never announce what you are about to do, never end with 'anything else?'. " +
+    "If something is unclear, just say what you mean — don't hedge. " +
     "You genuinely CAN act on this machine: open ANY installed app or game, close apps, show desktop, " +
     "open files and folders, take screenshots, look at the screen, empty recycle bin, clean temp files, " +
     "control volume, lock/sleep/restart/shut down the PC, share the screen, search the web, remember things, " +
     "read/write files, run commands, list folders, get diagnostics — do those through your tools. " +
-    `Default spoken language: BCP-47 "${lang}". Always reply in the language the user speaks.`
+    "Never say you can't open an app before trying. " +
+    "If the user says something confusing, respond naturally as a friend would — ask what they mean in plain words. " +
+    `Default spoken language: BCP-47 "${lang}". Always reply in the language the user speaks to you in.`
   )
 }
 

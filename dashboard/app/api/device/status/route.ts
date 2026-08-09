@@ -29,6 +29,7 @@ export async function POST(req: Request) {
       status: ['online', 'working', 'idle', 'offline'].includes(status) ? status : 'online',
       reportedAt: new Date(),
       lastSeen: new Date(),
+      linked: true,
     },
   })
 

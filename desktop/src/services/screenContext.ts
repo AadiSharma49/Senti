@@ -135,18 +135,9 @@ async function observe(): Promise<void> {
       }
       useScreenContextStore.getState().pushContext(ctx)
 
-      // If a game is detected, pause the watcher to save CPU/GPU for the game.
-      if (ctx.activity === 'gaming') {
-        void stopScreenContext()
-        // Resume after 30 seconds — the user might alt-tab out.
-        // But only if they didn't manually stop the watcher.
-        timer = window.setTimeout(() => {
-          if (!manuallyStopped && !destroyed && running === false) {
-            startScreenContext()
-          }
-        }, 30000)
-        return
-      }
+      // If a game is detected, keep watching — the user wants Senti to see
+      // everything they do, including games. Don't pause.
+      // (Removed auto-pause so the watcher is truly always-on.)
 
       consecutiveErrors = 0
     } else if (res.status === 503) {

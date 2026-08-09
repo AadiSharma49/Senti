@@ -47,6 +47,8 @@ let beatTimer: number | null = null
 /** Direct connection to the target, when one comes up. */
 let peer: PeerHandle | null = null
 let peerLive = false
+/** Remember if peer was ever connected — if so, never fall back to HTTP for input. */
+let peerWasConnected = false
 /** When true, mouse moves are sent as relative deltas (game mode). */
 let gameMode = false
 
@@ -175,10 +177,23 @@ async function flush(): Promise<void> {
 
   flushing = true
   try {
-    if (peerLive && peer?.send(batch)) return
-    await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
+    // If peer was ever connected, keep events queued and retry on next flush.
+    // HTTP fallback adds 100-300ms — deadly for gaming. We only use HTTP if
+    // the peer was never connected in this session.
+    if (peerLive && peer?.send(batch)) {
+      // Sent via peer — done.
+    } else if (!peerWasConnected) {
+      // Peer never connected — use HTTP as the only path.
+      await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
+    } else {
+      // Peer dropped but was connected — requeue everything and retry.
+      queue = [...batch, ...queue]
+    }
   } catch {
-    // Dropped input is better than a growing backlog of stale clicks.
+    if (!peerWasConnected) {
+      // HTTP failed too — requeue and retry.
+      queue = [...batch, ...queue]
+    }
   } finally {
     flushing = false
   }
@@ -188,40 +203,64 @@ async function flush(): Promise<void> {
  * Try for a direct connection to the target. Resolves true once video is
  * actually flowing; on failure the caller keeps using the frame path, so a
  * network that won't allow peer-to-peer degrades instead of going black.
+ *
+ * Auto-reconnects if the peer drops — never falls back to HTTP for input
+ * once a peer was successfully established.
  */
 export async function connectPeer(onStream: (s: MediaStream) => void): Promise<boolean> {
   if (!sessionId) return false
   let handle: PeerHandle | null = null
-  try {
-    handle = await startViewerPeer(
-      sessionId,
-      onStream,
-      (ok) => {
-        peerLive = ok
+  let reconnectAttempts = 0
+  const MAX_RECONNECT = 5
+
+  const tryConnect = async (): Promise<boolean> => {
+    try {
+      handle = await startViewerPeer(
+        sessionId,
+        onStream,
+        (ok) => {
+          peerLive = ok
+          if (ok) reconnectAttempts = 0
+        }
+      )
+      peer = handle
+    } catch {
+      if (handle) try { handle.close() } catch { /* ignore */ }
+      peer = null
+      peerLive = false
+      return false
+    }
+
+    const deadline = Date.now() + 15_000
+    while (Date.now() < deadline) {
+      if (peerLive) return true
+      if (!sessionId) {
+        handle?.close()
+        peer = null
+        peerLive = false
+        return false
       }
-    )
-    peer = handle
-  } catch {
-    if (handle) try { handle.close() } catch { /* ignore */ }
+      await new Promise((r) => setTimeout(r, 400))
+    }
+    handle?.close()
     peer = null
     peerLive = false
     return false
   }
 
-  // Give ICE a fair chance before declaring it a lost cause.
-  const deadline = Date.now() + 15_000
-  while (Date.now() < deadline) {
-    if (peerLive) return true
-    if (!sessionId) {
-      handle?.close()
-      peer = null
-      peerLive = false
-      return false
-    }
-    await new Promise((r) => setTimeout(r, 400))
+  const connected = await tryConnect()
+  if (connected) return true
+
+  // Auto-reconnect loop: if the peer was previously connected and then dropped,
+  // keep trying. Only give up after MAX_RECONNECT attempts.
+  while (reconnectAttempts < MAX_RECONNECT) {
+    reconnectAttempts++
+    await new Promise((r) => setTimeout(r, 1000 * reconnectAttempts))
+    if (!sessionId) break
+    const ok = await tryConnect()
+    if (ok) return true
   }
-  // Timed out — close the handle so we don't leak.
-  handle?.close()
+
   peer = null
   peerLive = false
   return false
