@@ -83,6 +83,8 @@ interface SentiAPI {
   power: (mode: string) => Promise<boolean>
   /** The foreground window's title + process, so Senti can speak up about it. */
   activeWindow: () => Promise<{ title: string; process: string } | null>
+  /** All running apps with window titles — for "close Chrome" etc. */
+  runningApps: () => Promise<Array<{ name: string; title: string }>>
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => Promise<boolean>
   remoteInputStop: () => Promise<boolean>

@@ -382,7 +382,7 @@ export default function RemoteControlWindow({
             playsInline
             muted
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-            className={`h-full w-full cursor-crosshair select-none object-contain ${direct ? '' : 'hidden'}`}
+            className={`h-full w-full select-none object-contain ${direct ? '' : 'hidden'}`}
           />
           {/* Fallback still frames until (or unless) the direct link comes up. */}
           {!direct &&
@@ -392,7 +392,7 @@ export default function RemoteControlWindow({
                 src={frame}
                 alt={`${deviceName} screen`}
                 draggable={false}
-                className="h-full w-full cursor-crosshair select-none object-contain"
+                className="h-full w-full select-none object-contain"
               />
             ) : (
               <div className="text-sm text-white/40">Waiting for {deviceName}&apos;s screen…</div>

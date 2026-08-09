@@ -1534,30 +1534,54 @@ function changeVolume(direction: 'up' | 'down' | 'mute'): boolean {
   }
 }
 
-/** Close an app — whitelisted process names only, never arbitrary input. */
-const CLOSABLE: Record<string, { proc: string; label: string }> = {
-  chrome: { proc: 'chrome.exe', label: 'Chrome' },
-  edge: { proc: 'msedge.exe', label: 'Edge' },
-  firefox: { proc: 'firefox.exe', label: 'Firefox' },
-  notepad: { proc: 'notepad.exe', label: 'Notepad' },
-  spotify: { proc: 'Spotify.exe', label: 'Spotify' },
-  discord: { proc: 'Discord.exe', label: 'Discord' },
-  steam: { proc: 'steam.exe', label: 'Steam' },
-  calculator: { proc: 'CalculatorApp.exe', label: 'Calculator' },
-  paint: { proc: 'mspaint.exe', label: 'Paint' },
-}
-
-function closeApp(nameRaw: unknown): { ok: boolean; label?: string; error?: string } {
+/** Close an app — works for ANY running process, not just a whitelist. */
+async function closeApp(nameRaw: unknown): Promise<{ ok: boolean; label?: string; error?: string }> {
   if (typeof nameRaw !== 'string') return { ok: false, error: 'unknown' }
-  const hit = CLOSABLE[nameRaw.toLowerCase().trim()]
-  if (!hit) return { ok: false, error: 'unknown' }
-  try {
-    // /IM takes a value from OUR table; the model's text never reaches a shell.
-    spawn('taskkill', ['/IM', hit.proc, '/F'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
-    return { ok: true, label: hit.label }
-  } catch {
-    return { ok: false, error: 'failed' }
-  }
+  const query = nameRaw.toLowerCase().trim()
+  if (!query) return { ok: false, error: 'unknown' }
+
+  // Not in the whitelist — enumerate running processes and find a match.
+  // This lets "close chrome", "close spotify", "close discord" etc. work
+  // for any installed app, not just the ones we hardcoded.
+  const psExe = powershellPath()
+  if (!psExe) return { ok: false, error: 'unknown' }
+
+  const psCmd =
+    `Get-Process | Where-Object { $_.MainWindowTitle -ne '' -and $_.ProcessName -match '${query.replace(/'/g, "''")}' } | ` +
+    `Select-Object -First 1 -ExpandProperty ProcessName`
+
+  return new Promise((resolve) => {
+    try {
+      execFile(psExe, ['-NoProfile', '-NonInteractive', '-Command', psCmd], { timeout: 5000, windowsHide: true }, (err, stdout) => {
+        if (err || !stdout?.trim()) {
+          // Try matching by executable name as a fallback.
+          const psCmd2 =
+            `Get-Process | Where-Object { $_.ProcessName -match '${query.replace(/'/g, "''")}' } | ` +
+            `Select-Object -First 1 -ExpandProperty ProcessName`
+          execFile(psExe, ['-NoProfile', '-NonInteractive', '-Command', psCmd2], { timeout: 5000, windowsHide: true }, (err2, stdout2) => {
+            if (err2 || !stdout2?.trim()) return resolve({ ok: false, error: 'unknown' })
+            const procName = stdout2.trim()
+            try {
+              spawn('taskkill', ['/IM', procName, '/F'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+              resolve({ ok: true, label: procName.replace(/\.exe$/i, '') })
+            } catch {
+              resolve({ ok: false, error: 'failed' })
+            }
+          })
+          return
+        }
+        const procName = stdout.trim()
+        try {
+          spawn('taskkill', ['/IM', procName, '/F'], { detached: true, stdio: 'ignore', windowsHide: true }).unref()
+          resolve({ ok: true, label: procName.replace(/\.exe$/i, '') })
+        } catch {
+          resolve({ ok: false, error: 'failed' })
+        }
+      })
+    } catch {
+      resolve({ ok: false, error: 'failed' })
+    }
+  })
 }
 
 /** Close whatever window is in the foreground right now. */
@@ -2473,6 +2497,29 @@ ipcMain.handle('senti:send-to-vscode', (_e: unknown, msg: unknown) => {
 
 ipcMain.handle('senti:is-code-bridge-connected', () => {
   return codeBridgeClient !== null && codeBridgeClient.readyState === 1
+})
+
+/** List running apps with window titles — used by the "close X" voice command. */
+ipcMain.handle('senti:running-apps', () => {
+  const psExe = powershellPath()
+  if (!psExe) return []
+  const script = `
+$ErrorActionPreference='SilentlyContinue'
+Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object -Property ProcessName, MainWindowTitle | ForEach-Object {
+  [pscustomobject]@{ name=$_.ProcessName; title=$_.MainWindowTitle }
+} | ConvertTo-Json -Compress
+`
+  try {
+    const result = execFileSync(psExe, ['-NoProfile', '-NonInteractive', '-Command', script], {
+      timeout: 5000,
+      windowsHide: true,
+      maxBuffer: 1024 * 1024,
+    }).toString().trim()
+    const parsed = JSON.parse(result)
+    return Array.isArray(parsed) ? parsed.slice(0, 50) : []
+  } catch {
+    return []
+  }
 })
 
 ipcMain.handle('senti:quit', () => {

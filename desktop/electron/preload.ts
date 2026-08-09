@@ -114,6 +114,8 @@ contextBridge.exposeInMainWorld('senti', {
   power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
   /** The foreground window's title + process, so Senti can speak up about it. */
   activeWindow: () => ipcRenderer.invoke('senti:active-window'),
+  /** All running apps with window titles — for "close Chrome" etc. */
+  runningApps: () => ipcRenderer.invoke('senti:running-apps'),
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => ipcRenderer.invoke('senti:remote-input', events),
   remoteInputStop: () => ipcRenderer.invoke('senti:remote-input-stop'),
