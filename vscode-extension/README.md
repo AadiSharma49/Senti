@@ -1,6 +1,6 @@
 # Senti Code Bridge — VS Code Extension
 
-Lets Senti read, write, and run code in your VS Code editor.
+Connects VS Code to Senti so Senti can read, write, and run code alongside you.
 
 ## Install
 
@@ -24,6 +24,8 @@ code --install-extension vscode-extension/senti-code-bridge-0.1.0.vsix
    - **Run commands** — "npm install", "npm run dev", "git status"
    - **See your screen** — "what am I looking at", "help me with this"
    - **Get diagnostics** — "what's broken", "show me errors"
+   - **List folders** — "what's in the src folder"
+   - **Get active file** — "what am I looking at"
 
 ## Requirements
 
