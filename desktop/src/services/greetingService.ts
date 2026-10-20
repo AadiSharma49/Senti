@@ -1,4 +1,3 @@
-import { useVoiceProfileStore } from '../state/voiceProfileStore'
 import { api } from './api'
 
 /**
@@ -214,6 +213,3 @@ export async function speak(text: string, lang: string): Promise<void> {
   })
 }
 
-export function hasProfile(): boolean {
-  return !!useVoiceProfileStore.getState().profile
-}

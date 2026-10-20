@@ -1,10 +1,11 @@
 import { NextResponse } from 'next/server'
-import { getOrCreatePolicy, touchDevice } from '@/lib/db'
+import { touchDevice, DeviceConflictError } from '@/lib/db'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
+import { hashToken } from '@/lib/crypto'
 
 /**
- * Device policy endpoint — the desktop authenticates with its device token and
- * pulls its account's policy, and reports its name/os/status on check-in.
+ * Device check-in endpoint — the desktop authenticates with its device token
+ * and reports its name/os/status on a heartbeat.
  *
  * Called from the desktop's Electron main process, never a browser, so there
  * is no CORS here by design (see lib/deviceAuth.ts).
@@ -21,11 +22,7 @@ export async function GET(req: Request) {
   const { device } = auth
 
   await touchDevice(device.id, { status: 'online' })
-  const policy = await getOrCreatePolicy(device.userId)
-  return NextResponse.json(
-    { policy, device: { id: device.id, name: device.name } },
-    { headers: NO_STORE }
-  )
+  return NextResponse.json({ device: { id: device.id, name: device.name } }, { headers: NO_STORE })
 }
 
 export async function POST(req: Request) {
@@ -35,12 +32,21 @@ export async function POST(req: Request) {
 
   const body = await req.json().catch(() => ({}))
   const status = str(body.status, 20)
-  await touchDevice(device.id, {
-    name: str(body.name),
-    os: str(body.os, 40),
-    status: status && ['online', 'locked', 'offline'].includes(status) ? status : 'online',
-    voiceEnrolled: typeof body.voiceEnrolled === 'boolean' ? body.voiceEnrolled : undefined,
-  })
-  const policy = await getOrCreatePolicy(device.userId)
-  return NextResponse.json({ policy }, { headers: NO_STORE })
+  const hardwareId = str(body.hardwareId, 200)
+
+  try {
+    await touchDevice(device.id, {
+      name: str(body.name),
+      os: str(body.os, 40),
+      status: status && ['online', 'offline'].includes(status) ? status : 'online',
+      hardwareIdHash: hardwareId ? hashToken(hardwareId) : undefined,
+    })
+  } catch (err) {
+    if (err instanceof DeviceConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409, headers: NO_STORE })
+    }
+    throw err
+  }
+
+  return NextResponse.json({ ok: true }, { headers: NO_STORE })
 }

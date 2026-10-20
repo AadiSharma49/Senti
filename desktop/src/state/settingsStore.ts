@@ -1,14 +1,6 @@
 import { create } from 'zustand'
-import type { AuthMethod } from '../types/auth'
 
 export interface SettingsState {
-  security: {
-    enabledMethods: AuthMethod[]
-    maxAttempts: number
-    lockoutDuration: number
-    pin: string
-  }
-
   setupCompleted: boolean
 
   permissions: {
@@ -30,7 +22,6 @@ export interface SettingsState {
   localMode: boolean
   alwaysRespond: boolean
 
-  setSecurity: (s: Partial<SettingsState['security']>) => void
   setPermissions: (p: Partial<SettingsState['permissions']>) => void
   setShowWork: (on: boolean) => void
   setLocalMode: (on: boolean) => void
@@ -54,18 +45,6 @@ const persist = (key: string, value: unknown) => {
     localStorage.setItem(key, JSON.stringify(value))
   } catch {}
 }
-
-const DEFAULT_SECURITY: SettingsState['security'] = {
-  enabledMethods: ['voice', 'clap', 'pin'],
-  maxAttempts: 3,
-  lockoutDuration: 30,
-  pin: '1234',
-}
-
-const loadSecurity = (): SettingsState['security'] => ({
-  ...DEFAULT_SECURITY,
-  ...safe<Partial<SettingsState['security']>>('senti:security', {}),
-})
 
 const loadSetupCompleted = (): boolean => {
   try {
@@ -97,7 +76,6 @@ const loadPermissions = (): SettingsState['permissions'] => ({
 })
 
 export const useSettingsStore = create<SettingsState>((set) => ({
-  security: loadSecurity(),
   permissions: loadPermissions(),
 
   setupCompleted: loadSetupCompleted(),
@@ -120,12 +98,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     set({ alwaysRespond: on })
   },
 
-  setSecurity: (s) => {
-    const next = { ...loadSecurity(), ...s }
-    persist('senti:security', next)
-    set({ security: next })
-  },
-
   setPermissions: (p) => {
     const next = { ...loadPermissions(), ...p }
     persist('senti:permissions', next)
@@ -141,10 +113,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
 
   resetConfiguration: () => {
-    const defaultSecurity = { ...DEFAULT_SECURITY }
-
     try {
-      localStorage.removeItem('senti:security')
       localStorage.removeItem('senti:setupCompleted')
     } catch {
       // ignore storage errors
@@ -154,7 +123,6 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     } catch {}
 
     set({
-      security: defaultSecurity,
       setupCompleted: false,
     })
   },

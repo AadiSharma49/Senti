@@ -1,11 +1,8 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { PageHeader, Card } from '@/components/ui'
-import SecurityPolicyEditor from '@/components/SecurityPolicyEditor'
 import { clerkEnabled } from '@/lib/auth'
 
-
-// Per-user, live data — never serve a cached copy of somebody's devices,
-// voiceprint status or security timeline.
+// Per-user, live data — never serve a cached copy of somebody's account.
 export const dynamic = 'force-dynamic'
 export default async function SettingsPage() {
   const user = clerkEnabled ? await currentUser() : null
@@ -23,14 +20,6 @@ export default async function SettingsPage() {
             <Field label="Name" value={name} />
             <Field label="Email" value={email} />
           </div>
-        </Card>
-
-        <Card>
-          <h2 className="text-lg font-semibold text-white">Security policy</h2>
-          <p className="mt-1 mb-5 text-sm text-white/50">
-            These settings sync down to every device. Devices are secure endpoints — they follow the dashboard.
-          </p>
-          <SecurityPolicyEditor />
         </Card>
 
         <Card>

@@ -94,7 +94,7 @@ async function tavilyAnswer(questionRaw: string): Promise<string | null> {
 /**
  * Answer `question` from the web, phrased for speaking aloud.
  *
- * `persona` is the caller's system prompt, so the answer sounds like Senti
+ * `persona` is the caller's system prompt, so the answer sounds like Sentinel
  * rather than a search engine.
  */
 export async function answerFromWeb(question: string, persona: string): Promise<string | null> {

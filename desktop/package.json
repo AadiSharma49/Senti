@@ -1,8 +1,8 @@
 {
-  "name": "senti",
+  "name": "sentinel",
   "version": "0.1.0",
-  "description": "Senti — AI-powered desktop guardian and assistant",
-  "author": "Senti",
+  "description": "Sentinel — AI-powered desktop guardian and assistant",
+  "author": "Sentinel",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -19,7 +19,7 @@
   },
   "build": {
     "appId": "com.senti.desktop",
-    "productName": "Senti",
+    "productName": "Sentinel",
     "directories": {
       "output": "release",
       "buildResources": "build"
@@ -50,9 +50,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Senti",
-      "artifactName": "Senti-Setup.exe",
-      "uninstallDisplayName": "Senti"
+      "shortcutName": "Sentinel",
+      "artifactName": "Sentinel-Setup.exe",
+      "uninstallDisplayName": "Sentinel"
     },
     "extraResources": [
       "build/icon.png"

@@ -1,4 +1,4 @@
-# Senti
+# Sentinel
 
 A voice assistant that lives on your Windows PC and actually operates it. Not a chatbot — an OS agent that sees your screen, hears your voice, controls your apps, and builds things alongside you.
 
@@ -23,9 +23,9 @@ A voice assistant that lives on your Windows PC and actually operates it. Not a 
 
 Every one sits behind a switch you control, and it refuses out loud when one is off.
 
-**See your screen — continuously.** A background watcher captures your screen every 3 seconds, sends it to a vision model, and builds a live context model of what you're doing. Senti knows you're coding in VS Code or playing a game without you saying anything. When a game is detected, it pauses automatically to save CPU/GPU.
+**See your screen — continuously.** A background watcher captures your screen every 3 seconds, sends it to a vision model, and builds a live context model of what you're doing. Sentinel knows you're coding in VS Code or playing a game without you saying anything. When a game is detected, it pauses automatically to save CPU/GPU.
 
-**Build things with you.** Say *"build a chat app"* and Senti opens VS Code, reads your project structure, writes the code, runs the server, and tells you what's happening. It has a VS Code bridge that gives it real-time access to your editor, terminal, and diagnostics.
+**Build things with you.** Say *"build a chat app"* and Sentinel opens VS Code, reads your project structure, writes the code, runs the server, and tells you what's happening. It has a VS Code bridge that gives it real-time access to your editor, terminal, and diagnostics.
 
 **Remote control — AnyDesk-level smooth.** Full mouse-and-keyboard control of another device over WebRTC. Game mode sends relative mouse deltas at 120Hz with zero batching for instant key presses. Direct peer connection for sub-16ms latency; HTTP fallback if P2P fails. Cursor uses the real system cursor — no artificial overlays.
 
@@ -41,7 +41,7 @@ Every one sits behind a switch you control, and it refuses out loud when one is 
 
 ## Privacy, concretely
 
-- Speech-to-text and the voiceprint run **on-device**. Audio is never uploaded.
+- Speech-to-text runs **on-device**. Audio is never uploaded.
 - Only the **text** of what you say reaches the assistant, and only once you've addressed it.
 - Memory and the habits journal are **local files** that never leave the machine.
 - Screenshots happen **only on request** and are never retained.
@@ -56,7 +56,7 @@ Every one sits behind a switch you control, and it refuses out loud when one is 
 ```
 desktop/    Electron + React — the assistant, voice, OS actions, remote control
 dashboard/  Next.js — accounts, the device API, and a read-only web view
-vscode-extension/  VS Code extension — code bridge for Senti
+vscode-extension/  VS Code extension — code bridge for Sentinel
 ```
 
 Everything that acts on a machine happens in the desktop app on that machine, behind its own permissions. The web dashboard is a window, not a control panel.
@@ -86,7 +86,7 @@ ollama pull qwen2.5-coder:14b
 ollama pull llava:7b
 ```
 
-Then toggle **Local Mode** in Senti Settings.
+Then toggle **Local Mode** in Sentinel Settings.
 
 ```bash
 cd desktop && npm test      # 138 unit tests
@@ -110,4 +110,4 @@ cd desktop && npm run dist  # build the installer
 - **VS Code bridge**: WebSocket server + extension for code operations
 - **Local AI**: Ollama integration (qwen2.5-coder:14b + llava:7b), Piper TTS
 - **Tests**: 138/138 passing, zero TypeScript errors
-- **Installer**: `E:\Senti\desktop\release\Senti-Setup.exe`
+- **Installer**: `E:\Senti\desktop\release\Sentinel-Setup.exe`

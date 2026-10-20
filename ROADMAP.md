@@ -1,4 +1,4 @@
-# Senti — where it is and where it's going
+# Sentinel — where it is and where it's going
 
 Written to be honest rather than promotional. Things that work are listed as
 working; things that are rough are listed as rough.
@@ -37,7 +37,7 @@ mouse), file browsing, clipboard sync, remote power. Gated by an emailed code
 or a PIN.
 
 **83 unit tests** on the code where a break would be invisible: the wake parser
-(Senti simply doesn't answer), the permission table (an action would run with
+(Sentinel simply doesn't answer), the permission table (an action would run with
 its switch off), path containment for remote files (the UI looks identical
 while serving the whole drive), the voice threshold, and memory ranking.
 
@@ -49,7 +49,7 @@ while serving the whole drive), the voice threshold, and memory ranking.
 few seconds for anything else. A person answers in under a second. This is the
 single largest gap between "impressive" and "natural", and it's next.
 
-**It can't be interrupted.** Talk over a person and they stop. Senti finishes
+**It can't be interrupted.** Talk over a person and they stop. Sentinel finishes
 its sentence. That one behaviour is most of what separates talking to software
 from talking to someone.
 
@@ -82,7 +82,7 @@ talk via the internet.
 
 **Continuous screen capture.** Always-on capture plus autostart plus remote
 control is the exact behavioural signature of a RAT, and storing screens means
-storing passwords and bank pages. Senti reads the foreground window's *title*
+storing passwords and bank pages. Sentinel reads the foreground window's *title*
 to know you're in a game or watching a video, and takes a screenshot only when
 you ask. That gets most of the value and none of the exposure.
 
@@ -106,9 +106,9 @@ needs Wake-on-LAN configured in BIOS and router — hardware, not software.
 
 - **Fast games over the internet won't feel right.** Even perfect WebRTC is
   40-100ms; games want under 30. On the same Wi-Fi it's genuinely playable.
-- **Remote control needs the PC awake** and Senti running. A sleeping machine
+- **Remote control needs the PC awake** and Sentinel running. A sleeping machine
   queues commands and runs them when it wakes.
-- **Bare imperatives are English-only.** Addressing Senti by name works in any
+- **Bare imperatives are English-only.** Addressing Sentinel by name works in any
   language; "open Chrome" with no name matches English verbs literally.
 - **Google's free Gemini tier is unreliable.** Some accounts get a zero
   allocation, visible only as a 429. Tavily is the primary web provider for

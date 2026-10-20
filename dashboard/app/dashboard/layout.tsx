@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { SignOutButton } from '@clerk/nextjs'
-import SentiMark from '@/components/SentiMark'
+import SentinelMark from '@/components/SentinelMark'
 import { clerkEnabled } from '@/lib/auth'
 import { ensureUser } from '@/lib/user'
 
@@ -8,15 +8,13 @@ const nav = [
   { href: '/dashboard', label: 'Overview', icon: '▚' },
   { href: '/dashboard/devices', label: 'Devices', icon: '▢' },
   { href: '/dashboard/remote', label: 'Remote', icon: '◈' },
-  { href: '/dashboard/voice', label: 'Voice Profile', icon: '◉' },
-  { href: '/dashboard/activity', label: 'Security Timeline', icon: '‖' },
   { href: '/dashboard/download', label: 'Download', icon: '↓' },
   { href: '/dashboard/settings', label: 'Settings', icon: '◇' },
 ]
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   // Every dashboard page hangs off this layout, so a new signup gets their DB
-  // row (and their real name, for Senti to greet them by) on first visit —
+  // row (and their real name, for Sentinel to greet them by) on first visit —
   // before they can click anything that writes.
   await ensureUser()
 
@@ -25,8 +23,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
       {/* Sidebar */}
       <aside className="hidden w-64 shrink-0 border-r border-white/5 p-6 md:block">
         <Link href="/" className="mb-10 flex items-center gap-3">
-          <SentiMark size={30} />
-          <span className="text-lg font-semibold tracking-wide">Senti</span>
+          <SentinelMark size={30} />
+          <span className="text-lg font-semibold tracking-wide">Sentinel</span>
         </Link>
         <nav className="grid gap-1">
           {nav.map((n) => (

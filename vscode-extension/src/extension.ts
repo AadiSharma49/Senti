@@ -1,8 +1,8 @@
 import * as vscode from 'vscode'
 import * as ws from 'ws'
 
-const SENTI_WS_PORT = 9876
-const SENTI_WS_HOST = '127.0.0.1'
+const SENTINEL_WS_PORT = 9876
+const SENTINEL_WS_HOST = '127.0.0.1'
 
 let client: ws.WebSocket | null = null
 let statusBarItem: vscode.StatusBarItem | null = null
@@ -58,7 +58,7 @@ function connectToSenti(): void {
   }
 
   try {
-    client = new ws.WebSocket(`ws://${SENTI_WS_HOST}:${SENTI_WS_PORT}`)
+    client = new ws.WebSocket(`ws://${SENTINEL_WS_HOST}:${SENTINEL_WS_PORT}`)
 
     client.on('open', () => {
       connected = true
@@ -70,7 +70,7 @@ function connectToSenti(): void {
     client.on('message', async (data: ws.Data) => {
       try {
         const msg = JSON.parse(data.toString())
-        await handleSentiMessage(msg)
+        await handleSentinelMessage(msg)
       } catch {
         // ignore malformed messages
       }
@@ -104,7 +104,7 @@ function disconnect(): void {
   vscode.window.showInformationMessage('Senti Code Bridge disconnected')
 }
 
-async function handleSentiMessage(msg: Record<string, unknown>): Promise<void> {
+async function handleSentinelMessage(msg: Record<string, unknown>): Promise<void> {
   const type = msg.type as string
 
   switch (type) {

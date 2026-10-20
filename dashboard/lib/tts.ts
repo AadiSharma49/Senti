@@ -1,5 +1,5 @@
 /**
- * Human text-to-speech via ElevenLabs. When ELEVENLABS_API_KEY is set, Senti
+ * Human text-to-speech via ElevenLabs. When ELEVENLABS_API_KEY is set, Sentinel
  * speaks in a real, natural human voice (multilingual). Without a key, the
  * desktop falls back to the browser's built-in voice.
  *
@@ -10,12 +10,12 @@ const KEY = process.env.ELEVENLABS_API_KEY
 export const humanVoiceEnabled = !!KEY
 
 /**
- * Default: "Chris" — a light, casual, natural male voice (free premade). Other
- * free-plan voices: Will bIHbv24MWmeRgasZH58o, Brian nPczCjzI2devNBz1zQrb,
+ * Default: "Brian" — a natural, grounded male voice (free premade). Other
+ * free-plan voices: Will bIHbv24MWmeRgasZH58o, Chris iP95p4xoKVk53GoZ742B,
  * Eric cjVigY5qzO86Huf0OWal, Adam pNInz6obpgDQGcFmaJgB (deep).
  * Note: Voice Library voices need a paid ElevenLabs plan; premade ones are free.
  */
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'iP95p4xoKVk53GoZ742B'
+const VOICE_ID = process.env.ELEVENLABS_VOICE_ID || 'nPczCjzI2devNBz1zQrb'
 
 /**
  * Turbo v2.5 — multilingual, and much lower latency than multilingual_v2,

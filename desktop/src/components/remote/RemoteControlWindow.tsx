@@ -42,6 +42,15 @@ export default function RemoteControlWindow({
    */
   const [locked, setLocked] = useState(false)
   const [quality, setQuality] = useState<QualityPreset>('balanced')
+  /**
+   * Where to draw the visible remote cursor, in pixels relative to the
+   * surface. There's no guarantee the video frame itself shows a cursor —
+   * Electron's screen capture often doesn't composite one in — so this is
+   * drawn locally from the exact position we just told the host to move to.
+   * It's also instant (no encode/decode/network round trip), which reads as
+   * more responsive than whatever the video happens to show.
+   */
+  const [cursorPx, setCursorPx] = useState<{ left: number; top: number } | null>(null)
   /** Whether we're waiting on an emailed code or the machine's static PIN. */
   const [viaEmail, setViaEmail] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -205,7 +214,7 @@ export default function RemoteControlWindow({
    * clicks would drift steadily worse the more the aspect ratios differ. So we
    * work out where the picture ACTUALLY sits inside the box first.
    */
-  const norm = (e: React.MouseEvent): { x: number; y: number } | null => {
+  const norm = (e: React.MouseEvent): { x: number; y: number; px: number; py: number } | null => {
     const el = direct ? videoRef.current : imgRef.current
     if (!el) return null
     const r = el.getBoundingClientRect()
@@ -225,7 +234,9 @@ export default function RemoteControlWindow({
     const y = (e.clientY - r.top - offY) / shownH
     // A click in the letterbox bar isn't on the remote screen at all.
     if (x < 0 || x > 1 || y < 0 || y > 1) return null
-    return { x, y }
+    // Pixel position within the surface (same box the overlay cursor renders
+    // in), so the overlay can be placed without redoing this math on render.
+    return { x, y, px: offX + x * shownW, py: offY + y * shownH }
   }
 
   // Take the whole display for as long as we're driving, and give it back on
@@ -274,8 +285,17 @@ export default function RemoteControlWindow({
       return
     }
     const p = norm(e)
-    if (p) sendEvent({ t: 'move', x: p.x, y: p.y })
+    if (p) {
+      sendEvent({ t: 'move', x: p.x, y: p.y })
+      setCursorPx({ left: p.px, top: p.py })
+    }
   }
+
+  // Pointer lock hides the real cursor already (and the overlay has no
+  // meaningful position in moverel mode) — drop any stale overlay position.
+  useEffect(() => {
+    if (locked) setCursorPx(null)
+  }, [locked])
 
   const onClick = (e: React.MouseEvent) => {
     const b = e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left'
@@ -361,8 +381,13 @@ export default function RemoteControlWindow({
       {phase === 'live' ? (
         <div
           ref={surfaceRef}
+          // No native cursor here — the overlay below is the ONE visible
+          // pointer, so it can't look doubled or offset from whatever (if
+          // anything) the captured frame itself shows.
+          style={{ cursor: 'none' }}
           className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
           onMouseMove={onMove}
+          onMouseLeave={() => setCursorPx(null)}
           onMouseDown={onClick}
           onContextMenu={(e) => e.preventDefault()}
           onWheel={(e) => {
@@ -397,6 +422,23 @@ export default function RemoteControlWindow({
             ) : (
               <div className="text-sm text-white/40">Waiting for {deviceName}&apos;s screen…</div>
             ))}
+          {cursorPx && !locked && (
+            <svg
+              viewBox="0 0 24 24"
+              width={22}
+              height={22}
+              className="pointer-events-none absolute z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+              style={{ left: cursorPx.left, top: cursorPx.top }}
+            >
+              <path
+                d="M4 2 L4 20 L9 15.5 L12.5 22 L15.5 20.5 L12 14 L19 14 Z"
+                fill="white"
+                stroke="black"
+                strokeWidth={1.2}
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center px-6">

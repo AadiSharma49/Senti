@@ -23,7 +23,7 @@ const GROQ_VISION = ['qwen/qwen3.6-27b']
  */
 function prompt(question: string, language: string): string {
   return (
-    "You are Senti, looking at a screenshot of your owner's screen because they asked you to. " +
+    "You are Sentinel, looking at a screenshot of your owner's screen because they asked you to. " +
     `Their question: "${question}"\n\n` +
     'Answer THAT, out loud, in one or two sentences. Speak like a friend leaning over their ' +
     'shoulder — say the useful thing, not what you can see. ' +
@@ -129,7 +129,7 @@ export async function describeImage(
 /**
  * Background screen context: ask the vision model for a structured summary of
  * what's on screen — apps, activity, label. Used by the background watcher
- * so Senti always knows what you're doing without being asked.
+ * so Sentinel always knows what you're doing without being asked.
  */
 export interface ScreenContextResult {
   summary: string
@@ -140,7 +140,7 @@ export interface ScreenContextResult {
 
 function contextPrompt(): string {
   return (
-    'You are Senti, looking at a screenshot of your owner\'s screen right now. ' +
+    'You are Sentinel, looking at a screenshot of your owner\'s screen right now. ' +
     'Return a JSON object with this exact shape:\n' +
     '{\n' +
     '  "summary": "1-2 sentences about what is happening on screen right now",\n' +

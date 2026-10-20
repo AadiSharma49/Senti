@@ -2,33 +2,33 @@ import Link from 'next/link'
 import { auth, currentUser } from '@clerk/nextjs/server'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
-import SentiMark from '@/components/SentiMark'
+import SentinelMark from '@/components/SentinelMark'
 import { clerkEnabled } from '@/lib/auth'
 
 const features = [
   {
-    title: 'It knows it is you',
-    body: 'Not a password you typed once this morning — your actual voice, every time. Senti verifies who is speaking, not what was said. The check runs on your machine; the voiceprint never leaves it.',
+    title: 'It lives on your machine',
+    body: 'Not a browser tab you paste your problem into. Sentinel runs on the PC itself — so it can see this file, this system, this screen, and actually do something about it.',
   },
   {
     title: 'You hold the dial',
     body: 'An AI with access to your PC is frightening. An AI with exactly the access you gave it is not. Grant nothing, one folder, opening apps, or acting on its own while you are out — you set it, and it can never quietly widen it.',
   },
   {
-    title: 'It lives where your work is',
-    body: 'Not a browser tab you paste your problem into. Senti is on the machine — so you can ask about this file, this system, this screen, and it can actually see them.',
+    title: 'It remembers you',
+    body: 'What you told it stays on your machine, not in someone else\'s database. Sentinel keeps a local memory of your habits and preferences, and gets more useful the more you use it.',
   },
   {
-    title: 'Talk, and it answers',
-    body: 'Once you are in, just speak. Senti replies out loud in a real human voice, in any language, and it always knows who it is talking to.',
+    title: 'Talk, and it acts',
+    body: 'Say what you need — open an app, clean up temp files, check what is eating your RAM — and it does it, out loud, in a real human voice, in any language.',
   },
 ]
 
 const steps = [
-  { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices, voice, and what Senti is allowed to do.' },
-  { n: '02', title: 'Install Senti', body: 'Download the desktop app for Windows and link it to your account with a one-time key.' },
-  { n: '03', title: 'Enroll your voice', body: 'Speak naturally a few times — any words. Your voiceprint is learned on-device.' },
-  { n: '04', title: 'It is yours', body: 'Unlock by speaking, then talk to it. Set exactly how much of your machine it can touch.' },
+  { n: '01', title: 'Create your account', body: 'The dashboard is home base for your devices and what Sentinel is allowed to do.' },
+  { n: '02', title: 'Install Sentinel', body: 'Download the desktop app for Windows and link it to your account with a one-time key.' },
+  { n: '03', title: 'Say what you need', body: 'Open an app, ask about your system, get something done. No setup ritual, just talk.' },
+  { n: '04', title: 'It is yours', body: 'Set exactly how much of your machine it can touch, and let it get to work.' },
 ]
 
 // The vision, told honestly. Each item is labelled by where it really is, so
@@ -36,13 +36,18 @@ const steps = [
 type Stage = 'Live' | 'Building' | 'Planned'
 const vision: { title: string; body: string; stage: Stage }[] = [
   {
-    title: 'A voice that is only yours',
-    body: 'Senti verifies who is speaking, not what was said. It listens for you and no one else — the check runs on your device.',
+    title: 'Talk to it, and it answers',
+    body: 'Ask anything. Sentinel replies out loud in a real human voice, in any language.',
     stage: 'Live',
   },
   {
-    title: 'Talk to it, and it answers',
-    body: 'Ask anything. Senti replies out loud in a real human voice, in any language, and knows who it is talking to.',
+    title: 'It runs your machine',
+    body: 'Open apps, clean up temp files, check what is using memory — by voice. An assistant that does things, not just talks about them.',
+    stage: 'Live',
+  },
+  {
+    title: 'It remembers you',
+    body: 'Sentinel keeps a local, on-device memory of what you tell it, so it stops asking the same things twice.',
     stage: 'Live',
   },
   {
@@ -51,28 +56,18 @@ const vision: { title: string; body: string; stage: Stage }[] = [
     stage: 'Building',
   },
   {
-    title: 'It runs your machine',
-    body: 'Open apps, run tasks, control your editor — by voice. An assistant that does things, not just talks about them.',
-    stage: 'Planned',
-  },
-  {
-    title: 'It remembers you',
-    body: 'Senti learns your context and your taste, and gets more useful the more you use it. A weekly brief of what mattered.',
-    stage: 'Planned',
+    title: 'It watches, and tells you first',
+    body: 'When your system is under load or something is misbehaving, Sentinel notices and offers to help — before you ask.',
+    stage: 'Building',
   },
   {
     title: 'Reach it from anywhere',
-    body: 'Lock, check, and control your PC from your phone. And when something needs you, Senti reaches out first.',
-    stage: 'Planned',
-  },
-  {
-    title: 'The real lock screen',
-    body: 'A Windows credential provider so Senti becomes the login gate itself — the version nothing walks past.',
-    stage: 'Planned',
+    body: 'Check and control your PC from your phone. And when something needs a decision while you are away, Sentinel reaches out first.',
+    stage: 'Building',
   },
   {
     title: 'Private by default',
-    body: 'Your voice is verified on-device and never uploaded. Voiceprints are encrypted; your keys stay on your server.',
+    body: 'Speech recognition runs on-device. Nothing leaves your machine except the words themselves, sent only to answer you.',
     stage: 'Live',
   },
 ]
@@ -129,7 +124,7 @@ export default async function Home() {
       {/* Hero */}
       <section className="relative mx-auto flex max-w-4xl flex-col items-center px-6 pb-24 pt-40 text-center">
         <div className="mb-8">
-          <SentiMark size={96} />
+          <SentinelMark size={96} />
         </div>
 
         {name && (
@@ -139,33 +134,32 @@ export default async function Home() {
         )}
 
         <h1 className="max-w-3xl text-5xl font-bold leading-tight text-white md:text-6xl">
-          The AI on your PC that <span className="text-accent text-glow">only listens to you.</span>
+          The AI that actually <span className="text-accent text-glow">lives on your PC.</span>
         </h1>
         <p className="mt-6 max-w-2xl text-lg text-white/60">
-          The whole industry is racing to put AI agents inside your computer — with access to your
-          files, running in the background. Not one of them knows who is talking to it. Senti does.
-          It unlocks for your voice and no one else, and only ever has the access you give it.
+          Most AI lives in a browser tab, waiting for you to paste your problem in. Sentinel lives
+          on the machine — it watches, it acts, and it only ever has the access you give it.
         </p>
 
         <div className="mt-10">
           <Cta />
         </div>
 
-        <div className="mt-8 text-xs text-white/35">On-device • Your voice never leaves your machine</div>
+        <div className="mt-8 text-xs text-white/35">On-device speech recognition • You set the access dial</div>
       </section>
 
-      {/* The argument — identity is the point */}
+      {/* The argument — access on a dial */}
       <section className="border-y border-white/5 bg-white/[0.02] py-20">
         <div className="mx-auto max-w-3xl px-6 text-center">
           <div className="text-xs uppercase tracking-[0.3em] text-accent">The question nobody is answering</div>
           <h2 className="mt-4 text-2xl font-bold leading-snug text-white md:text-4xl">
-            When an AI can act on your machine, who is allowed to tell it to?
+            When an AI can act on your machine, how much should it be allowed to do?
           </h2>
           <p className="mx-auto mt-6 max-w-2xl text-white/60">
-            Agents are getting powerful enough to delete files, spend money, and run commands — and
-            every one of them will do it for whoever is sitting at the keyboard. Senti starts from
-            the opposite end: <span className="text-white">prove it is you, then do only what you
-            allowed.</span> Identity first. Access on a dial. That is the whole idea.
+            Agents are getting powerful enough to delete files, spend money, and run commands —
+            and most of them ship with either everything or nothing. Sentinel starts from
+            <span className="text-white"> a dial, not a switch:</span> nothing, one folder, opening
+            apps, or acting on its own while you are out. You set it, and it can never quietly widen it.
           </p>
         </div>
       </section>
@@ -173,7 +167,7 @@ export default async function Home() {
       {/* Features */}
       <section id="features" className="mx-auto max-w-6xl px-6 py-20">
         <div className="mb-14 text-center">
-          <div className="text-xs uppercase tracking-[0.3em] text-accent">Why Senti is different</div>
+          <div className="text-xs uppercase tracking-[0.3em] text-accent">Why Sentinel is different</div>
           <h2 className="mt-3 text-3xl font-bold text-white md:text-4xl">Not another chat window</h2>
         </div>
         <div className="grid gap-5 md:grid-cols-2">
@@ -230,26 +224,25 @@ export default async function Home() {
         </div>
 
         <p className="mx-auto mt-8 max-w-2xl text-center text-xs text-white/35">
-          One thing we will not do: silently capture your screen or your life. Senti records only
-          on a security event you can see, and nothing leaves your machine unless you choose to sync it.
+          One thing we will not do: silently capture your screen or your life. Sentinel only acts
+          on what you ask or what you have explicitly allowed, and nothing leaves your machine unless you choose to sync it.
         </p>
       </section>
 
       {/* Closing */}
       <section className="mx-auto max-w-6xl px-6 py-20">
         <div className="glass-strong relative overflow-hidden rounded-[36px] p-10 text-center md:p-16">
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,212,255,0.15),transparent_60%)]" />
           <div className="relative">
             <div className="mb-6 flex justify-center">
-              <SentiMark size={56} />
+              <SentinelMark size={56} />
             </div>
             <h2 className="text-3xl font-bold text-white md:text-4xl">
               {signedIn ? 'Your machine is waiting.' : 'Make your computer yours.'}
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-white/60">
               {signedIn
-                ? 'Install Senti on this computer, link it to your account, and enroll your voice.'
-                : 'Create a free account, install Senti, and speak. That is the whole setup.'}
+                ? 'Install Sentinel on this computer, link it to your account, and start talking.'
+                : 'Create a free account, install Sentinel, and speak. That is the whole setup.'}
             </p>
             <div className="mt-8 flex justify-center">
               <Cta />

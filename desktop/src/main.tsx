@@ -3,15 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import ErrorBoundary from './components/common/ErrorBoundary'
 import { syncPolicyFromDashboard } from './services/policySync'
-import { ensureVoiceprint } from './services/voiceprintSync'
 import './index.css'
 
-// If linked to an account: pull the security policy and, if this device
-// has no local voiceprint yet, download the account's.
-void (async () => {
-  await syncPolicyFromDashboard()
-  await ensureVoiceprint()
-})()
+// If linked to an account: check in and report this device's status.
+void syncPolicyFromDashboard()
 
 // The boundary matters more here than in a web app: Senti runs as a
 // transparent, click-through orb, so an unhandled render error doesn't show a

@@ -53,7 +53,7 @@ They'll take a command from anyone sitting at your keyboard. And once an AI can
 delete your files, spend your money, and run commands — *"who is allowed to tell
 it to?"* becomes the most important question there is. Nobody's answering it.
 
-So that's what Senti is now. Not a lock screen. **The AI that lives on your PC
+So that's what Sentinel is now. Not a lock screen. **The AI that lives on your PC
 and only listens to you.**
 
 - **It knows it's you** — your voice, every time, verified on-device. The

@@ -1,6 +1,6 @@
 import './transformersEnv'
 import { pipeline } from '@huggingface/transformers'
-import { resampleTo } from './voiceEmbeddingEngine'
+import { resampleTo } from './audioMath'
 import type { Utterance } from '../types/audio'
 
 /**

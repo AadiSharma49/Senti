@@ -6,7 +6,7 @@ import { execFile, execFileSync, spawn } from 'child_process'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
-import type { BrowserWindow as BrowserWindowType } from 'electron'
+import type { BrowserWindow as BrowserWindowType, Display } from 'electron'
 const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer, clipboard } = electron
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -166,6 +166,59 @@ function clearToken(): void {
 // localStorage is empty — so the app forgets setup and shows the first-run
 // wizard AGAIN. A plain file in userData is origin-independent, so the flag
 // survives no matter what port the local server ends up on.
+/**
+ * Which physical monitor to share/control, when there's more than one.
+ * Defaults to the primary display. Persisted so the choice survives a
+ * restart — screen sharing starts instantly, with no picker to click
+ * through, same philosophy as the display-media handler below.
+ */
+const screenSourceFile = () => path.join(app.getPath('userData'), 'screen-source.json')
+
+function readPreferredDisplayId(): string | null {
+  try {
+    if (!existsSync(screenSourceFile())) return null
+    const v = JSON.parse(readFileSync(screenSourceFile(), 'utf8'))?.displayId
+    return typeof v === 'string' && v ? v : null
+  } catch {
+    return null
+  }
+}
+
+function writePreferredDisplayId(displayId: string | null): void {
+  try {
+    mkdirSync(path.dirname(screenSourceFile()), { recursive: true })
+    writeFileSync(screenSourceFile(), JSON.stringify({ displayId }))
+  } catch {
+    // ignore
+  }
+}
+
+let preferredDisplayId: string | null = readPreferredDisplayId()
+
+/** The display currently chosen for screen share/control, or the primary if unset/stale. */
+function selectedDisplay(): Display {
+  if (preferredDisplayId) {
+    const found = screen.getAllDisplays().find((d) => String(d.id) === preferredDisplayId)
+    if (found) return found
+  }
+  return screen.getPrimaryDisplay()
+}
+
+/**
+ * The bounding box of ALL monitors combined, in the same coordinate space
+ * Electron reports display bounds in. This is what MOUSEEVENTF_VIRTUALDESK
+ * normalizes 0..65535 against — so input lands correctly on whichever
+ * monitor is selected, not just the primary one.
+ */
+function virtualDesktopBounds(): { x: number; y: number; width: number; height: number } {
+  const displays = screen.getAllDisplays()
+  const minX = Math.min(...displays.map((d) => d.bounds.x))
+  const minY = Math.min(...displays.map((d) => d.bounds.y))
+  const maxX = Math.max(...displays.map((d) => d.bounds.x + d.bounds.width))
+  const maxY = Math.max(...displays.map((d) => d.bounds.y + d.bounds.height))
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
 const setupFlagFile = () => path.join(app.getPath('userData'), 'setup.json')
 
 function readSetupFlag(): boolean {
@@ -603,7 +656,7 @@ $ErrorActionPreference='SilentlyContinue'
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class SentiFocus {
+public class SentinelFocus {
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int c);
   [DllImport("user32.dll")] public static extern bool IsIconic(IntPtr h);
@@ -617,10 +670,10 @@ foreach ($n in $names) {
 }
 if (-not $p) { Write-Output 'no'; exit }
 $h = $p.MainWindowHandle
-if ([SentiFocus]::IsIconic($h)) { [void][SentiFocus]::ShowWindow($h, 9) }
-[SentiFocus]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
-[void][SentiFocus]::SetForegroundWindow($h)
-[SentiFocus]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
+if ([SentinelFocus]::IsIconic($h)) { [void][SentinelFocus]::ShowWindow($h, 9) }
+[SentinelFocus]::keybd_event(0x12, 0, 0, [IntPtr]::Zero)
+[void][SentinelFocus]::SetForegroundWindow($h)
+[SentinelFocus]::keybd_event(0x12, 0, 2, [IntPtr]::Zero)
 Write-Output 'yes'
 `
 
@@ -999,17 +1052,17 @@ Add-Type @"
 using System;
 using System.Text;
 using System.Runtime.InteropServices;
-public class SentiWin {
+public class SentinelWin {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
   [DllImport("user32.dll")] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
   [DllImport("user32.dll")] public static extern int GetWindowThreadProcessId(IntPtr h, out int pid);
 }
 "@
-$h = [SentiWin]::GetForegroundWindow()
+$h = [SentinelWin]::GetForegroundWindow()
 $sb = New-Object Text.StringBuilder 512
-[void][SentiWin]::GetWindowText($h, $sb, 512)
+[void][SentinelWin]::GetWindowText($h, $sb, 512)
 $pid2 = 0
-[void][SentiWin]::GetWindowThreadProcessId($h, [ref]$pid2)
+[void][SentinelWin]::GetWindowThreadProcessId($h, [ref]$pid2)
 $proc = (Get-Process -Id $pid2).ProcessName
 [Console]::Out.Write((ConvertTo-Json @{ title = $sb.ToString(); process = $proc } -Compress))
 `
@@ -1051,36 +1104,40 @@ function activeWindow(): Promise<{ title: string; process: string } | null> {
 // move (unusable), and the alternative — a native input module — needs a
 // per-Electron-version rebuild that breaks on upgrade. This needs neither.
 //
-// Positions arrive NORMALIZED (0..1) and go out as MOUSEEVENTF_ABSOLUTE, whose
-// 0..65535 coordinate space is DPI-independent. That sidesteps display-scaling
-// maths entirely, which is where this kind of code usually goes wrong.
+// Positions arrive NORMALIZED (0..1) against whichever monitor is selected
+// (toVirtualDesktop01() has already remapped them onto the full virtual
+// desktop by the time they reach here) and go out as MOUSEEVENTF_ABSOLUTE |
+// MOUSEEVENTF_VIRTUALDESK, whose 0..65535 space spans every monitor, not
+// just the primary one. Without VIRTUALDESK, Windows maps 0..65535 to the
+// primary display ONLY — so a non-primary monitor could be seen but never
+// actually clicked.
 const INPUT_SCRIPT = `
 $ErrorActionPreference = 'SilentlyContinue'
 Add-Type @"
 using System;
 using System.Runtime.InteropServices;
-public class SentiIn {
+public class SentinelIn {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, int d, IntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
   [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
 }
 "@
-$MOVE=0x0001; $ABS=0x8000; $LD=0x0002; $LU=0x0004; $RD=0x0008; $RU=0x0010
+$MOVE=0x0001; $ABS=0x8000; $VDESK=0x4000; $LD=0x0002; $LU=0x0004; $RD=0x0008; $RU=0x0010
 $MD=0x0020; $MU=0x0040; $WHEEL=0x0800; $HWHEEL=0x01000; $KEYUP=0x0002
 
 function Send-Key([byte]$vk, [int]$shiftState) {
-  if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,0,[IntPtr]::Zero) }
-  if ($shiftState -band 2) { [SentiIn]::keybd_event(0x11,0,0,[IntPtr]::Zero) }
-  if ($shiftState -band 4) { [SentiIn]::keybd_event(0x12,0,0,[IntPtr]::Zero) }
-  [SentiIn]::keybd_event($vk,0,0,[IntPtr]::Zero)
-  [SentiIn]::keybd_event($vk,0,$KEYUP,[IntPtr]::Zero)
-  if ($shiftState -band 4) { [SentiIn]::keybd_event(0x12,0,$KEYUP,[IntPtr]::Zero) }
-  if ($shiftState -band 2) { [SentiIn]::keybd_event(0x11,0,$KEYUP,[IntPtr]::Zero) }
-  if ($shiftState -band 1) { [SentiIn]::keybd_event(0x10,0,$KEYUP,[IntPtr]::Zero) }
+  if ($shiftState -band 1) { [SentinelIn]::keybd_event(0x10,0,0,[IntPtr]::Zero) }
+  if ($shiftState -band 2) { [SentinelIn]::keybd_event(0x11,0,0,[IntPtr]::Zero) }
+  if ($shiftState -band 4) { [SentinelIn]::keybd_event(0x12,0,0,[IntPtr]::Zero) }
+  [SentinelIn]::keybd_event($vk,0,0,[IntPtr]::Zero)
+  [SentinelIn]::keybd_event($vk,0,$KEYUP,[IntPtr]::Zero)
+  if ($shiftState -band 4) { [SentinelIn]::keybd_event(0x12,0,$KEYUP,[IntPtr]::Zero) }
+  if ($shiftState -band 2) { [SentinelIn]::keybd_event(0x11,0,$KEYUP,[IntPtr]::Zero) }
+  if ($shiftState -band 1) { [SentinelIn]::keybd_event(0x10,0,$KEYUP,[IntPtr]::Zero) }
 }
 
-function Key-Down([byte]$vk) { [SentiIn]::keybd_event($vk,0,0,[IntPtr]::Zero) }
-function Key-Up([byte]$vk)   { [SentiIn]::keybd_event($vk,0,0x0002,[IntPtr]::Zero) }
+function Key-Down([byte]$vk) { [SentinelIn]::keybd_event($vk,0,0,[IntPtr]::Zero) }
+function Key-Up([byte]$vk)   { [SentinelIn]::keybd_event($vk,0,0x0002,[IntPtr]::Zero) }
 
 while ($true) {
   $line = [Console]::In.ReadLine()
@@ -1089,15 +1146,15 @@ while ($true) {
   switch ($p[0]) {
     'M' {
       $x = [int]([double]$p[1] * 65535); $y = [int]([double]$p[2] * 65535)
-      [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+      [SentinelIn]::mouse_event($MOVE -bor $ABS -bor $VDESK, $x, $y, 0, [IntPtr]::Zero)
     }
     'R' {
-      [SentiIn]::mouse_event($MOVE, [int]$p[1], [int]$p[2], 0, [IntPtr]::Zero)
+      [SentinelIn]::mouse_event($MOVE, [int]$p[1], [int]$p[2], 0, [IntPtr]::Zero)
     }
     'C' {
       if ([double]$p[2] -ge 0) {
         $x = [int]([double]$p[2] * 65535); $y = [int]([double]$p[3] * 65535)
-        [SentiIn]::mouse_event($MOVE -bor $ABS, $x, $y, 0, [IntPtr]::Zero)
+        [SentinelIn]::mouse_event($MOVE -bor $ABS -bor $VDESK, $x, $y, 0, [IntPtr]::Zero)
       }
       $down = $LD; $up = $LU
       if ($p[1] -eq 'right') { $down = $RD; $up = $RU }
@@ -1105,17 +1162,17 @@ while ($true) {
       $times = 1
       if ($p.Length -gt 4 -and $p[4] -eq '2') { $times = 2 }
       for ($i = 0; $i -lt $times; $i++) {
-        [SentiIn]::mouse_event($down, 0, 0, 0, [IntPtr]::Zero)
-        [SentiIn]::mouse_event($up, 0, 0, 0, [IntPtr]::Zero)
+        [SentinelIn]::mouse_event($down, 0, 0, 0, [IntPtr]::Zero)
+        [SentinelIn]::mouse_event($up, 0, 0, 0, [IntPtr]::Zero)
       }
     }
-    'S' { [SentiIn]::mouse_event($WHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
-    'H' { [SentiIn]::mouse_event($HWHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
+    'S' { [SentinelIn]::mouse_event($WHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
+    'H' { [SentinelIn]::mouse_event($HWHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
     'T' {
       $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
       foreach ($ch in $text.ToCharArray()) {
         if ($ch -eq "\`n") { Send-Key 0x0D 0; continue }
-        $scan = [SentiIn]::VkKeyScan($ch)
+        $scan = [SentinelIn]::VkKeyScan($ch)
         if ($scan -eq -1) { continue }
         Send-Key ([byte]($scan -band 0xFF)) (($scan -shr 8) -band 0xFF)
       }
@@ -1204,11 +1261,34 @@ interface RemoteEvent {
 
 const clamp01 = (n: unknown): number => Math.max(0, Math.min(1, Number(n) || 0))
 
+/**
+ * The viewer sends positions normalized 0..1 against the SHARED monitor
+ * (whichever one selectedDisplay() currently is), since that's the only
+ * geometry it can see. mouse_event's ABS+VIRTUALDESK coordinate space is
+ * normalized against the FULL virtual desktop instead — so on a multi-
+ * monitor machine, a position on a non-primary display has to be remapped
+ * into that monitor's actual place within the virtual desktop first, or
+ * every click/move still lands on the primary monitor regardless of which
+ * one is being shared.
+ */
+function toVirtualDesktop01(nx: number, ny: number): { x: number; y: number } {
+  const d = selectedDisplay()
+  const v = virtualDesktopBounds()
+  const px = d.bounds.x + nx * d.bounds.width
+  const py = d.bounds.y + ny * d.bounds.height
+  return {
+    x: clamp01((px - v.x) / v.width),
+    y: clamp01((py - v.y) / v.height),
+  }
+}
+
 /** Translate one event into a line the injector understands. */
 function inputLine(e: RemoteEvent): string | null {
   switch (e.t) {
-    case 'move':
-      return `M ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)}`
+    case 'move': {
+      const p = toVirtualDesktop01(clamp01(e.x), clamp01(e.y))
+      return `M ${p.x.toFixed(5)} ${p.y.toFixed(5)}`
+    }
     case 'moverel': {
       // Deltas only. Clamped so a wild packet can't fling the cursor across
       // the desktop, which is the sort of thing that ruins a game.
@@ -1222,7 +1302,8 @@ function inputLine(e: RemoteEvent): string | null {
       const times = e.d === 2 ? '2' : '1'
       // A negative x tells the host to click in place — see the script.
       if (typeof e.x !== 'number' || e.x < 0) return `C ${b} -1 -1 ${times}`
-      return `C ${b} ${clamp01(e.x).toFixed(5)} ${clamp01(e.y).toFixed(5)} ${times}`
+      const p = toVirtualDesktop01(clamp01(e.x), clamp01(e.y))
+      return `C ${b} ${p.x.toFixed(5)} ${p.y.toFixed(5)} ${times}`
     }
     case 'scroll': {
       // Screen-pixel delta -> wheel notches, inverted to match Windows.
@@ -1855,11 +1936,15 @@ app.whenReady().then(async () => {
 
   // Screen share needs its own handler (getDisplayMedia, not getUserMedia) —
   // Electron requires this or the capture silently fails with no prompt at all
-  // to fall back on. We hand back the primary screen with no picker UI, since
-  // the whole point is "start when I say so", not a dialog to click through.
+  // to fall back on. We hand back whichever monitor is selected (Settings →
+  // "Monitor to share", defaults to primary) with no picker UI, since the
+  // whole point is "start when I say so", not a dialog to click through.
   session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
     void desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }).then((sources) => {
-      callback(sources[0] ? { video: sources[0] } : {})
+      const wantId = String(selectedDisplay().id)
+      const match = sources.find((s) => (s as unknown as { display_id?: string }).display_id === wantId)
+      const chosen = match || sources[0]
+      callback(chosen ? { video: chosen } : {})
     })
   })
 
@@ -2040,10 +2125,24 @@ ipcMain.handle('senti:screenshot-grab', () => captureScreen(1600))
 ipcMain.handle('senti:screen-sources', async () => {
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
-    return sources.map((s) => ({ id: s.id, name: s.name }))
+    const currentId = String(selectedDisplay().id)
+    return sources.map((s) => {
+      const displayId = (s as unknown as { display_id?: string }).display_id || ''
+      return { id: s.id, name: s.name, displayId, selected: !!displayId && displayId === currentId }
+    })
   } catch {
     return []
   }
+})
+
+/** Switch which monitor gets shared/controlled. Takes effect on the next session. */
+ipcMain.handle('senti:set-screen-source', (_e, displayId: unknown) => {
+  if (typeof displayId !== 'string' || !displayId) return false
+  const exists = screen.getAllDisplays().some((d) => String(d.id) === displayId)
+  if (!exists) return false
+  preferredDisplayId = displayId
+  writePreferredDisplayId(displayId)
+  return true
 })
 
 // Senti's memory — read into every conversation, written by the `remember`
@@ -2168,6 +2267,40 @@ ipcMain.handle('senti:device-info', () => ({
   hostname: os.hostname(),
   platform: process.platform,
 }))
+
+/**
+ * A fingerprint of the PHYSICAL machine, not the app install — it must
+ * survive a reinstall or a "reset this device" wipe, otherwise it's just
+ * a second local token and does nothing to stop a machine from being
+ * relinked to a different account. Windows keeps a stable MachineGuid in
+ * the registry for exactly this kind of use; that's the primary source.
+ *
+ * Falls back to hostname+platform+arch if the registry read fails (e.g.
+ * non-Windows dev machine) — weaker (an attacker could rename the host),
+ * but still better than no check at all.
+ */
+let cachedHardwareId: string | null = null
+
+function readWindowsMachineGuid(): string | null {
+  try {
+    const out = execFileSync(
+      'reg',
+      ['query', 'HKLM\\SOFTWARE\\Microsoft\\Cryptography', '/v', 'MachineGuid'],
+      { encoding: 'utf8', windowsHide: true }
+    )
+    const match = out.match(/MachineGuid\s+REG_SZ\s+([0-9a-fA-F-]+)/)
+    return match ? match[1].trim() : null
+  } catch {
+    return null
+  }
+}
+
+ipcMain.handle('senti:hardware-id', () => {
+  if (!cachedHardwareId) {
+    cachedHardwareId = readWindowsMachineGuid() || `${os.hostname()}:${os.platform()}:${os.arch()}`
+  }
+  return cachedHardwareId
+})
 
 // --- Window modes + tray ---------------------------------------------
 //

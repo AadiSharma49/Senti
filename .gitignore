@@ -58,3 +58,6 @@ desktop/.next/
 
 # Voice audition samples (generated, not source)
 voice-samples/
+
+# Local Claude Code tooling, memory, and prod data backups
+.claude/

@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
-import SentiMark from './SentiMark'
+import SentinelMark from './SentinelMark'
 
 interface AuthCardProps {
   mode: 'login' | 'signup'
@@ -36,8 +36,8 @@ export default function AuthCard({ mode }: AuthCardProps) {
     <div className="bg-ambient flex min-h-screen items-center justify-center px-6 py-16">
       <div className="w-full max-w-md">
         <Link href="/" className="mb-8 flex items-center justify-center gap-3">
-          <SentiMark size={40} />
-          <span className="text-xl font-semibold tracking-wide">Senti</span>
+          <SentinelMark size={40} />
+          <span className="text-xl font-semibold tracking-wide">Sentinel</span>
         </Link>
 
         <div className="glass-strong rounded-[28px] p-8">
@@ -46,7 +46,7 @@ export default function AuthCard({ mode }: AuthCardProps) {
           </h1>
           <p className="mt-2 text-sm text-white/50">
             {isSignup
-              ? 'One account for every device you install Senti on.'
+              ? 'One account for every device you install Sentinel on.'
               : 'Sign in to manage your devices and voice profile.'}
           </p>
 
@@ -98,7 +98,7 @@ export default function AuthCard({ mode }: AuthCardProps) {
             {isSignup ? (
               <>Already have an account? <Link href="/login" className="text-accent hover:underline">Sign in</Link></>
             ) : (
-              <>New to Senti? <Link href="/signup" className="text-accent hover:underline">Create an account</Link></>
+              <>New to Sentinel? <Link href="/signup" className="text-accent hover:underline">Create an account</Link></>
             )}
           </div>
         </div>

@@ -6,7 +6,7 @@ import { rateLimit, clientIp, type RateLimit } from './ratelimit'
 /**
  * The gate in front of every /api/device/* route.
  *
- * These endpoints serve the Senti desktop app, which makes its calls from the
+ * These endpoints serve the Sentinel desktop app, which makes its calls from the
  * Electron MAIN process (Node) — not from a web page. So:
  *
  *  - A legitimate request carries NO Origin header. Browsers always attach one

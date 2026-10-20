@@ -3,17 +3,17 @@
 @tailwind utilities;
 
 :root {
-  --bg-primary: #0a0a0f;
-  --bg-secondary: #12121a;
-  --accent: #00d4ff;
-  --accent-glow: rgba(0, 212, 255, 0.25);
-  --accent-muted: rgba(0, 212, 255, 0.12);
-  --accent-strong: rgba(0, 212, 255, 0.7);
-  --text-primary: #f0f0f5;
-  --text-secondary: #9090a8;
-  --text-muted: #505068;
-  --glass-bg: rgba(18, 18, 26, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.06);
+  --bg-primary: #0b0c0f;
+  --bg-secondary: #15161b;
+  --accent: #6b7a8f;
+  --accent-glow: rgba(107, 122, 143, 0.25);
+  --accent-muted: rgba(107, 122, 143, 0.14);
+  --accent-strong: #8a97a8;
+  --text-primary: #e8e9ec;
+  --text-secondary: #9a9ca3;
+  --text-muted: #5a5c63;
+  --glass-bg: rgba(21, 22, 27, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.08);
 
   --font-sans: -apple-system, Segoe UI, system-ui, sans-serif;
   --font-mono: Consolas, Courier New, monospace;
@@ -67,34 +67,23 @@ html, body, #root {
   border-radius: 2px;
 }
 
-/* ── Futuristic glow & glass utilities ── */
+/* ── Graphite + steel: flat utilities, no glow ── */
 
 @layer utilities {
   .text-glow {
-    text-shadow:
-      0 0 20px var(--accent-glow),
-      0 0 40px var(--accent-glow),
-      0 0 80px color-mix(in srgb, var(--accent-glow) 50%, transparent);
+    color: var(--accent);
   }
 
   .text-glow-strong {
-    text-shadow:
-      0 0 10px var(--accent-strong),
-      0 0 30px var(--accent-strong),
-      0 0 60px var(--accent-strong);
+    color: var(--accent-strong);
   }
 
   .glow-ring {
-    box-shadow:
-      0 0 15px var(--accent-glow),
-      0 0 30px var(--accent-glow);
+    box-shadow: 0 0 0 1px var(--accent-muted);
   }
 
   .glow-ring-strong {
-    box-shadow:
-      0 0 20px var(--accent-strong),
-      0 0 40px var(--accent-strong),
-      0 0 80px var(--accent-strong);
+    box-shadow: 0 0 0 1px var(--accent-strong);
   }
 
   .glass {
@@ -105,7 +94,7 @@ html, body, #root {
   }
 
   .glass-strong {
-    background: rgba(10, 10, 15, 0.8);
+    background: rgba(13, 14, 17, 0.8);
     backdrop-filter: blur(32px);
     -webkit-backdrop-filter: blur(32px);
     border: 1px solid rgba(255, 255, 255, 0.08);
@@ -120,7 +109,6 @@ html, body, #root {
   }
   .glass-hoverable:hover {
     border-color: var(--accent-muted);
-    box-shadow: 0 0 30px var(--accent-glow), inset 0 0 30px var(--accent-muted);
   }
 
   /* Scanline overlay for cyber feel */
@@ -135,13 +123,9 @@ html, body, #root {
     pointer-events: none;
   }
 
-  /* Gradients for depth layers */
+  /* Flat graphite background — no ambient glow wash. */
   .bg-deep-gradient {
-    background:
-      radial-gradient(ellipse at 20% 50%, rgba(0, 212, 255, 0.06) 0%, transparent 50%),
-      radial-gradient(ellipse at 80% 50%, rgba(0, 212, 255, 0.04) 0%, transparent 50%),
-      radial-gradient(ellipse at 50% 100%, rgba(0, 212, 255, 0.03) 0%, transparent 40%),
-      var(--bg-primary);
+    background: var(--bg-primary);
   }
 
   .bg-noise {
@@ -187,8 +171,7 @@ html, body, #root {
     box-shadow: 0 4px 14px rgba(0,0,0,0.45);
   }
   .toggle.on {
-    background: linear-gradient(90deg, var(--accent) 0%, #00a3ff 100%);
-    box-shadow: 0 6px 30px var(--accent-glow);
+    background: var(--accent);
   }
   .toggle.on .knob {
     transform: translateX(18px);
@@ -223,7 +206,6 @@ html, body, #root {
     background: var(--accent);
     border-radius: 50%;
     margin-top: -6px;
-    box-shadow: 0 6px 20px var(--accent-glow);
   }
   input[type='range']:focus { outline: none; }
 }

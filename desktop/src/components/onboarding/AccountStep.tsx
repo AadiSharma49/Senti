@@ -1,17 +1,15 @@
 import React, { useState } from 'react'
 import { useDeviceStore } from '../../state/deviceStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
-import { ensureVoiceprint } from '../../services/voiceprintSync'
 import { apiBase } from '../../config'
 
 /**
  * First step of setup: link this machine to a Senti account.
  *
- * This comes BEFORE the PIN and the voice, deliberately. The pairing token is
- * what lets Senti greet you by name, sync your voiceprint across machines, and
- * reach the assistant at all. A user who skipped it used to sail through the
- * whole wizard and only discover, later and silently, that Senti could not
- * think or speak.
+ * This comes first, deliberately. The pairing token is what lets Senti
+ * greet you by name and reach the assistant at all. A user who skipped it
+ * used to sail through the whole wizard and only discover, later and
+ * silently, that Senti could not think or speak.
  *
  * The token is verified against the server immediately — a typo fails here,
  * where it can be fixed, rather than mysteriously later.
@@ -43,18 +41,17 @@ export default function AccountStep({ onLinked }: AccountStepProps) {
     }
 
     // Prove the token actually works before letting the user move on.
-    const ok = await syncPolicyFromDashboard()
-    if (!ok) {
+    const result = await syncPolicyFromDashboard()
+    if (!result.ok) {
       await unlink()
       setError(
-        `That token was rejected by ${apiBase()}. Copy it again from your dashboard — each token can only be used by one device.`
+        result.error ||
+          `That token was rejected by ${apiBase()}. Copy it again from your dashboard — each token can only be used by one device.`
       )
       setBusy(false)
       return
     }
 
-    // A machine that already has a voiceprint on the account skips enrollment.
-    await ensureVoiceprint()
     setBusy(false)
     onLinked()
   }

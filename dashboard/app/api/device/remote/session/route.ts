@@ -23,6 +23,15 @@ export const runtime = 'nodejs'
 const MAX_PIN_ATTEMPTS = 5
 /** A code that lives forever is barely a second factor. */
 const CODE_TTL_MS = 10 * 60_000
+/**
+ * Starting a fresh session used to hand out a fresh 5-attempt budget for
+ * free — ending the locked-out session and immediately creating a new one
+ * reset `attempts` to 0, so the real limit on guesses was unlimited as long
+ * as you kept hitting `start`. This is how long a target stays locked after
+ * a session dies from exhausting its attempts, before a new session against
+ * it is allowed at all.
+ */
+const LOCKOUT_COOLDOWN_MS = 10 * 60_000
 
 /** "ad***@gmail.com" — enough to recognise your own inbox, not to learn it. */
 function maskEmail(email: string): string {
@@ -60,6 +69,30 @@ export async function POST(req: Request) {
         { error: 'no-pin', message: `Remote control isn't set up on ${target.name}. Set a remote PIN in its Control Center first.` },
         { status: 409, headers: NO_STORE }
       )
+
+    // A target that just locked out a brute-force attempt stays locked for a
+    // while, rather than letting the next `start` call hand out a brand new
+    // 5-guess budget for free.
+    const recentLockout = await prisma.remoteSession.findFirst({
+      where: {
+        targetDeviceId: targetId,
+        state: 'ended',
+        attempts: { gte: MAX_PIN_ATTEMPTS },
+        endedAt: { gte: new Date(Date.now() - LOCKOUT_COOLDOWN_MS) },
+      },
+      orderBy: { endedAt: 'desc' },
+    })
+    if (recentLockout?.endedAt) {
+      const retryAfterMs = Math.max(0, LOCKOUT_COOLDOWN_MS - (Date.now() - recentLockout.endedAt.getTime()))
+      return NextResponse.json(
+        {
+          error: 'locked-out',
+          message: `Too many wrong attempts on ${target.name} recently. Try again in a few minutes.`,
+          retryAfterMs,
+        },
+        { status: 429, headers: NO_STORE }
+      )
+    }
 
     // One live session per target: taking over replaces the old one.
     await prisma.remoteSession.updateMany({

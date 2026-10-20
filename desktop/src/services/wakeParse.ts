@@ -1,25 +1,25 @@
 /**
- * Deciding whether you were talking to Senti.
+ * Deciding whether you were talking to Sentinel.
  *
  * Kept apart from wakeStore on purpose: this is pure text in, decision out,
  * with no microphone, no model and no browser — so it can be tested directly,
- * which matters because a bug here is silent. Senti just doesn't answer, and
+ * which matters because a bug here is silent. Sentinel just doesn't answer, and
  * you're left wondering whether the mic is broken.
  *
  * The rule is deliberately loose. You should not have to remember a magic
- * phrase — "hey Senti", "wake up", "buddy", or just "hello" all work, and a
+ * phrase — "hey Sentinel", "wake up", "buddy", or just "hello" all work, and a
  * plain order like "open Chrome" or "can you clean my system" works with no
  * address at all, because nobody says that to a person in the room.
  *
  * What it will NOT do is answer ordinary questions or chit-chat without being
  * addressed — "how are you", "what time is it" — or a private conversation
- * would be transcribed and sent off to answer something nobody asked Senti.
+ * would be transcribed and sent off to answer something nobody asked Sentinel.
  */
 
 /** The name, plus the ways Whisper mishears it. */
 const NAME_PATTERNS = [
-  'senti', 'sentai', 'sente', 'sentie', 'senty', 'sensei', 'sanity', 'centi',
-  'century', 'sentry', 'santi', 'shanti', 'sentio', 'sentini', 'saint e', 'sent e',
+  'sentinel', 'sentinal', 'sentinol', 'sentanel', 'sentenal', 'sentnel',
+  'sennel', 'centennial', 'sentimental', 'sent in el', 'sent in all', 'cent in el',
 ]
 
 /** Other ways of addressing it — you don't have to use the name. */
@@ -32,7 +32,7 @@ const ADDRESS_PATTERNS = [
  *
  * "Can you hear me" is the first thing anyone says to test an assistant, and
  * it did nothing: politeness stripping left "hear me", which isn't a command
- * verb, so Senti stayed silent while the Control Center cheerfully displayed
+ * verb, so Sentinel stayed silent while the Control Center cheerfully displayed
  * the words it had just heard. Nobody says these to themselves — if one is
  * spoken, it was spoken TO something.
  */
@@ -44,18 +44,18 @@ const DIRECT_ADDRESS = [
 
 /**
  * Homophones that are also ordinary English. "Send it to John" must not wake
- * Senti, but "send it" alone is a plausible mishearing of the name — so these
+ * Sentinel, but "send it" alone is a plausible mishearing of the name — so these
  * only count when they are the WHOLE utterance.
  */
 const BARE_ONLY_PATTERNS = ['send it', 'set me', 'sent it', 'sent me']
 
 /**
- * Run-up that can precede the name: "HEY Senti", "OK Senti, um, open Chrome".
+ * Run-up that can precede the name: "HEY Sentinel", "OK Sentinel, um, open Chrome".
  *
  * Non-English greetings are here too, because transcription already handles
  * any language — Whisper auto-detects — so the only thing standing between a
  * Hindi or Spanish speaker and a working assistant was this list. Addressing
- * Senti by name works in every language; bare imperatives ("open Chrome" with
+ * Sentinel by name works in every language; bare imperatives ("open Chrome" with
  * no name) are still English-only, since those verbs are matched literally.
  */
 const FILLERS = [
@@ -67,7 +67,7 @@ const FILLERS = [
   'marhaba', 'salam', 'privet', 'zdravstvuyte',
 ]
 
-/** A greeting on its own is addressed to Senti; "ok" or "um" on its own is not. */
+/** A greeting on its own is addressed to Sentinel; "ok" or "um" on its own is not. */
 const GREETINGS = [
   'hey', 'hi', 'hello', 'yo',
   'namaste', 'namaskar', 'hola', 'oye', 'bonjour', 'salut', 'hallo',
@@ -87,7 +87,7 @@ const POLITE_LEADS = [
  * Imperatives that only make sense aimed at a machine. A sentence that STARTS
  * with one of these is treated as a command even with no address — "open
  * Chrome", "lock my PC". Question words are deliberately absent: "how are you"
- * and "what time is it" are chit-chat and stay ignored unless Senti is named.
+ * and "what time is it" are chit-chat and stay ignored unless Sentinel is named.
  */
 const COMMAND_VERBS = [
   'open', 'close', 'clean', 'delete', 'lock', 'unlock', 'mute', 'unmute',
@@ -101,7 +101,7 @@ function normalize(word: string): string {
 }
 
 /**
- * Phrases that dismiss Senti while it's dormant — "close", "shut up",
+ * Phrases that dismiss Sentinel while it's dormant — "close", "shut up",
  * "go away", "hide", etc.
  *
  * Like COMMAND_VERBS, these are things nobody says to a person in the room.
@@ -119,13 +119,13 @@ const DISMISS_PHRASES = [
 ]
 
 /**
- * Phrases that bring Senti back while it's dismissed — "hey bro",
+ * Phrases that bring Sentinel back while it's dismissed — "hey bro",
  * "come back", "senti", etc. Same logic as wake-up: the name or a
  * friendly address is enough.
  */
 const RESTORE_PHRASES = [
-  'hey bro', 'hey buddy', 'hey senti', 'come back', 'wake up',
-  'you back', 'are you there', 'senti', 'buddy', 'bro', 'mate',
+  'hey bro', 'hey buddy', 'hey sentinel', 'come back', 'wake up',
+  'you back', 'are you there', 'sentinel', 'buddy', 'bro', 'mate',
   'hey', 'hi', 'hello', 'yo', 'you there', 'listen up',
 ]
 
@@ -134,14 +134,14 @@ export interface DismissMatch {
 }
 
 export interface WakeMatch {
-  /** Was Senti addressed at all? */
+  /** Was Sentinel addressed at all? */
   woke: boolean
   /** What was asked, with the address stripped off. Empty means no command. */
   command: string
 }
 
 /**
- * Split however you addressed Senti off the front of what you said.
+ * Split however you addressed Sentinel off the front of what you said.
  *
  * Matching runs on a normalized copy, but the command is sliced out of the
  * ORIGINAL text, so capitalisation and apostrophes survive into the request —
@@ -171,9 +171,9 @@ export function parseWake(textRaw: string): WakeMatch {
   let norm = words.map(normalize)
 
   /**
-   * The name at the END counts too: "open Chrome, Senti" is how people
-   * actually talk. Only trailing, and only on a short phrase — "tell Senti I
-   * said hi" is ABOUT Senti, not to it, and must stay ignored.
+   * The name at the END counts too: "open Chrome, Sentinel" is how people
+   * actually talk. Only trailing, and only on a short phrase — "tell Sentinel I
+   * said hi" is ABOUT Sentinel, not to it, and must stay ignored.
    */
   let namedAtEnd = false
   if (norm.length > 1 && norm.length <= 8 && NAME_PATTERNS.includes(norm[norm.length - 1])) {
@@ -215,7 +215,7 @@ export function parseWake(textRaw: string): WakeMatch {
   //
   // Politeness is deliberately NOT eaten here. It's only looked past further
   // down, to spot a verb hiding behind "can you". Consuming it would mangle
-  // ordinary speech — "hey Senti, can you hear me" would arrive as "hear me",
+  // ordinary speech — "hey Sentinel, can you hear me" would arrive as "hear me",
   // which is a different question.
   let i = 0
   let woke = false
@@ -237,10 +237,10 @@ export function parseWake(textRaw: string): WakeMatch {
 
   const command = words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '').trim()
 
-  // Named or greeted Senti outright — at the front, or trailing on the end.
+  // Named or greeted Sentinel outright — at the front, or trailing on the end.
   if (woke || namedAtEnd) return { woke: true, command }
 
-  // "Hello." on its own is aimed at Senti — nothing else is left for it to be.
+  // "Hello." on its own is aimed at Sentinel — nothing else is left for it to be.
   if (greeted && i >= norm.length) return { woke: true, command: '' }
 
   // A bare imperative — "open Chrome", "can you clean my system" — is a command

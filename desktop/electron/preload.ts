@@ -12,6 +12,8 @@ import { contextBridge, ipcRenderer } from 'electron'
 contextBridge.exposeInMainWorld('senti', {
   platform: () => ipcRenderer.invoke('senti:get-platform'),
   deviceInfo: () => ipcRenderer.invoke('senti:device-info'),
+  /** A fingerprint of the physical machine (survives reinstall) — used to stop one PC being linked to two different accounts. */
+  hardwareId: () => ipcRenderer.invoke('senti:hardware-id'),
   quit: () => ipcRenderer.invoke('senti:quit'),
 
   /** 'setup' first run, 'panel' control center, 'hud' the floating orb. */
@@ -75,6 +77,7 @@ contextBridge.exposeInMainWorld('senti', {
 
   /** Desktop capture source ids for the live remote screen view. */
   screenSources: () => ipcRenderer.invoke('senti:screen-sources'),
+  setScreenSource: (displayId: string) => ipcRenderer.invoke('senti:set-screen-source', displayId),
 
   /** OS clipboard (text only), for cross-device clipboard sync. */
   clipboardRead: () => ipcRenderer.invoke('senti:clipboard-read'),

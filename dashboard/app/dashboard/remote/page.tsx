@@ -7,7 +7,7 @@ import RemoteView from '@/components/RemoteView'
 export const dynamic = 'force-dynamic'
 
 /**
- * Remote — check your machines from your phone. Shows what Senti is doing on
+ * Remote — check your machines from your phone. Shows what Sentinel is doing on
  * each one right now, live, and refreshes on its own so you can leave it open
  * while a task runs.
  */
@@ -30,7 +30,7 @@ export default async function RemotePage() {
     <div>
       <PageHeader
         title="Remote"
-        subtitle="What Senti is doing on your machines, right now. Leave it open while a task runs."
+        subtitle="What Sentinel is doing on your machines, right now. Leave it open while a task runs."
       />
       <RemoteView initial={initial} />
     </div>

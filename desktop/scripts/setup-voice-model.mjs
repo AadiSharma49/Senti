@@ -1,12 +1,11 @@
 /**
- * One-time setup for the on-device voice models.
+ * One-time setup for the on-device voice model.
  *
  * Downloads into public/models/ so the app runs fully offline:
- *   - WeSpeaker ResNet34-LM  → speaker verification (WHO is speaking)
- *   - Whisper tiny.en (ONNX) → speech recognition (WHAT was said)
+ *   - Whisper tiny (ONNX, multilingual) → speech recognition (WHAT was said)
  *
  * (The onnxruntime WASM runtime itself is bundled by Vite from
- * node_modules — see voiceEmbeddingEngine.ts.)
+ * node_modules.)
  *
  * Run with: npm run setup:voice
  */
@@ -23,15 +22,6 @@ const MODELS_DIR = path.join(root, 'public', 'models')
 
 // Each model mirrors its HuggingFace repo into public/models/<localId>/.
 const MODELS = [
-  {
-    localId: 'wespeaker-voxceleb-resnet34-LM',
-    base: 'https://huggingface.co/onnx-community/wespeaker-voxceleb-resnet34-LM/resolve/main',
-    files: [
-      'config.json',
-      'preprocessor_config.json',
-      'onnx/model.onnx', // fp32, ~26 MB — best accuracy for security use
-    ],
-  },
   {
     // Multilingual Whisper (99 languages) so the assistant understands any language.
     localId: 'whisper-tiny',

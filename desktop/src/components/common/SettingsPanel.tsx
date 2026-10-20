@@ -2,13 +2,10 @@ import React, { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useUiStore } from '../../state/uiStore'
 import { useSettingsStore } from '../../state/settingsStore'
-import { useVoiceProfileStore } from '../../state/voiceProfileStore'
 import { useDeviceStore } from '../../state/deviceStore'
 import { useWakeStore } from '../../state/wakeStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
-import { uploadVoiceprint, ensureVoiceprint } from '../../services/voiceprintSync'
 import { apiBase, apiOverride, setApiBase } from '../../config'
-import VoiceEnrollment from '../onboarding/VoiceEnrollment'
 import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 import { api } from '../../services/api'
@@ -37,9 +34,6 @@ export default function SettingsPanel() {
   const micThreshold = useWakeStore((s) => s.micThreshold)
   const speaking = useWakeStore((s) => s.speaking)
   const setPermissions = useSettingsStore((s) => s.setPermissions)
-  const voiceProfile = useVoiceProfileStore((s) => s.profile)
-  const clearVoiceProfile = useVoiceProfileStore((s) => s.clearProfile)
-  const [enrolling, setEnrolling] = useState(false)
   const [screenSharing, setScreenSharing] = useState(false)
   useEffect(() => onScreenShareChange(setScreenSharing), [])
 
@@ -55,7 +49,7 @@ export default function SettingsPanel() {
   const [serverInput, setServerInput] = useState(apiOverride())
   const [serverMsg, setServerMsg] = useState<string | null>(null)
 
-  // What Senti remembers about you — loaded fresh whenever the panel opens.
+  // What Sentinel remembers about you — loaded fresh whenever the panel opens.
   const [memories, setMemories] = useState<{ id: string; text: string; createdAt: number }[]>([])
   useEffect(() => {
     if (!open) return
@@ -70,7 +64,7 @@ export default function SettingsPanel() {
   }, [open])
 
   // Microphone choice. Windows' default input is frequently the wrong device,
-  // and that — not the wake word — is usually why Senti "can't hear you".
+  // and that — not the wake word — is usually why Sentinel "can't hear you".
   const [lang, setLangState] = useState(savedLang())
   const [micList, setMicList] = useState<{ id: string; label: string }[]>([])
   const [micId, setMicId] = useState(AudioCapture.preferredDeviceId())
@@ -135,6 +129,25 @@ export default function SettingsPanel() {
       setPinMsg('Remote control turned off for this PC.')
       setTimeout(() => setPinMsg(''), 6000)
     }
+  }
+
+  // Which monitor gets shared/controlled, when this PC has more than one.
+  const [screens, setScreens] = useState<{ id: string; name: string; displayId: string; selected: boolean }[]>([])
+  useEffect(() => {
+    if (!open) return
+    let alive = true
+    void (async () => {
+      const list = await window.senti?.screenSources?.()
+      if (alive && list) setScreens(list)
+    })()
+    return () => {
+      alive = false
+    }
+  }, [open])
+
+  const chooseScreen = async (displayId: string) => {
+    const ok = await window.senti?.setScreenSource?.(displayId)
+    if (ok) setScreens((prev) => prev.map((s) => ({ ...s, selected: s.displayId === displayId })))
   }
 
   // Optional TURN relay for networks that block a direct peer connection.
@@ -231,7 +244,7 @@ export default function SettingsPanel() {
       setLearnMsg(
         facts.length
           ? `Learned ${facts.length} new thing${facts.length === 1 ? '' : 's'} about you.`
-          : "Nothing new yet — Senti needs more time watching how you work."
+          : "Nothing new yet — Sentinel needs more time watching how you work."
       )
     } catch {
       setLearnMsg("Couldn't reflect just now.")
@@ -241,7 +254,7 @@ export default function SettingsPanel() {
   }
 
   const clearAllMemories = async () => {
-    if (!window.confirm('Make Senti forget everything it knows about you?')) return
+    if (!window.confirm('Make Sentinel forget everything it knows about you?')) return
     const m = await window.senti?.memoryClear?.()
     if (Array.isArray(m)) setMemories(m)
   }
@@ -260,21 +273,21 @@ export default function SettingsPanel() {
       return
     }
 
-    const ok = await syncPolicyFromDashboard()
-    if (ok) {
-      // Push a local voiceprint up, or pull the account's down if this
-      // device doesn't have one yet.
-      if (useVoiceProfileStore.getState().profile) await uploadVoiceprint()
-      else await ensureVoiceprint()
-    } else {
+    const result = await syncPolicyFromDashboard()
+    if (!result.ok) {
       // A bad token is worse than none — don't leave it sitting there.
       await unlinkDevice()
     }
 
     setLinkMsg(
-      ok
+      result.ok
         ? { ok: true, text: 'Linked. Synced with your account.' }
-        : { ok: false, text: 'Could not link. Check the token, and that the Senti server is reachable.' }
+        : {
+            ok: false,
+            text:
+              result.error ||
+              'Could not link. Check the token, and that the Sentinel server is reachable.',
+          }
     )
   }
 
@@ -284,11 +297,8 @@ export default function SettingsPanel() {
   }
 
   const handleReset = () => {
-    const ok = window.confirm(
-      'Reset this device? This clears the local voice profile and PIN and re-runs first-time setup.'
-    )
+    const ok = window.confirm('Reset this device? This re-runs first-time setup.')
     if (!ok) return
-    clearVoiceProfile()
     resetConfiguration()
     close()
   }
@@ -312,10 +322,10 @@ export default function SettingsPanel() {
         <div className="flex items-center gap-3">
           <span className="relative flex h-9 w-9 items-center justify-center">
             <span className="absolute inset-0 rounded-full border border-accent/50" />
-            <span className="h-2.5 w-2.5 rounded-full bg-accent shadow-[0_0_12px_rgba(0,212,255,0.9)]" />
+            <span className="h-2.5 w-2.5 rounded-full bg-accent" />
           </span>
           <div>
-            <div className="font-display text-lg font-semibold tracking-[0.14em] text-white">SENTI</div>
+            <div className="font-display text-lg font-semibold tracking-[0.14em] text-white">SENTINEL</div>
             <div className="text-[0.6rem] uppercase tracking-[0.3em] text-accent/80">Control Center</div>
           </div>
         </div>
@@ -329,74 +339,24 @@ export default function SettingsPanel() {
 
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-5 overflow-auto px-7 py-7 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">Your voice</h4>
-          <p className="section-sub mb-3">Senti signs you in by your voice. Enroll or re-enroll here.</p>
-          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="font-semibold text-white">Voiceprint</div>
-                <div className={`text-xs mt-1 ${voiceProfile ? 'text-green-400' : 'text-secondary'}`}>
-                  {voiceProfile
-                    ? `Enrolled — ${voiceProfile.sampleCount} samples`
-                    : 'Not enrolled'}
-                </div>
-              </div>
-              <div className="text-xs text-secondary">Primary</div>
-            </div>
-            {enrolling ? (
-              <div className="mt-3">
-                <VoiceEnrollment onComplete={() => setEnrolling(false)} />
-                <button
-                  onClick={() => setEnrolling(false)}
-                  className="mt-3 rounded-md border border-white/10 px-3 py-1 text-xs text-white/70 hover:bg-white/5"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="mt-3 flex items-center gap-2">
-                <button
-                  onClick={() => setEnrolling(true)}
-                  className="px-3 py-1 rounded-md bg-accent text-black text-xs glow-ring"
-                >
-                  {voiceProfile ? 'Re-enroll Voice' : 'Enroll Voice'}
-                </button>
-                {voiceProfile && (
-                  <button
-                    onClick={clearVoiceProfile}
-                    className="px-3 py-1 rounded-md border border-red-400/30 text-red-300 text-xs hover:bg-red-500/10"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-          <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
-            <div className="font-semibold text-white">PIN</div>
-            <div className="text-xs text-green-400">Configured · fallback</div>
-          </div>
-        </motion.section>
-
-        <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">What Senti can do</h4>
+          <h4 className="section-title">What Sentinel can do</h4>
           <p className="section-sub mb-3">
-            Senti only ever does what you switch on here.
+            Sentinel only ever does what you switch on here.
           </p>
           <div className="grid gap-2">
             {([
               {
                 key: 'alwaysListening',
-                title: 'Talk to Senti anywhere',
+                title: 'Talk to Sentinel anywhere',
                 hint: 'Say its name, say hello, or press Ctrl+Shift+Space — then just talk, like a call. Listening happens only on this PC; audio is never uploaded.',
               },
               { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
               { key: 'files', title: 'Open files and folders', hint: '“Open my downloads”, “find my resume”. Opens them — never edits or deletes.' },
               { key: 'seeScreen', title: 'Look at my screen when I ask', hint: '“Take a screenshot”, “help me with this”, “what does this error mean”. Only ever when you ask — nothing runs in the background.' },
               { key: 'screenShare', title: 'Share screen to my devices', hint: 'Stream this PC live to your own phone/laptop. Shows a red badge while active.' },
-              { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Senti devices.' },
+              { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Sentinel devices.' },
               { key: 'remoteControl', title: 'Allow remote control of this PC', hint: 'Let another of your devices drive this mouse and keyboard. Needs a remote PIN below. A banner shows the whole time, and you can stop it instantly.' },
-              { key: 'proactive', title: 'Let Senti talk to me first', hint: 'It notices what you’re doing and speaks up now and then. Reads the window title only — never your screen — and stays quiet for long stretches.' },
+              { key: 'proactive', title: 'Let Sentinel talk to me first', hint: 'It notices what you’re doing and speaks up now and then. Reads the window title only — never your screen — and stays quiet for long stretches.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },
               { key: 'closeApps', title: 'Close running apps', hint: '“Close Chrome”. Off by default.' },
               { key: 'cleanup', title: 'Delete temporary files', hint: 'Frees disk space. Off by default.' },
@@ -452,7 +412,7 @@ export default function SettingsPanel() {
                     </div>
 
                     {/* Speech is transcribed on-device and auto-detects the
-                        language; this is which one Senti replies in. */}
+                        language; this is which one Sentinel replies in. */}
                     <div className="flex items-center gap-2">
                       <span className="shrink-0 text-white/35">Language</span>
                       <select
@@ -483,7 +443,7 @@ export default function SettingsPanel() {
                         />
                         {/* The line your voice has to cross to count as speech.
                             Without it the bar shows the mic works but not
-                            whether Senti considers you audible. */}
+                            whether Sentinel considers you audible. */}
                         <div
                           className="absolute top-0 h-full w-px bg-white/70"
                           style={{ left: `${Math.round(micThreshold * 100)}%` }}
@@ -504,7 +464,7 @@ export default function SettingsPanel() {
                     <div className="text-white/30">
                       Stays on this PC. If the bar moves but nothing lands here, it can hear
                       you and can&apos;t make out words. To start talking, say &ldquo;hey
-                      Senti&rdquo; or just &ldquo;hello&rdquo;, give it an order like
+                      Sentinel&rdquo; or just &ldquo;hello&rdquo;, give it an order like
                       &ldquo;open Chrome&rdquo;, or press Ctrl+Shift+Space — then keep
                       talking, no name needed. Say &ldquo;stop&rdquo; when you&apos;re done.
                     </div>
@@ -540,7 +500,7 @@ export default function SettingsPanel() {
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <div className="mb-3 flex items-center justify-between">
             <div>
-              <h4 className="section-title">What Senti remembers</h4>
+              <h4 className="section-title">What Sentinel remembers</h4>
               <p className="section-sub">
                 Facts it keeps about you, so it stops asking twice — some you told it, some it
                 worked out from how you actually use this PC. All stored only on this machine.
@@ -566,7 +526,7 @@ export default function SettingsPanel() {
           {learnMsg && <div className="mb-2 text-xs text-accent">{learnMsg}</div>}
           {memories.length === 0 ? (
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/45">
-              Nothing yet. Tell Senti something about you or your setup — &ldquo;my main drive
+              Nothing yet. Tell Sentinel something about you or your setup — &ldquo;my main drive
               is D&rdquo;, &ldquo;I hate apps that auto-start&rdquo; — and it&apos;ll keep it.
               It also works this out on its own over time from how you actually use the PC.
             </div>
@@ -592,14 +552,14 @@ export default function SettingsPanel() {
         </motion.section>
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
-          <h4 className="section-title">How Senti works</h4>
+          <h4 className="section-title">How Sentinel works</h4>
           <p className="section-sub mb-3">Whether you watch tasks happen, or just hear the result.</p>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="font-semibold text-white">Show me the work</div>
                 <div className="mt-1 text-xs text-secondary">
-                  Senti opens the folder and clears it on screen, instead of doing it silently
+                  Sentinel opens the folder and clears it on screen, instead of doing it silently
                   and reporting back. Slower, and moving your mouse mid-task can interrupt it —
                   it falls back to doing it quietly if that happens.
                 </div>
@@ -627,13 +587,13 @@ export default function SettingsPanel() {
             <h4 className="section-title">My devices</h4>
             <p className="section-sub mb-3">
               Every machine on your account — watch and control them from right here. Install
-              Senti on your laptop, link the same account, and it shows up too.
+              Sentinel on your laptop, link the same account, and it shows up too.
             </p>
             {peers.length <= 1 ? (
               <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-xs text-white/45">
                 {peers.length === 0
                   ? 'Loading your devices…'
-                  : 'Just this machine so far. Install Senti on another device and link the same account to control it from here.'}
+                  : 'Just this machine so far. Install Sentinel on another device and link the same account to control it from here.'}
               </div>
             ) : (
               <div className="grid gap-2">
@@ -799,6 +759,34 @@ export default function SettingsPanel() {
               {pinMsg && <div className="mt-2 text-xs text-accent">{pinMsg}</div>}
             </div>
 
+            {/* Which physical monitor gets shared/controlled, on a multi-monitor PC. */}
+            {screens.length > 1 && (
+              <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="font-semibold text-white">Monitor to share</div>
+                <p className="mt-1 text-xs text-secondary">
+                  This PC has {screens.length} monitors. Pick which one shows up — and can be
+                  clicked on — when another device drives this machine.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {screens.map((s, i) => (
+                    <button
+                      key={s.id}
+                      onClick={() => void chooseScreen(s.displayId)}
+                      disabled={!s.displayId}
+                      className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                        s.selected
+                          ? 'border-accent bg-accent text-black'
+                          : 'border-white/15 text-white/80 hover:bg-white/10'
+                      }`}
+                    >
+                      {s.name || `Monitor ${i + 1}`}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-2 text-xs text-secondary/70">Takes effect the next time a remote session starts.</p>
+              </div>
+            )}
+
             {/* TURN relay, for networks where a direct link can't form. */}
             <div className="mt-3 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div className="font-semibold text-white">TURN relay (optional)</div>
@@ -852,7 +840,7 @@ export default function SettingsPanel() {
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <h4 className="section-title">Account</h4>
           <p className="section-sub mb-3">
-            Link this device to your Senti account so it follows your dashboard settings.
+            Link this device to your Sentinel account so it follows your dashboard settings.
           </p>
           {deviceLinked ? (
             <div className="rounded-2xl border border-green-400/30 bg-green-500/10 p-4">
@@ -889,7 +877,7 @@ export default function SettingsPanel() {
           )}
 
           <div className="mt-5 border-t border-white/10 pt-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-secondary">Senti server</div>
+            <div className="text-xs uppercase tracking-[0.2em] text-secondary">Sentinel server</div>
             <p className="section-sub mb-2 mt-1">
               Where this device talks to. Leave blank to use the default ({apiBase()}).
             </p>
@@ -897,7 +885,7 @@ export default function SettingsPanel() {
               <input
                 value={serverInput}
                 onChange={(e) => setServerInput(e.target.value)}
-                placeholder="https://your-senti.vercel.app"
+                placeholder="https://your-sentinel.vercel.app"
                 className="input-glass"
               />
               <button

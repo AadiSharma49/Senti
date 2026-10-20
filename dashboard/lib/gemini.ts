@@ -1,5 +1,5 @@
 /**
- * Google Gemini client — powers Senti's assistant (greetings + conversation).
+ * Google Gemini client — powers Sentinel's assistant (greetings + conversation).
  * Uses the Generative Language REST API with optional Google Search grounding
  * so the assistant can answer with real, current information.
  *
@@ -60,7 +60,7 @@ export async function geminiGenerate(opts: GenOpts): Promise<string | null> {
         // 429 means this key has no quota left — every model will say the same,
         // so stop rather than hammering four of them for the same answer.
         if (res.status === 429) {
-          console.error('[senti] Gemini quota exhausted — live web answers unavailable')
+          console.error('[sentinel] Gemini quota exhausted — live web answers unavailable')
           return null
         }
         // The search tool isn't available on every model/tier — retry without it.

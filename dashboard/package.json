@@ -1,8 +1,8 @@
 {
-  "name": "senti-dashboard",
+  "name": "sentinel-dashboard",
   "version": "0.1.0",
   "private": true,
-  "description": "Senti — security platform dashboard",
+  "description": "Sentinel — AI co-pilot dashboard",
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",

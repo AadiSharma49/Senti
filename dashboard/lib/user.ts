@@ -5,29 +5,28 @@ import { dbEnabled, prisma } from './prisma'
 /**
  * The signed-in person, guaranteed to exist in our database.
  *
- * Every table (Device, Policy, VoiceProfile, UnlockEvent) hangs off User by
- * foreign key, but Clerk owns the sign-up — so on their very first action a
- * real user has no row here yet, and any write blows up with a foreign key
- * violation. This upserts them from Clerk first, and captures their real name
- * so Senti can greet them by it.
+ * The Device table hangs off User by foreign key, but Clerk owns the sign-up
+ * — so on their very first action a real user has no row here yet, and any
+ * write blows up with a foreign key violation. This upserts them from Clerk
+ * first, and captures their real name so Sentinel can greet them by it.
  *
  * Call this before ANY authenticated write, and on dashboard load.
  */
 
-/** How Senti should address them out loud. First name if we have it. */
+/** How Sentinel should address them out loud. First name if we have it. */
 function displayName(user: Awaited<ReturnType<typeof currentUser>>): string | null {
   if (!user) return null
   return user.firstName || user.fullName || user.username || null
 }
 
-export interface SentiUser {
+export interface SentinelUser {
   userId: string
   name: string | null
   email: string | null
 }
 
 /** Upsert the signed-in Clerk user into the DB. Null when not signed in. */
-export async function ensureUser(): Promise<SentiUser | null> {
+export async function ensureUser(): Promise<SentinelUser | null> {
   if (!clerkEnabled || !dbEnabled) return null
   const { userId } = auth()
   if (!userId) return null

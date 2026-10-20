@@ -5,7 +5,7 @@ import { useWakeStore } from '../../state/wakeStore'
 /**
  * The orb.
  *
- * Say "Senti" anywhere and this floats up in the middle of the screen —
+ * Say "Sentinel" anywhere and this floats up in the middle of the screen —
  * concentric rings turning against each other, a core that breathes. It exists
  * so hands-free never feels like guesswork: the moment it appears, you KNOW it
  * heard you, and you can watch it think, act, and answer.
@@ -17,7 +17,7 @@ import { useWakeStore } from '../../state/wakeStore'
 const STATUS: Record<string, string> = {
   heard: 'Listening',
   working: 'Working',
-  speaking: 'Senti',
+  speaking: 'Sentinel',
 }
 
 /** Evenly spaced ticks around a ring — the "instrument" look. */
@@ -55,8 +55,8 @@ export default function WakeHud() {
   const spin = busy ? 6 : 22
   const spinBack = busy ? 9 : 30
 
-  // Idle presence: a small orb in the corner so you always see Senti is alive.
-  // Cyan + breathing when it's actively listening; dim and still when it's not
+  // Idle presence: a small orb in the corner so you always see Sentinel is alive.
+  // Accent color + breathing when it's actively listening; dim and still when it's not
   // (so you can tell at a glance whether it can hear you).
   if (!active) {
     const listening = state === 'listening'
@@ -67,12 +67,6 @@ export default function WakeHud() {
           animate={{ y: [0, -4, 0] }}
           transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
         >
-          {listening && (
-            <div
-              className="absolute inset-0 rounded-full blur-xl"
-              style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), transparent 65%)' }}
-            />
-          )}
           <svg width="112" height="112" viewBox="0 0 112 112" className="relative">
             <motion.circle
               cx="56" cy="56" r="44" fill="none" stroke="currentColor" strokeWidth="1.5"
@@ -90,7 +84,6 @@ export default function WakeHud() {
               cx="56" cy="56" fill="currentColor"
               animate={listening ? { r: [7, 9, 7], opacity: [0.6, 1, 0.6] } : { r: 7, opacity: 0.5 }}
               transition={{ duration: 2.6, repeat: listening ? Infinity : 0, ease: 'easeInOut' }}
-              style={{ filter: listening ? 'drop-shadow(0 0 12px rgba(0,212,255,0.9))' : 'none' }}
             />
           </svg>
         </motion.div>
@@ -114,12 +107,6 @@ export default function WakeHud() {
             animate={{ y: [0, -7, 0] }}
             transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
           >
-            {/* Ambient glow */}
-            <div
-              className="absolute inset-0 rounded-full blur-2xl"
-              style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.28), transparent 65%)' }}
-            />
-
             <svg width="300" height="300" viewBox="0 0 300 300" className="relative text-accent">
               {/* Outer ring, turning slowly */}
               <motion.g
@@ -183,7 +170,6 @@ export default function WakeHud() {
                 fill="currentColor"
                 animate={{ opacity: [0.55, 1, 0.55], r: [24, 29, 24] }}
                 transition={{ duration: busy ? 0.9 : 2.2, repeat: Infinity, ease: 'easeInOut' }}
-                style={{ filter: 'drop-shadow(0 0 18px rgba(0,212,255,0.95))' }}
               />
             </svg>
           </motion.div>
@@ -191,7 +177,7 @@ export default function WakeHud() {
           {/* What it's doing / what it heard */}
           <div className="-mt-2 flex max-w-[340px] flex-col items-center gap-1.5 text-center">
             <div className="text-[0.65rem] uppercase tracking-[0.4em] text-accent">
-              {STATUS[state] ?? 'Senti'}
+              {STATUS[state] ?? 'Sentinel'}
             </div>
             {detail && (
               <motion.div

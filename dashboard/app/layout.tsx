@@ -4,9 +4,9 @@ import { clerkEnabled } from '@/lib/auth'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Senti — Your voice is the key',
+  title: 'Sentinel — the AI that lives on your PC',
   description:
-    'Senti is an AI-powered desktop security platform. Unlock your computer with your voice — fully on-device, private, and secure.',
+    'Sentinel is an OS-level AI co-pilot. Talk to it and it acts — opens apps, watches your system, remembers you, and only ever has the access you give it.',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

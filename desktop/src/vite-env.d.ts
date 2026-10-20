@@ -15,27 +15,29 @@ export interface ApiResponse<T = unknown> {
   data: T
 }
 
-interface SentiAPI {
+interface SentinelAPI {
   platform: () => Promise<string>
   deviceInfo: () => Promise<{ hostname: string; platform: string }>
+  /** A fingerprint of the physical machine (survives reinstall) — used to stop one PC being linked to two different accounts. */
+  hardwareId: () => Promise<string>
   quit: () => Promise<boolean>
   /** 'setup' first run, 'panel' control center, 'hud' the floating orb. */
   setWindowMode: (mode: 'setup' | 'hud' | 'panel') => Promise<boolean>
   /** Fill the display while driving another machine, and give it back after. */
   enterFullscreen: () => Promise<boolean>
   exitFullscreen: () => Promise<boolean>
-  /** Show the HUD (big orb) while Senti is being spoken to. */
+  /** Show the HUD (big orb) while Sentinel is being spoken to. */
   hudShow: () => Promise<boolean>
   /** Shrink back to the small corner presence. */
   hudHide: () => Promise<boolean>
-  /** Fully hide the Senti window — it keeps listening in the background. */
+  /** Fully hide the Sentinel window — it keeps listening in the background. */
   hideWindow: () => Promise<boolean>
-  /** Restore the Senti window to HUD mode after it was hidden. */
+  /** Restore the Sentinel window to HUD mode after it was hidden. */
   restoreWindow: () => Promise<boolean>
   /** Start/stop the background screen watcher. */
   startScreenContext: () => Promise<boolean>
   stopScreenContext: () => Promise<boolean>
-  /** Code bridge: VS Code ↔ Senti via WebSocket. */
+  /** Code bridge: VS Code ↔ Sentinel via WebSocket. */
   startCodeBridge: () => Promise<boolean>
   stopCodeBridge: () => Promise<boolean>
   sendToVSCode: (msg: unknown) => Promise<boolean>
@@ -55,7 +57,9 @@ interface SentiAPI {
   screenshotSave: () => Promise<{ ok: boolean; path?: string }>
   screenshotGrab: () => Promise<string | null>
   /** Desktop capture source ids for the live remote screen view. */
-  screenSources: () => Promise<{ id: string; name: string }[]>
+  screenSources: () => Promise<{ id: string; name: string; displayId: string; selected: boolean }[]>
+  /** Switch which monitor gets shared/controlled (takes effect on the next session). */
+  setScreenSource: (displayId: string) => Promise<boolean>
   /** OS clipboard (text only), for cross-device clipboard sync. */
   clipboardRead: () => Promise<string>
   clipboardWrite: (text: string) => Promise<boolean>
@@ -81,7 +85,7 @@ interface SentiAPI {
   openFile: (query: string) => Promise<{ ok: boolean; label?: string; count?: number; error?: string }>
   lockWorkstation: () => Promise<boolean>
   power: (mode: string) => Promise<boolean>
-  /** The foreground window's title + process, so Senti can speak up about it. */
+  /** The foreground window's title + process, so Sentinel can speak up about it. */
   activeWindow: () => Promise<{ title: string; process: string } | null>
   /** All running apps with window titles — for "close Chrome" etc. */
   runningApps: () => Promise<Array<{ name: string; title: string }>>
@@ -100,19 +104,19 @@ interface SentiAPI {
   /** Whether this device is linked. There is no way to READ the token. */
   tokenPresent: () => Promise<boolean>
 
-  /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
-  memoryList: () => Promise<SentiMemory[]>
-  memoryAdd: (text: string) => Promise<SentiMemory[]>
-  memoryForget: (id: string) => Promise<SentiMemory[]>
-  memoryClear: () => Promise<SentiMemory[]>
+  /** Sentinel's memory — facts it keeps about you. Local file, never uploaded. */
+  memoryList: () => Promise<SentinelMemory[]>
+  memoryAdd: (text: string) => Promise<SentinelMemory[]>
+  memoryForget: (id: string) => Promise<SentinelMemory[]>
+  memoryClear: () => Promise<SentinelMemory[]>
 
-  /** The local, aggregated activity journal Senti learns your habits from. */
+  /** The local, aggregated activity journal Sentinel learns your habits from. */
   activityRecord: (process: string, title: string, minutes: number) => Promise<ActivityBucket[]>
   activityList: () => Promise<ActivityBucket[]>
   activityClear: () => Promise<ActivityBucket[]>
 }
 
-export interface SentiMemory {
+export interface SentinelMemory {
   id: string
   text: string
   createdAt: number
@@ -138,15 +142,15 @@ export interface SystemSnapshot {
   disks?: { drive: string; totalGB: number; freeGB: number; usedPct: number }[]
   topProcesses?: { name: string; memMB: number }[]
   startupApps?: number
-  /** The window in the foreground, so Senti knows what you're actually doing. */
+  /** The window in the foreground, so Sentinel knows what you're actually doing. */
   activeWindow?: { title: string; process: string } | null
-  /** What Senti has noticed about your habits, from the local journal. */
+  /** What Sentinel has noticed about your habits, from the local journal. */
   habits?: string
 }
 
 declare global {
   interface Window {
-    senti: SentiAPI
+    senti: SentinelAPI
   }
 }
 

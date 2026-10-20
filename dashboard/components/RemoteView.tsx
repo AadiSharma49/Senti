@@ -41,7 +41,7 @@ const dot: Record<string, string> = {
 /**
  * The web view is deliberately a WINDOW, not a control panel: see your
  * machines and watch a screen. Everything that acts on a PC — cleanup, power,
- * launching apps, full mouse/keyboard control — lives in the Senti app itself,
+ * launching apps, full mouse/keyboard control — lives in the Sentinel app itself,
  * where it's behind the device's own permission dial and remote PIN. One place
  * that does things, one place that shows them.
  */
@@ -122,7 +122,7 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
     return (
       <Card>
         <div className="py-6 text-center text-sm text-white/55">
-          No devices yet. Install Senti and link it — then it will show up here, live.
+          No devices yet. Install Sentinel and link it — then it will show up here, live.
         </div>
       </Card>
     )
@@ -136,7 +136,7 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
         return (
           <Card key={d.id} className="relative overflow-hidden">
             {state === 'working' && (
-              <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_0%_0%,rgba(0,212,255,0.10),transparent_60%)]" />
+              <div className="pointer-events-none absolute inset-0 bg-accent/[0.06]" />
             )}
             <div className="relative flex items-start justify-between gap-4">
               <div className="min-w-0">
@@ -211,7 +211,7 @@ export default function RemoteView({ initial }: { initial: DeviceLive[] }) {
 
       <p className="text-center text-xs text-white/35">
         Updates on its own. To actually control a machine — mouse, keyboard, cleanup, power —
-        open Senti on any of your devices and use My devices there.
+        open Sentinel on any of your devices and use My devices there.
       </p>
     </div>
   )

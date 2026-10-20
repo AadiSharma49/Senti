@@ -1,4 +1,4 @@
-# Senti — how it works, end to end
+# Sentinel — how it works, end to end
 
 Two parts, with a deliberate line between them: **everything that acts on a
 machine happens on that machine**, behind its own permissions. The server holds
@@ -10,11 +10,10 @@ accounts and passes messages.
    │  Electron + React              │        │  Next.js + Clerk         │
    │                                │        │  Postgres (Neon)         │
    │  • Whisper STT      (on-device)│◄──────►│                          │
-   │  • voiceprint       (on-device)│  text  │  • accounts, devices     │
-   │  • 13 OS actions               │  only  │  • the AI brain + voice  │
-   │  • screenshots (on request)    │        │  • message passing       │
-   │  • memory + habits  (local)    │        │  • web + vision lookup   │
-   │  • remote control host/viewer  │        │                          │
+   │  • 13 OS actions               │  text  │  • accounts, devices     │
+   │  • screenshots (on request)    │  only  │  • the AI brain + voice  │
+   │  • memory + habits  (local)    │        │  • message passing       │
+   │  • remote control host/viewer  │        │  • web + vision lookup   │
    │                                │        │  device token: hashed    │
    │  audio + memory NEVER  ────────┼───X    │  no audio, ever          │
    └────────────────────────────────┘        └──────────────────────────┘
@@ -35,7 +34,7 @@ its loudest syllable, so sentences arrived as fragments. Speech segments go to
 Whisper, running locally. Audio never leaves.
 
 **Deciding it was addressed.** `wakeParse` decides whether you were talking to
-Senti: its name, a greeting, or a bare imperative ("open Chrome") all count;
+Sentinel: its name, a greeting, or a bare imperative ("open Chrome") all count;
 ordinary conversation doesn't. That gate is the only thing between you and an
 assistant that answers the television, and it fails *silently* when wrong — so
 it's pure, Electron-free, and unit-tested in both directions.
@@ -56,7 +55,7 @@ surveillance, and it's structural rather than a policy: no code path captures
 the screen without an incoming request.
 
 **Knowing you.** Facts live in a local file. An aggregated activity journal —
-app, day, rough time-of-day, minutes — lets Senti reflect every few hours and
+app, day, rough time-of-day, minutes — lets Sentinel reflect every few hours and
 write down what's durably true about you. Aggregation is the privacy design:
 storing every window title with a timestamp would be a log of everything you
 opened.
@@ -92,9 +91,7 @@ a keylogger, and not keeping the data is the only way to be sure.
 
 ## What crosses the boundary
 
-**Never leaves your PC:** raw audio, your voiceprint in usable form (uploaded
-only encrypted, so it can sync between your own devices), your memory file, your
-habits journal.
+**Never leaves your PC:** raw audio, your memory file, your habits journal.
 
 **Leaves by design:** the text of what you say (to reach the brain), device
 status, one screenshot when you ask a question about your screen, and — only
@@ -103,7 +100,7 @@ while you're sharing — screen frames or a peer-to-peer video stream.
 **Not built, on purpose:** CONTINUOUS screen capture and camera access.
 Always-on capture plus autostart plus remote control is the exact behavioural
 signature of a RAT, and storing screens means storing other people's passwords
-and bank pages. Senti reads the foreground window's *title* to know you're in a
+and bank pages. Sentinel reads the foreground window's *title* to know you're in a
 game or watching a video, and takes a screenshot only when asked — which gets
 most of the value and none of that.
 
@@ -111,7 +108,7 @@ most of the value and none of that.
 
 | Module | Why a break would be invisible |
 | --- | --- |
-| `wakeParse` | Senti just doesn't answer. No error anywhere. |
+| `wakeParse` | Sentinel just doesn't answer. No error anywhere. |
 | `actionPermissions` | An action would run with its switch off. |
 | `pathSafety` | Remote file access would serve the whole drive, looking identical. |
 | `voiceActivityDetector` | Sentences arrive as fragments; transcription looks wrong instead. |

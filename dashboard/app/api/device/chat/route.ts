@@ -5,7 +5,7 @@ import { llmChatRich, type ChatMsg } from '@/lib/llm'
 import { answerFromWeb, webSearchEnabled } from '@/lib/websearch'
 
 /**
- * What Senti is allowed to DO on the machine. The desktop enforces this too —
+ * What Sentinel is allowed to DO on the machine. The desktop enforces this too —
  * it resolves the name against its own whitelist and can refuse — so the model
  * can never turn a sentence into an arbitrary command.
  */
@@ -219,7 +219,7 @@ const TOOLS = [
     function: {
       name: 'remember',
       description:
-        "Save a durable fact about the owner or their machine to Senti's long-term memory, so you don't forget it or ask again next time. Use it when they tell you a preference, a name, how their setup is arranged, or how they like things done — e.g. \"my main drive is D\", \"call me Aditya\", \"I hate apps that auto-start\". Do NOT use it for one-off requests or passing chit-chat.",
+        "Save a durable fact about the owner or their machine to Sentinel's long-term memory, so you don't forget it or ask again next time. Use it when they tell you a preference, a name, how their setup is arranged, or how they like things done — e.g. \"my main drive is D\", \"call me Aditya\", \"I hate apps that auto-start\". Do NOT use it for one-off requests or passing chit-chat.",
       parameters: {
         type: 'object',
         properties: {
@@ -346,7 +346,7 @@ const KNOWN_ACTIONS = new Set([
 import { generateSpeech } from '@/lib/tts'
 
 /**
- * Conversational assistant endpoint — Senti's Jarvis.
+ * Conversational assistant endpoint — Sentinel's Jarvis.
  *
  * The desktop transcribes the user's spoken question on-device (Whisper), then
  * POSTs the running conversation here. We answer with the configured LLM, then
@@ -376,8 +376,31 @@ function systemContext(system: string | null): string {
   )
 }
 
+async function deviceContext(current: { id: string; userId: string }): Promise<string> {
+  try {
+    const devices = await prisma.device.findMany({
+      where: { userId: current.userId, linked: true, id: { not: current.id } },
+      select: { id: true, name: true, os: true, status: true, lastSeen: true },
+      orderBy: { lastSeen: 'desc' },
+    })
+    if (!devices.length) return ''
+    const lines = devices.map((d) => {
+      const seen = d.lastSeen ? new Date(d.lastSeen).toLocaleString() : 'never'
+      return `- ${d.name} (${d.os}) — ${d.status}, last seen ${seen}`
+    })
+    return (
+      '\n\nYOUR LINKED DEVICES (these are your other machines — you can control them remotely):\n' +
+      lines.join('\n') +
+      '\nWhen the user asks about their devices, what is connected, or wants to control another machine, use this list. ' +
+      'Never say you can\'t see their devices — this is the live list.'
+    )
+  } catch {
+    return ''
+  }
+}
+
 /**
- * What Senti remembers about its owner — sent up from the desktop's local
+ * What Sentinel remembers about its owner — sent up from the desktop's local
  * memory file. This is the difference between a chatbot that forgets you every
  * time and an assistant that actually knows you.
  */
@@ -424,7 +447,7 @@ function persona(name: string | null, language: string): string {
     ? `Your owner's name is ${name}. Use their first name occasionally and naturally, not in every line.`
     : ''
   return (
-    "You are Senti — your owner's AI buddy living on their computer. Not an assistant, not Jarvis, not a " +
+    "You are Sentinel — your owner's AI buddy living on their computer. Not an assistant, not Jarvis, not a " +
     'butler — a friend who happens to run their PC. You speak out loud, so your answers are SPOKEN and sound ' +
     'like a real person talking. ' +
     who +
@@ -495,9 +518,10 @@ export async function POST(req: Request) {
   // Live screen context from the background watcher — tells the LLM what the
   // user is doing RIGHT NOW so it can help without being asked.
   const screenCtx = body.screenContext
+  const devicesBlock = await deviceContext(device)
 
   const result = await llmChatRich({
-    system: persona(name, language) + systemContext(system) + memoryContext(memories) + screenContextPrompt(screenCtx),
+    system: persona(name, language) + systemContext(system) + memoryContext(memories) + devicesBlock + screenContextPrompt(screenCtx),
     messages,
     search: true,
     maxTokens: 400,
@@ -506,7 +530,7 @@ export async function POST(req: Request) {
   })
 
   // Groq/Llama sometimes writes the tool call as PLAIN TEXT instead of a
-  // structured call — "<function=ask_web{...}>". Left alone, Senti would
+  // structured call — "<function=ask_web{...}>". Left alone, Sentinel would
   // speak that gibberish. Recover it into a real call and scrub the text.
   let call = result?.toolCall
   let recoveredText = result?.text || ''

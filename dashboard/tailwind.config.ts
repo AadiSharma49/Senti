@@ -8,16 +8,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Senti brand — matches the desktop app
+        // Sentinel brand — graphite + muted steel. Flat, no glow — matches the desktop app.
         bg: {
-          DEFAULT: '#0a0a0f',
-          soft: '#0f1018',
-          panel: '#12141c',
+          DEFAULT: '#0b0c0f',
+          soft: '#101114',
+          panel: '#15161b',
         },
         accent: {
-          DEFAULT: '#00d4ff',
-          glow: '#67e8ff',
-          muted: 'rgba(0,212,255,0.25)',
+          DEFAULT: '#6b7a8f',
+          glow: '#8a97a8',
+          muted: 'rgba(107,122,143,0.25)',
         },
       },
       fontFamily: {

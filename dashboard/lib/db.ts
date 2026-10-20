@@ -1,50 +1,12 @@
 import { prisma } from './prisma'
-import { normalizePolicy, type Policy } from './policy'
-import { newDeviceToken, hashToken, encryptSecret, decryptSecret } from './crypto'
+import { newDeviceToken, hashToken } from './crypto'
 
 /**
  * Data-access helpers. The dashboard (Clerk-authed) manages a user's
- * policy and devices; devices authenticate with a per-device token.
+ * devices; devices authenticate with a per-device token.
  *
- * Secrets never land here in the clear: device tokens are stored as hashes,
- * voiceprints are encrypted (see lib/crypto.ts).
+ * Secrets never land here in the clear: device tokens are stored as hashes.
  */
-
-function toPolicy(row: {
-  voiceThreshold: number
-  maxAttempts: number
-  lockoutDuration: number
-}): Policy {
-  return normalizePolicy(row)
-}
-
-/** Ensure the account exists and return its policy (creating a default). */
-export async function getOrCreatePolicy(
-  userId: string,
-  email?: string | null,
-  name?: string | null
-): Promise<Policy> {
-  const fields: { email?: string; name?: string } = {}
-  if (email) fields.email = email
-  if (name) fields.name = name
-  await prisma.user.upsert({
-    where: { id: userId },
-    update: fields,
-    create: { id: userId, email: email ?? null, name: name ?? null },
-  })
-  const existing = await prisma.policy.findUnique({ where: { userId } })
-  if (existing) return toPolicy(existing)
-  const created = await prisma.policy.create({ data: { userId } })
-  return toPolicy(created)
-}
-
-/** Apply a validated patch to the account policy. */
-export async function updatePolicy(userId: string, patch: Partial<Policy>): Promise<Policy> {
-  const current = await getOrCreatePolicy(userId)
-  const next = normalizePolicy({ ...current, ...patch })
-  const saved = await prisma.policy.update({ where: { userId }, data: next })
-  return toPolicy(saved)
-}
 
 /**
  * Create a device + pairing token. The raw token is returned ONCE, for the
@@ -62,16 +24,6 @@ export async function listDevices(userId: string) {
   return prisma.device.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } })
 }
 
-/** The account's security timeline (most recent first). Empty until devices report events. */
-export async function listEvents(userId: string, limit = 25) {
-  return prisma.unlockEvent.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-    include: { device: true },
-  })
-}
-
 export async function deleteDevice(userId: string, id: string) {
   await prisma.device.deleteMany({ where: { id, userId } })
 }
@@ -82,54 +34,40 @@ export async function getDeviceByToken(token: string) {
   return prisma.device.findUnique({ where: { tokenHash: hashToken(token) } })
 }
 
-export interface VoiceprintData {
-  embedding: number[]
-  sampleCount: number
-  modelId: string
-}
-
-/** The account's voiceprint (decrypted, parsed back to numbers), or null. */
-export async function getVoiceprint(userId: string): Promise<(VoiceprintData & { createdAt: Date }) | null> {
-  const row = await prisma.voiceProfile.findUnique({ where: { userId } })
-  if (!row) return null
-  let embedding: number[] = []
-  try {
-    embedding = JSON.parse(decryptSecret(row.embedding)) as number[]
-  } catch {
-    embedding = []
+/**
+ * Thrown when a check-in's hardware fingerprint already belongs to a
+ * currently-linked device under a DIFFERENT account — i.e. someone is
+ * trying to link this physical PC to a second account while it's still
+ * linked to the first. The caller (the policy route) turns this into a
+ * 409 with a message the desktop surfaces to the user.
+ */
+export class DeviceConflictError extends Error {
+  constructor() {
+    super('This computer is already linked to a different account. Unlink it there first.')
+    this.name = 'DeviceConflictError'
   }
-  return { embedding, sampleCount: row.sampleCount, modelId: row.modelId, createdAt: row.createdAt }
-}
-
-/** Whether the account has a voiceprint, plus lightweight metadata (no embedding). */
-export async function getVoiceprintStatus(userId: string) {
-  const row = await prisma.voiceProfile.findUnique({
-    where: { userId },
-    select: { sampleCount: true, modelId: true, createdAt: true },
-  })
-  return row
-}
-
-export async function upsertVoiceprint(userId: string, data: VoiceprintData) {
-  // Biometric data — encrypted before it ever reaches the database.
-  const embedding = encryptSecret(JSON.stringify(data.embedding))
-  await prisma.voiceProfile.upsert({
-    where: { userId },
-    update: { embedding, sampleCount: data.sampleCount, modelId: data.modelId },
-    create: { userId, embedding, sampleCount: data.sampleCount, modelId: data.modelId },
-  })
-}
-
-export async function deleteVoiceprint(userId: string) {
-  await prisma.voiceProfile.deleteMany({ where: { userId } })
-  await prisma.device.updateMany({ where: { userId }, data: { voiceEnrolled: false } })
 }
 
 /** Record that a device checked in, and let it report its name/os. */
 export async function touchDevice(
   id: string,
-  info: { name?: string; os?: string; status?: string; voiceEnrolled?: boolean }
+  info: { name?: string; os?: string; status?: string; hardwareIdHash?: string }
 ) {
+  if (info.hardwareIdHash) {
+    const conflict = await prisma.device.findFirst({
+      where: {
+        hardwareIdHash: info.hardwareIdHash,
+        linked: true,
+        NOT: { id },
+      },
+      select: { userId: true },
+    })
+    const mine = await prisma.device.findUnique({ where: { id }, select: { userId: true } })
+    if (conflict && mine && conflict.userId !== mine.userId) {
+      throw new DeviceConflictError()
+    }
+  }
+
   await prisma.device.update({
     where: { id },
     data: {
@@ -138,7 +76,7 @@ export async function touchDevice(
       ...(info.name ? { name: info.name } : {}),
       ...(info.os ? { os: info.os } : {}),
       ...(info.status ? { status: info.status } : {}),
-      ...(typeof info.voiceEnrolled === 'boolean' ? { voiceEnrolled: info.voiceEnrolled } : {}),
+      ...(info.hardwareIdHash ? { hardwareIdHash: info.hardwareIdHash } : {}),
     },
   })
 }

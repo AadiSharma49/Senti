@@ -31,7 +31,6 @@ export async function GET() {
       os: d.os,
       status: d.status,
       linked: d.linked,
-      voiceEnrolled: d.voiceEnrolled,
       lastSeen: d.lastSeen,
     }))
   )

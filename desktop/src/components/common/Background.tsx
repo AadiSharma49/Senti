@@ -1,48 +1,16 @@
 import React from 'react'
-import { motion } from 'framer-motion'
 
 /**
- * Ambient background with multiple visual layers:
- * - Deep gradient base
- * - Slow-moving animated gradient overlay
- * - Subtle scanline layer
- * - Noise grain overlay
+ * Flat graphite background. Used to have an animated cyan gradient wash and
+ * a tinted grid overlay — that's exactly the "neon" look this was moved
+ * away from, so now it's just the flat base plus two neutral (uncolored)
+ * micro-textures for a touch of depth without looking lit up.
  */
 export default function Background() {
   return (
     <>
-      {/* Base deep gradient */}
       <div className="absolute inset-0 bg-deep-gradient" />
-
-      {/* Animated gradient overlay */}
-      <motion.div
-        className="absolute inset-0"
-        style={{
-          background:
-            'radial-gradient(ellipse at 30% 40%, rgba(0,212,255,0.08) 0%, transparent 60%), radial-gradient(ellipse at 70% 60%, rgba(0,212,255,0.04) 0%, transparent 50%)',
-        }}
-        animate={{
-          scale: [1, 1.05, 1],
-          rotate: [0, 2, 0],
-          opacity: 0.30,
-        }}
-        transition={{ duration: 18, repeat: Infinity, ease: 'easeInOut' }}
-      />
-
-      {/* Subtle grid lines (horizontal & vertical stripes) */}
-      <div
-        className="absolute inset-0 opacity-[0.02]"
-        style={{
-          backgroundImage:
-            'linear-gradient(0deg, transparent 23px, rgba(0,212,255,0.15) 24px, transparent 25px), linear-gradient(90deg, transparent 23px, rgba(0,212,255,0.15) 24px, transparent 25px)',
-          backgroundSize: '25px 25px',
-        }}
-      />
-
-      {/* Scanline overlay */}
       <div className="absolute inset-0 scanlines" />
-
-      {/* Noise texture */}
       <div className="absolute inset-0 bg-noise" />
     </>
   )

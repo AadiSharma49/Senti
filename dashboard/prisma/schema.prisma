@@ -26,44 +26,12 @@ model User {
   name      String?
   createdAt DateTime @default(now())
 
-  policy       Policy?
-  voiceProfile VoiceProfile?
   devices      Device[]
-  events       UnlockEvent[]
   clipboard    SharedClipboard?
 }
 
-/// The account's enrolled voiceprint (captured on a device, synced up so
-/// it flows to the user's other devices).
-///
-/// `embedding` is biometric data — the one credential a user can never
-/// rotate — so it is stored ENCRYPTED (AES-256-GCM, see lib/crypto.ts),
-/// not as a readable JSON array.
-model VoiceProfile {
-  id          String   @id @default(cuid())
-  userId      String   @unique
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  embedding   String
-  sampleCount Int      @default(0)
-  modelId     String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-}
-
-/// The account security policy the devices obey. Unlock is voice-only:
-/// the user says anything and the voiceprint decides. No wake phrase.
-model Policy {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  voiceThreshold  Float    @default(0.5)
-  maxAttempts     Int      @default(3)
-  lockoutDuration Int      @default(30)
-  updatedAt       DateTime @updatedAt
-}
-
 /// A computer running Senti under this account.
-/// status: "online" | "locked" | "offline"
+/// status: "online" | "offline"
 model Device {
   id            String   @id @default(cuid())
   userId        String
@@ -71,13 +39,19 @@ model Device {
   name          String
   os            String
   status        String   @default("offline")
-  voiceEnrolled Boolean  @default(false)
   /// SHA-256 of the device token. The raw token is shown once, at pairing,
   /// and never stored — a database leak yields no usable credentials.
   tokenHash     String   @unique
   linked        Boolean  @default(false)
   lastSeen      DateTime @default(now())
   createdAt     DateTime @default(now())
+
+  /// SHA-256 of a fingerprint of the PHYSICAL machine (Windows MachineGuid),
+  /// reported on check-in. Not secret — just an identifier, like a MAC
+  /// address — used only so one physical PC can't be linked to two
+  /// different accounts at once (enforced in lib/db.ts touchDevice, backed
+  /// by a partial unique index on (hardwareIdHash) WHERE linked = true).
+  hardwareIdHash String?
 
   /// When true, all AI runs locally on this device (Ollama + Piper).
   /// No cloud APIs are used for chat, vision, or TTS.
@@ -90,7 +64,6 @@ model Device {
   vitals        String?
   reportedAt    DateTime?
 
-  events   UnlockEvent[]
   commands DeviceCommand[]
   screen   ScreenFrame?
   /// Sessions where this device is the one being controlled.
@@ -244,19 +217,4 @@ model DeviceCommand {
   ranAt     DateTime?
 
   @@index([deviceId, state])
-}
-
-/// Security timeline entry.
-/// type: "voice_unlock" | "pin_unlock" | "voice_rejected" | "lockout" | "enrolled"
-model UnlockEvent {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  deviceId  String?
-  device    Device?  @relation(fields: [deviceId], references: [id], onDelete: SetNull)
-  type      String
-  detail    String?
-  createdAt DateTime @default(now())
-
-  @@index([userId, createdAt])
 }

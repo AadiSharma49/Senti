@@ -4,7 +4,7 @@ import type { ChatMsg } from './gemini'
 export type { ChatMsg } from './gemini'
 
 /**
- * Provider-agnostic LLM router for Senti's assistant.
+ * Provider-agnostic LLM router for Sentinel's assistant.
  *
  * Prefers any OpenAI-compatible provider that's configured (Groq, xAI Grok,
  * OpenAI, or a custom base URL), and falls back to Google Gemini. Switching
@@ -85,7 +85,7 @@ export interface ChatOpts {
   tools?: unknown[]
 }
 
-/** What the model wants Senti to do on the machine. */
+/** What the model wants Sentinel to do on the machine. */
 export interface ToolCall {
   name: string
   args: Record<string, unknown>
@@ -111,7 +111,7 @@ type CallOutcome =
  *
  * Several models in the fallback chain (Qwen especially) emit a <think> block
  * of chain-of-thought before the answer. It's meant to be internal, but it
- * arrives in `content` like anything else — so without this Senti reads its
+ * arrives in `content` like anything else — so without this Sentinel reads its
  * own deliberation aloud: "The user is asking for the current Prime Minister.
  * I need to respond in the persona of..."
  *
@@ -153,8 +153,8 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<Ca
       // busy moment surfaced as "my thinking's running slow" while three
       // perfectly good fallback models sat untried.
       const busy = res.status === 429 || res.status >= 500
-      if (modelGone) console.error(`[senti] model "${model}" unavailable — falling back`)
-      else if (busy) console.error(`[senti] model "${model}" busy (${res.status}) — falling back`)
+      if (modelGone) console.error(`[sentinel] model "${model}" unavailable — falling back`)
+      else if (busy) console.error(`[sentinel] model "${model}" busy (${res.status}) — falling back`)
       return { ok: false, reason: modelGone ? 'model-gone' : busy ? 'busy' : 'error' }
     }
     const data = await res.json()

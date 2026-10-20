@@ -42,6 +42,11 @@ export const QUALITY: Record<QualityPreset, { width: number; height: number; fps
 
 let quality: QualityPreset = 'balanced'
 
+/** The currently-selected quality preset (so the WebRTC sender can match its encoding ceiling to it). */
+export function getQuality(): QualityPreset {
+  return quality
+}
+
 /**
  * Change quality on a LIVE stream — applyConstraints re-negotiates the capture
  * without tearing the session down, so the picture doesn't blank while you

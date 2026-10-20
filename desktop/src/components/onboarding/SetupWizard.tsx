@@ -1,89 +1,44 @@
 import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSettingsStore } from '../../state/settingsStore'
-import { useVoiceProfileStore } from '../../state/voiceProfileStore'
-import VoiceEnrollment from './VoiceEnrollment'
 import AccountStep from './AccountStep'
 import { useDeviceStore } from '../../state/deviceStore'
 
-const isNumeric = (value: string) => /^[0-9]*$/.test(value)
-
 export default function SetupWizard() {
-  const settings = useSettingsStore((s) => s)
-  const setSecurity = useSettingsStore((s) => s.setSecurity)
   const setSetupCompleted = useSettingsStore((s) => s.setSetupCompleted)
-  const voiceProfile = useVoiceProfileStore((s) => s.profile)
   const deviceLinked = useDeviceStore((s) => s.linked)
 
   const [step, setStep] = useState(0)
-  const [pin, setPin] = useState('')
-  const [confirmPin, setConfirmPin] = useState('')
-  const [error, setError] = useState<string | null>(null)
 
-  // Account FIRST: the pairing token is what makes Senti able to greet you,
-  // sync your voiceprint, and think at all. Skipping it fails silently later.
-  const stepLabels = ['Account', 'Security', 'Voice', 'Review', 'Finish']
+  // Account FIRST: the pairing token is what makes Sentinel able to greet you
+  // and think at all. Skipping it fails silently later.
+  const stepLabels = ['Account', 'Review', 'Finish']
   const progress = useMemo(() => (step / (stepLabels.length - 1)) * 100, [step, stepLabels.length])
 
-  const validateSecurity = () => {
-    if (!pin || pin.length < 4) return 'PIN must be at least 4 digits.'
-    if (!isNumeric(pin)) return 'PIN can only contain numbers.'
-    if (pin !== confirmPin) return 'PIN entries do not match.'
-    return null
-  }
-
   const handleNext = () => {
-    setError(null)
-    if (step === 1) {
-      const validation = validateSecurity()
-      if (validation) {
-        setError(validation)
-        return
-      }
-    }
     setStep((current) => Math.min(current + 1, stepLabels.length - 1))
   }
 
   const handleBack = () => {
-    setError(null)
     setStep((current) => Math.max(current - 1, 0))
   }
 
   const handleFinish = () => {
-    setError(null)
-    const securityError = validateSecurity()
-    if (securityError) {
-      setError(securityError)
-      setStep(1)
-      return
-    }
-
-    setSecurity({ pin })
     setSetupCompleted(true)
     setStep(stepLabels.length - 1)
   }
 
-  const currentTitle =
-    step === 0
-      ? 'Your Account'
-      : step === 1
-      ? 'Security'
-      : step === 2
-      ? 'Your voice'
-      : step === 3
-      ? 'Review'
-      : 'Complete'
+  const currentTitle = step === 0 ? 'Your Account' : step === 1 ? 'Review' : 'Complete'
 
   return (
     <motion.div className="relative w-full h-full flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,212,255,0.15),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(103,232,255,0.12),_transparent_30%)]" />
-      <div className="glass-strong border border-white/10 shadow-2xl shadow-cyan-500/10 z-10 w-full max-w-3xl p-8 md:p-12 rounded-[32px] backdrop-blur-xl text-white">
+      <div className="glass-strong border border-white/10 z-10 w-full max-w-3xl p-8 md:p-12 rounded-[32px] backdrop-blur-xl text-white">
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <div className="text-sm uppercase tracking-[0.3em] text-accent">First-Time Setup</div>
-                <h1 className="text-3xl font-display">Welcome to Senti</h1>
+                <h1 className="text-3xl font-display">Welcome to Sentinel</h1>
               </div>
               <div className="text-right text-xs uppercase tracking-[0.2em] text-secondary">Step {step + 1} / {stepLabels.length}</div>
             </div>
@@ -103,29 +58,6 @@ export default function SetupWizard() {
                 )}
 
                 {step === 1 && (
-                  <motion.div key="security" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
-                    <p className="text-sm text-secondary mb-6">Set a PIN. It&apos;s the fallback for taking remote control of this machine from your other devices.</p>
-                    <div className="grid gap-4">
-                      <input type="password" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="PIN" className="input-glass" />
-                      <input type="password" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, '').slice(0, 8))} placeholder="Confirm PIN" className="input-glass" />
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 2 && (
-                  <motion.div key="voice" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
-                    {voiceProfile ? (
-                      <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
-                        <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-                        Voice enrolled ({voiceProfile.sampleCount} samples). Senti knows it&apos;s you.
-                      </div>
-                    ) : (
-                      <VoiceEnrollment />
-                    )}
-                  </motion.div>
-                )}
-
-                {step === 3 && (
                   <motion.div key="review" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <p className="text-sm text-secondary mb-6">One last look before you start talking to it.</p>
                     <div className="grid gap-4">
@@ -133,36 +65,22 @@ export default function SetupWizard() {
                         <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Account</div>
                         <div className="text-sm text-white/80">
                           {deviceLinked
-                            ? 'Linked — Senti knows you, and the assistant can answer.'
+                            ? 'Linked — Sentinel knows you, and the assistant can answer.'
                             : 'Not linked — the assistant will not work until you link this device.'}
-                        </div>
-                      </div>
-                      <div className="glass rounded-3xl border border-white/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Security</div>
-                        <div className="text-sm text-white/80">PIN configured, stored only on this machine.</div>
-                      </div>
-                      <div className="glass rounded-3xl border border-white/10 p-4">
-                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Your voice</div>
-                        <div className="text-sm text-white/80">
-                          {voiceProfile
-                            ? `Enrolled — Senti recognises your voice.`
-                            : 'Skipped — you can enroll your voice later from Settings.'}
                         </div>
                       </div>
                     </div>
                   </motion.div>
                 )}
 
-                {step === 4 && (
+                {step === 2 && (
                   <motion.div key="complete" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <div className="text-lg font-semibold text-white">Setup complete</div>
-                    <p className="text-sm text-secondary mt-3">Senti is ready and listening. Say &ldquo;hey Senti&rdquo; — or just give it an order like &ldquo;open Chrome&rdquo; — from anywhere.</p>
+                    <p className="text-sm text-secondary mt-3">Sentinel is ready and listening. Say &ldquo;hey Sentinel&rdquo; — or just give it an order like &ldquo;open Chrome&rdquo; — from anywhere.</p>
                   </motion.div>
                 )}
               </AnimatePresence>
             </div>
-
-            {error && <div className="rounded-2xl bg-red-500/10 border border-red-500/20 p-3 text-sm text-red-200">{error}</div>}
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-secondary">
@@ -173,7 +91,7 @@ export default function SetupWizard() {
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                {step > 0 && step < 4 && (
+                {step > 0 && step < 2 && (
                   <button onClick={handleBack} className="rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/5 transition">Back</button>
                 )}
                 {step === 0 && (
@@ -182,17 +100,9 @@ export default function SetupWizard() {
                   </button>
                 )}
                 {step === 1 && (
-                  <button onClick={handleNext} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Next</button>
-                )}
-                {step === 2 && (
-                  <button onClick={handleNext} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">
-                    {voiceProfile ? 'Next' : 'Skip for now'}
-                  </button>
-                )}
-                {step === 3 && (
                   <button onClick={handleFinish} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Finish Setup</button>
                 )}
-                {step === 4 && (
+                {step === 2 && (
                   <button onClick={() => setSetupCompleted(true)} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Continue</button>
                 )}
               </div>

@@ -1,4 +1,4 @@
-import SentiMark from '@/components/SentiMark'
+import SentinelMark from '@/components/SentinelMark'
 
 /**
  * Shown while a dashboard page fetches its data. Pages are force-dynamic (they
@@ -8,8 +8,8 @@ import SentiMark from '@/components/SentiMark'
 export default function DashboardLoading() {
   return (
     <div className="flex min-h-[60vh] flex-col items-center justify-center gap-6">
-      <div className="senti-pulse">
-        <SentiMark size={56} />
+      <div className="sentinel-pulse">
+        <SentinelMark size={56} />
       </div>
       <div className="text-xs uppercase tracking-[0.3em] text-secondary">Loading</div>
 
@@ -18,7 +18,7 @@ export default function DashboardLoading() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="senti-shimmer h-16 rounded-2xl border border-white/5 bg-white/[0.03]"
+            className="sentinel-shimmer h-16 rounded-2xl border border-white/5 bg-white/[0.03]"
           />
         ))}
       </div>

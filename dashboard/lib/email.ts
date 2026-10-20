@@ -22,7 +22,7 @@ const resend = key ? new Resend(key) : null
  * case here — codes go to you — so it's a sensible default. Set
  * RESEND_FROM once you've verified your own domain.
  */
-const FROM = process.env.RESEND_FROM || 'Senti <onboarding@resend.dev>'
+const FROM = process.env.RESEND_FROM || 'Sentinel <onboarding@resend.dev>'
 
 /** Send a remote-access code. Returns false if it couldn't be delivered. */
 export async function sendRemoteCode(to: string, code: string, deviceName: string): Promise<boolean> {
@@ -31,7 +31,7 @@ export async function sendRemoteCode(to: string, code: string, deviceName: strin
     const { error } = await resend.emails.send({
       from: FROM,
       to,
-      subject: `Senti code ${code} — remote access to ${deviceName}`,
+      subject: `Sentinel code ${code} — remote access to ${deviceName}`,
       // Plain and specific on purpose: the subject alone tells you what's
       // happening, so an unexpected one is obvious without opening anything.
       html: `

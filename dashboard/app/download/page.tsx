@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import SiteHeader from '@/components/SiteHeader'
 import SiteFooter from '@/components/SiteFooter'
-import SentiMark from '@/components/SentiMark'
+import SentinelMark from '@/components/SentinelMark'
 
 export const dynamic = 'force-dynamic'
 
@@ -12,15 +12,15 @@ export const dynamic = 'force-dynamic'
  */
 const RELEASE_URL =
   process.env.NEXT_PUBLIC_DOWNLOAD_URL ||
-  'https://github.com/AadiSharma49/Senti/releases/download/Software/Senti-Setup.exe'
+  'https://github.com/AadiSharma49/Senti/releases/download/Software/Sentinel-Setup.exe'
 
 const RELEASES_PAGE = 'https://github.com/AadiSharma49/Senti/releases'
 
 const steps = [
-  { n: '01', t: 'Install and launch', b: 'Run the installer. Senti opens straight into first-time setup. Allow the microphone when Windows asks.' },
+  { n: '01', t: 'Install and launch', b: 'Run the installer. Sentinel opens straight into first-time setup. Allow the microphone when Windows asks.' },
   { n: '02', t: 'Make a free account', b: 'Sign in on this site, open Devices, and click Link a device to get a pairing token.' },
   { n: '03', t: 'Paste the token', b: 'Setup asks for it on the first screen — it links this PC to your account.' },
-  { n: '04', t: 'Enroll your voice', b: 'Read five short lines. Senti learns your voice, not the words — so afterwards you can say anything.' },
+  { n: '04', t: 'Start talking', b: 'Say its name, or just give it an order — open an app, ask it something, anything.' },
 ]
 
 export default function PublicDownloadPage() {
@@ -30,12 +30,12 @@ export default function PublicDownloadPage() {
 
       <section className="mx-auto max-w-3xl px-6 pb-16 pt-36 text-center">
         <div className="mb-6 flex justify-center">
-          <SentiMark size={72} />
+          <SentinelMark size={72} />
         </div>
-        <h1 className="text-4xl font-bold text-white md:text-5xl">Download Senti</h1>
+        <h1 className="text-4xl font-bold text-white md:text-5xl">Download Sentinel</h1>
         <p className="mx-auto mt-4 max-w-xl text-white/60">
-          Install it, link it to a free account, and your voice becomes the key. Free to start,
-          no credit card.
+          Install it, link it to a free account, and start talking. Free to start, no credit
+          card.
         </p>
 
         <div className="mt-10 flex flex-col items-center gap-4">
@@ -47,8 +47,8 @@ export default function PublicDownloadPage() {
           </a>
           <div className="text-sm text-white/45">v0.1.0 · Windows 10 &amp; 11 · ~250 MB</div>
           <div className="max-w-md text-xs text-white/40">
-            Large because the speech and speaker models ship inside it, so your voice is verified
-            with no internet. Not code-signed yet, so Windows will say &ldquo;unknown
+            Large because the speech models ship inside it, so your voice is transcribed with no
+            internet. Not code-signed yet, so Windows will say &ldquo;unknown
             publisher&rdquo; — choose <span className="text-white/70">More info → Run anyway</span>.{' '}
             <a href={RELEASES_PAGE} target="_blank" rel="noreferrer" className="text-accent hover:underline">
               All releases
@@ -72,10 +72,9 @@ export default function PublicDownloadPage() {
         <div className="glass-strong mt-6 rounded-3xl p-6">
           <div className="text-xs uppercase tracking-[0.3em] text-accent">Good to know</div>
           <ul className="mt-3 grid gap-2 text-sm text-white/55">
-            <li>Starts with Windows and locks automatically. Your voice unlocks it — say anything, it recognizes you, not a passphrase.</li>
-            <li>Your voice is verified on your own machine and never uploaded.</li>
-            <li>It does not replace the Windows login screen yet — Ctrl+Alt+Del still gets past it. That is next on the roadmap.</li>
-            <li>Emergency exit while testing: Ctrl+Alt+Shift+Q.</li>
+            <li>Speech is transcribed on your own machine and never uploaded as audio.</li>
+            <li>It only acts on the permissions you switch on — nothing runs in the background by default.</li>
+            <li>Remote control of this PC from another device needs a PIN you set yourself.</li>
           </ul>
           <Link
             href="/signup"

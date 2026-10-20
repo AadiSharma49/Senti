@@ -2,8 +2,8 @@ import { llmChat, llmEnabled } from './llm'
 
 /**
  * AI greeting generator. When a brain is configured (Groq / Grok / OpenAI /
- * Gemini — see lib/llm.ts), Senti composes a fresh spoken greeting on each
- * unlock. Without one it falls back to a varied local greeting so the feature
+ * Gemini — see lib/llm.ts), Sentinel composes a fresh spoken greeting on each
+ * open. Without one it falls back to a varied local greeting so the feature
  * still works.
  *
  * Runs server-side only — the key never reaches the desktop.
@@ -20,10 +20,10 @@ function localGreeting(name?: string | null): string {
   const who = name ? `, ${name}` : ''
   const options = [
     `${cap}${who}. Systems are green and ready.`,
-    `${cap}${who}. Welcome back — everything's secure.`,
-    `${cap}${who}. You're verified. Let's get to work.`,
-    `Welcome back${who}. All systems nominal.`,
+    `${cap}${who}. Welcome back — what are we doing?`,
     `${cap}${who}. Good to hear your voice again.`,
+    `Welcome back${who}. Let's get to work.`,
+    `${cap}${who}. I'm here — what do you need?`,
   ]
   return options[Math.floor(Math.random() * options.length)]
 }
@@ -36,8 +36,8 @@ export async function generateGreeting(opts: {
   const language = opts.language || 'en-US'
   const text = await llmChat({
     system:
-      'You are Senti, an AI security assistant — think Jarvis from Iron Man: calm, sharp, quietly confident. ' +
-      'You greet your owner the moment their computer unlocks by voice. ' +
+      "You are Sentinel — your owner's AI buddy living on their computer. Calm, sharp, quietly confident, " +
+      'with a real personality. You greet your owner the moment they open the app or start talking to you. ' +
       'Reply with ONE short spoken greeting, at most ~15 words. Vary it every time — warm, witty, calm, or ' +
       'motivational, your choice. Never reuse a stock phrase. Plain text only: no emoji, no quotation marks, ' +
       'no preamble — just the words to speak.',

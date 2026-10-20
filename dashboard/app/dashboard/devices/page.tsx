@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 export default function DevicesPage() {
   return (
     <div>
-      <PageHeader title="Devices" subtitle="Every computer running Senti under your account." />
+      <PageHeader title="Devices" subtitle="Every computer running Sentinel under your account." />
       <DevicesManager />
     </div>
   )

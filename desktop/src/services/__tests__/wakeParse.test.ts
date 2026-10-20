@@ -2,26 +2,26 @@ import { describe, it, expect } from 'vitest'
 import { parseWake, parseDismiss } from '../wakeParse'
 
 /**
- * The wake parser fails SILENTLY when it breaks — Senti simply doesn't answer,
+ * The wake parser fails SILENTLY when it breaks — Sentinel simply doesn't answer,
  * and there's no error anywhere to notice. That's exactly the shape of bug
  * that costs days, so it's pinned here in both directions: what must wake it,
  * and what must never.
  */
-describe('parseWake — addressed to Senti', () => {
+describe('parseWake — addressed to Sentinel', () => {
   const wakes: [string, string][] = [
-    ['hey senti', ''],
-    ['senti', ''],
+    ['hey sentinel', ''],
+    ['sentinel', ''],
     ['hello', ''],
     ['wake up', ''],
     ['buddy', ''],
     ['wake up buddy', ''],
-    ['Hey Senti, delete temporary files', 'delete temporary files'],
-    ['hey senti can you hear me', 'can you hear me'],
+    ['Hey Sentinel, delete temporary files', 'delete temporary files'],
+    ['hey sentinel can you hear me', 'can you hear me'],
     ['buddy clean my system', 'clean my system'],
     ['wake up buddy, open VS Code', 'open VS Code'],
     ['hello clean my system', 'clean my system'],
-    ['hey senti buddy lock my pc', 'lock my pc'],
-    ['yo century turn it up', 'turn it up'],
+    ['hey sentinel buddy lock my pc', 'lock my pc'],
+    ['yo centennial turn it up', 'turn it up'],
   ]
 
   it.each(wakes)('wakes on %j', (input, command) => {
@@ -33,7 +33,7 @@ describe('parseWake — addressed to Senti', () => {
   it('keeps apostrophes and case in the command', () => {
     // The command is sliced from the ORIGINAL text, so "what's" must survive
     // the lowercase/strip pass used for matching.
-    const r = parseWake("Okay Senti, what's my RAM usage?")
+    const r = parseWake("Okay Sentinel, what's my RAM usage?")
     expect(r.command).toBe("what's my RAM usage?")
   })
 })
@@ -63,7 +63,7 @@ describe('parseWake — bare commands need no wake word', () => {
   it('does not eat politeness out of a real question', () => {
     // The regression that motivated this: "can you hear me" is a question,
     // not a command wrapped in politeness.
-    expect(parseWake('hey senti can you hear me').command).toBe('can you hear me')
+    expect(parseWake('hey sentinel can you hear me').command).toBe('can you hear me')
   })
 })
 
@@ -71,7 +71,7 @@ describe('parseWake — things only ever said to a listener', () => {
   /**
    * The regression that motivated these: "can you hear me" is the first thing
    * anyone says to test an assistant, and it did nothing. Politeness
-   * stripping reduced it to "hear me", which isn't a command verb, so Senti
+   * stripping reduced it to "hear me", which isn't a command verb, so Sentinel
    * stayed silent while the Control Center displayed the exact words it had
    * just heard back at the user.
    */
@@ -88,7 +88,7 @@ describe('parseWake — things only ever said to a listener', () => {
     expect(parseWake(input).woke).toBe(true)
   })
 
-  it('passes the phrase through so Senti can answer it', () => {
+  it('passes the phrase through so Sentinel can answer it', () => {
     // Not an empty command: "can you hear me" deserves "yeah, loud and clear",
     // not an expectant silence waiting for orders.
     expect(parseWake('can you hear me').command).toBe('can you hear me')
@@ -97,40 +97,40 @@ describe('parseWake — things only ever said to a listener', () => {
 
 describe('parseWake — the name at the end', () => {
   it.each([
-    ['open chrome senti', 'open chrome'],
-    ['can you hear me senti', 'can you hear me senti'],
+    ['open chrome sentinel', 'open chrome'],
+    ['can you hear me sentinel', 'can you hear me sentinel'],
   ])('accepts %j', (input, command) => {
     const r = parseWake(input)
     expect(r.woke).toBe(true)
     expect(r.command).toBe(command)
   })
 
-  it('still ignores talk ABOUT Senti', () => {
+  it('still ignores talk ABOUT Sentinel', () => {
     // The name is in there, but not as an address — this is a sentence to
     // another person, and answering it would be eavesdropping.
-    expect(parseWake('tell Senti I said hi').woke).toBe(false)
-    expect(parseWake('I was telling my friend about Senti yesterday').woke).toBe(false)
+    expect(parseWake('tell Sentinel I said hi').woke).toBe(false)
+    expect(parseWake('I was telling my friend about Sentinel yesterday').woke).toBe(false)
   })
 })
 
 describe('parseWake — must stay quiet', () => {
   /**
-   * Every one of these would make Senti answer a conversation it wasn't part
-   * of. The homophones matter most: "sanity" and "century" are real words that
-   * Whisper produces when it mishears the name.
+   * Every one of these would make Sentinel answer a conversation it wasn't part
+   * of. The homophones matter most: "sentimental" and "centennial" are real
+   * words that Whisper produces when it mishears the name.
    */
   const silent = [
     'how are you doing',
     'what time is it',
     'send it to me later',
-    'I lost my sanity yesterday',
-    'the century was long',
+    'that old photo felt very sentimental to him',
+    'the centennial celebration was long',
     'set me up with a meeting',
     'can you send it over',
     'hello how are you',
     'so um I was thinking',
     'okay',
-    'tell Senti I said hi',
+    'tell Sentinel I said hi',
     'i think we should open a new office',
     '',
     '   ',

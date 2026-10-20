@@ -18,8 +18,7 @@ import { startFileHost, stopFileHost } from './services/fileHost'
 function App() {
   const settings = useSettingsStore((s) => s)
   const settingsOpen = useUiStore((s) => s.settingsOpen)
-  const securityConfigured = settings.security.pin.trim().length >= 4
-  const needsSetup = !settings.setupCompleted || !securityConfigured
+  const needsSetup = !settings.setupCompleted
 
   // Senti is NOT a lock screen: once first-time setup is done, you're in.
   const signedIn = !needsSetup

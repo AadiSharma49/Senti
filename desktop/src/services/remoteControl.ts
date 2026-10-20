@@ -209,6 +209,10 @@ async function flush(): Promise<void> {
  */
 export async function connectPeer(onStream: (s: MediaStream) => void): Promise<boolean> {
   if (!sessionId) return false
+  // sessionId is a module-level `let` (can be cleared by endSession() from
+  // elsewhere), so TS can't narrow it as non-null inside the closures below —
+  // capture it in a local const once we've already confirmed it's set.
+  const activeSessionId = sessionId
   let handle: PeerHandle | null = null
   let reconnectAttempts = 0
   const MAX_RECONNECT = 5
@@ -216,7 +220,7 @@ export async function connectPeer(onStream: (s: MediaStream) => void): Promise<b
   const tryConnect = async (): Promise<boolean> => {
     try {
       handle = await startViewerPeer(
-        sessionId,
+        activeSessionId,
         onStream,
         (ok) => {
           peerLive = ok

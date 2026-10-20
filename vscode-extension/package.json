@@ -1,7 +1,7 @@
 {
-  "name": "senti-code-bridge",
-  "displayName": "Senti Code Bridge",
-  "description": "Connects VS Code to Senti — lets Senti read, write, and run code alongside you.",
+  "name": "sentinel-code-bridge",
+  "displayName": "Sentinel Code Bridge",
+  "description": "Connects VS Code to Sentinel — lets Sentinel read, write, and run code alongside you.",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.80.0"
@@ -11,10 +11,10 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "senti.connect", "title": "Senti: Connect to Senti" },
-      { "command": "senti.disconnect", "title": "Senti: Disconnect" },
-      { "command": "senti.readFile", "title": "Senti: Read Active File" },
-      { "command": "senti.runTerminal", "title": "Senti: Run in Terminal" },
+      { "command": "senti.connect", "title": "Sentinel: Connect to Sentinel" },
+      { "command": "senti.disconnect", "title": "Sentinel: Disconnect" },
+      { "command": "senti.readFile", "title": "Sentinel: Read Active File" },
+      { "command": "senti.runTerminal", "title": "Sentinel: Run in Terminal" }
     ]
   },
   "scripts": {

@@ -1,5 +1,5 @@
 /**
- * localBrain — the complete local AI brain for Senti.
+ * localBrain — the complete local AI brain for Sentinel.
  *
  * When local mode is on, this replaces the entire cloud stack:
  * - LLM: Ollama (qwen2.5-coder:14b)
@@ -37,7 +37,7 @@ export async function localAsk(
 
   // Build the system prompt with screen context if available.
   const screenBlock = screenContext?.summary
-    ? `\n\nWHAT SENTI SEES ON SCREEN RIGHT NOW:\n${screenContext.summary}\n` +
+    ? `\n\nWHAT SENTINEL SEES ON SCREEN RIGHT NOW:\n${screenContext.summary}\n` +
       (screenContext.apps?.length ? `Apps: ${screenContext.apps.join(', ')}\n` : '') +
       (screenContext.activity ? `Activity: ${screenContext.activity}\n` : '') +
       (screenContext.label ? `View: ${screenContext.label}\n` : '') +
@@ -153,7 +153,7 @@ export async function localObserveScreen(image: string): Promise<{
 
 function buildPersona(lang: string): string {
   return (
-    "You are Senti — your owner's AI buddy living on their computer. Not an assistant, not Jarvis, " +
+    "You are Sentinel — your owner's AI buddy living on their computer. Not an assistant, not Jarvis, " +
     "not a butler — a friend who happens to run their PC. You speak out loud, so your answers are " +
     "SPOKEN and sound like a real person talking. " +
     "Have a real personality: warm, funny, a little cheeky, with opinions and moods. Banter back. " +
@@ -297,7 +297,7 @@ function buildTools(): unknown[] {
       type: 'function',
       function: {
         name: 'remember',
-        description: "Save a fact to Senti's memory.",
+        description: "Save a fact to Sentinel's memory.",
         parameters: { type: 'object', properties: { fact: { type: 'string' } }, required: ['fact'] },
       },
     },
