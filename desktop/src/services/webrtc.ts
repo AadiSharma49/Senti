@@ -1,5 +1,5 @@
 import { api } from './api'
-import { setQuality, getQuality, QUALITY, type QualityPreset } from './screenShare'
+import { getQuality, QUALITY, type QualityPreset } from './screenShare'
 
 /**
  * Peer-to-peer remote control: real video, real-time input.
@@ -85,187 +85,258 @@ function iceConfig(): RTCConfiguration {
  * then back right off once connected, since a settled connection has almost
  * nothing left to say.
  */
-const POLL_FAST_MS = 200
+const POLL_FAST_MS = 350
 const POLL_IDLE_MS = 2000
 /** If the peers can't connect in this long, the caller falls back. */
 const CONNECT_TIMEOUT_MS = 15_000
 
-/**
- * Floors the adaptive loop won't go below even on a terrible link — the
- * ceiling it backs off FROM is whatever QUALITY preset is active (see
- * screenShare.ts), not a fixed value, since "smooth" (a game) and "sharp"
- * (static detail) want very different trade-offs.
- */
-const MIN_BITRATE = 800_000
-const MIN_FRAMERATE = 12
-const STATS_INTERVAL_MS = 3000
-
 export interface PeerHandle {
   close: () => void
-  /** Send an input event over the data channel. False when it isn't open. */
   send: (event: unknown) => boolean
   connected: () => boolean
+  /** HTTP actions must be newer than the last direct attempt the host retired. */
+  retiredGeneration: () => number
+}
+export interface ViewerHandle extends PeerHandle {
+  firstAttempt: Promise<boolean>
+  stats: () => Promise<RTCStatsReport | null>
 }
 
-/** Post one signalling message to the other end. */
-async function signal(sessionId: string, kind: string, payload: unknown): Promise<void> {
-  try {
-    await api(SIGNAL_PATH, { method: 'POST', body: { id: sessionId, kind, payload: JSON.stringify(payload) } })
-  } catch {
-    // A dropped candidate isn't fatal; ICE keeps trying with the rest.
-  }
+type SignalKind = 'offer' | 'answer' | 'ice'
+interface Envelope { generation: number; data: unknown }
+const MAX_PENDING_ICE = 64
+
+async function signal(id: string, generation: number, kind: SignalKind, data: unknown): Promise<void> {
+  const res = await api(SIGNAL_PATH, {
+    method: 'POST', body: { id, kind, payload: JSON.stringify({ generation, data }) },
+  })
+  if (!res.ok) throw new Error('Signalling unavailable')
 }
 
-/** Poll for messages from the other end until stopped. */
+/** One destructive mailbox reader for the entire session, not one per offer. */
 function pollSignals(
-  sessionId: string,
-  onSignal: (kind: string, payload: unknown) => void,
-  /** Once this returns true we're connected, so slow right down. */
-  isConnected: () => boolean = () => false
+  id: string,
+  onSignal: (kind: SignalKind, message: Envelope) => Promise<void>,
+  idle: () => boolean,
 ): () => void {
   let alive = true
-  let busy = false
-  let timer: number | null = null
-
-  const schedule = () => {
-    if (!alive) return
-    timer = window.setTimeout(() => void tick(), isConnected() ? POLL_IDLE_MS : POLL_FAST_MS)
-  }
-
+  let timer: number | undefined
   const tick = async () => {
-    if (!alive || busy) return
-    busy = true
     try {
-      const res = await api<{ signals?: { kind: string; payload: string }[] }>(
-        `${SIGNAL_PATH}?id=${encodeURIComponent(sessionId)}`
+      const res = await api<{ signals?: { kind: SignalKind; payload: string }[] }>(
+        `${SIGNAL_PATH}?id=${encodeURIComponent(id)}`,
       )
-      for (const s of res.data?.signals ?? []) {
-        if (!alive) return
+      if (!res.ok) return
+      for (const row of res.data?.signals ?? []) {
+        if (!alive) break
         try {
-          onSignal(s.kind, JSON.parse(s.payload))
-        } catch {
-          // Malformed message — skip it rather than tearing the session down.
-        }
+          const msg = JSON.parse(row.payload) as Envelope
+          if (Number.isSafeInteger(msg.generation) && msg.generation > 0) await onSignal(row.kind, msg)
+        } catch { /* ignore malformed messages */ }
       }
-    } catch {
-      // Offline; the next tick retries.
-    } finally {
-      busy = false
-      schedule()
+    } catch { /* retry on the next tick */ }
+    finally {
+      if (alive) timer = window.setTimeout(tick, idle() ? POLL_IDLE_MS : POLL_FAST_MS)
     }
   }
-
   void tick()
-  return () => {
-    alive = false
-    if (timer !== null) clearTimeout(timer)
-  }
+  return () => { alive = false; clearTimeout(timer) }
 }
 
-function attach(
-  pc: RTCPeerConnection,
-  sessionId: string,
-  onState: (connected: boolean) => void,
-  onDisconnected?: () => void
-): void {
-  pc.onicecandidate = (e) => {
-    if (e.candidate) void signal(sessionId, 'ice', e.candidate.toJSON())
+/** Owns everything tied to one SDP negotiation. Closing never stops shared capture tracks. */
+class Attempt {
+  readonly pc = new RTCPeerConnection(iceConfig())
+  channel: RTCDataChannel | null = null
+  closed = false
+  ready = false
+  private video: MediaStreamTrack | null = null
+  private pending: RTCIceCandidateInit[] = []
+  private deadline: number
+  setCeiling?: (preset: QualityPreset) => void
+
+  constructor(
+    private id: string,
+    readonly generation: number,
+    private onReady: () => void,
+    readonly fail: () => void,
+  ) {
+    this.deadline = window.setTimeout(fail, CONNECT_TIMEOUT_MS)
+    this.pc.onicecandidate = ({ candidate }) => {
+      if (!this.closed && candidate) void signal(id, generation, 'ice', candidate.toJSON()).catch(() => {})
+    }
+    this.pc.onconnectionstatechange = this.update
   }
-  pc.onconnectionstatechange = () => {
-    const state = pc.connectionState
-    onState(state === 'connected')
-    if ((state === 'failed' || state === 'disconnected') && onDisconnected) {
-      onDisconnected()
+
+  usable(): boolean {
+    return !this.closed && this.pc.connectionState === 'connected' &&
+      this.video?.readyState === 'live' && this.channel?.readyState === 'open'
+  }
+
+  private update = () => {
+    if (this.closed) return
+    const state = this.pc.connectionState
+    if (state === 'disconnected' || state === 'failed' || state === 'closed') return this.fail()
+    // 'new'/'connecting' are not disconnect notifications. Only promote once
+    // the negotiated video transport AND the reliable input channel are usable.
+    if (this.usable()) {
+      clearTimeout(this.deadline)
+      if (!this.ready) { this.ready = true; this.onReady() }
+    } else if (this.ready && state === 'connecting') {
+      clearTimeout(this.deadline)
+      this.deadline = window.setTimeout(this.fail, CONNECT_TIMEOUT_MS)
     }
   }
+
+  setVideo(track: MediaStreamTrack) {
+    this.video?.removeEventListener('ended', this.fail)
+    this.video = track
+    track.addEventListener('ended', this.fail)
+    this.update()
+  }
+
+  bind(channel: RTCDataChannel): boolean {
+    if (this.closed || this.channel || channel.label !== 'input' || !channel.ordered ||
+        channel.maxRetransmits != null || channel.maxPacketLifeTime != null) {
+      channel.close()
+      return false
+    }
+    this.channel = channel
+    channel.onopen = this.update
+    channel.onclose = channel.onerror = this.fail
+    this.update()
+    return true
+  }
+
+  async ice(data: unknown) {
+    if (this.closed) return
+    const candidate = data as RTCIceCandidateInit
+    if (this.pc.remoteDescription) await this.pc.addIceCandidate(candidate).catch(() => {})
+    else if (this.pending.length < MAX_PENDING_ICE) this.pending.push(candidate)
+  }
+
+  async remote(data: unknown, kind: 'offer' | 'answer') {
+    const desc = data as RTCSessionDescriptionInit
+    if (desc?.type !== kind) throw new Error('Unexpected SDP type')
+    await this.pc.setRemoteDescription(desc)
+    for (const candidate of this.pending.splice(0)) await this.ice(candidate)
+  }
+
+  async local(kind: 'offer' | 'answer') {
+    if (this.closed) return
+    const desc = await (kind === 'offer' ? this.pc.createOffer() : this.pc.createAnswer())
+    if (this.closed) return
+    await this.pc.setLocalDescription(desc)
+    if (!this.closed) await signal(this.id, this.generation, kind, desc)
+  }
+
+  close() {
+    if (this.closed) return
+    this.closed = true
+    this.ready = false
+    clearTimeout(this.deadline)
+    this.setCeiling = undefined
+    this.video?.removeEventListener('ended', this.fail)
+    this.pending = []
+    this.pc.onconnectionstatechange = this.pc.onicecandidate = null
+    this.pc.ontrack = this.pc.ondatachannel = null
+    if (this.channel) {
+      this.channel.onmessage = this.channel.onopen = this.channel.onclose = this.channel.onerror = null
+      this.channel.close()
+    }
+    this.pc.close()
+  }
 }
 
-/**
- * The VIEWER: offers the connection, receives the screen, opens the input
- * channel. Resolves once video is flowing, or rejects so the caller can fall
- * back to frames.
- */
-export async function startViewerPeer(
-  sessionId: string,
+// Strictly increasing within the viewer process, including if a component
+// reattaches. The authenticated session ID isolates different viewers.
+let nextGeneration = 0
+
+export function startViewerPeer(
+  id: string,
   onStream: (stream: MediaStream) => void,
-  onConnected: (ok: boolean) => void
-): Promise<PeerHandle> {
-  const pc = new RTCPeerConnection(iceConfig())
-  let stopPoll: (() => void) | null = null
-  let channelOpen = false
-  let seq = 0
+  onConnected: (ready: boolean) => void,
+): ViewerHandle {
+  let active: Attempt | null = null
+  let lastRetired = 0
+  let closed = false
+  let retry: number | undefined
+  let backoff = 1000
+  let settle!: (ok: boolean) => void
+  const firstAttempt = new Promise<boolean>(resolve => { settle = resolve })
 
-  // We only receive; we never send our own screen or mic back.
-  const videoTx = pc.addTransceiver('video', { direction: 'recvonly' })
-  pc.addTransceiver('audio', { direction: 'recvonly' })
-
-  // Ask for H.264 ahead of VP8/VP9. Hardware decoders for H.264 are close to
-  // universal, while VP9 often falls back to software — which on a modest
-  // machine is the difference between smooth 1080p and a stuttering CPU pegged
-  // at 100%. Negotiation still decides; this only states a preference.
-  try {
-    const caps = RTCRtpReceiver.getCapabilities('video')
-    if (caps?.codecs && videoTx.setCodecPreferences) {
-      const h264 = caps.codecs.filter((c) => /h264/i.test(c.mimeType))
-      const rest = caps.codecs.filter((c) => !/h264/i.test(c.mimeType))
-      if (h264.length) videoTx.setCodecPreferences([...h264, ...rest])
+  const offer = () => {
+    if (closed) return
+    const generation = ++nextGeneration
+    let retired = false
+    const fail = () => {
+      if (closed || retired || (active && active.generation !== generation)) return
+      retired = true
+      // The host might have seen ready even if our video callback never ran.
+      lastRetired = generation
+      const wasReady = active?.ready
+      active?.close()
+      active = null
+      settle(false)
+      retry = window.setTimeout(offer, backoff)
+      backoff = Math.min(30_000, backoff * 2)
+      if (wasReady) onConnected(false)
     }
-  } catch {
-    // Unsupported on this build — the default ordering still works.
-  }
-  // ordered:false + maxRetransmits:0 removes head-of-line blocking: every
-  // click and mouse move ships immediately and stale ones are dropped rather
-  // than waiting to be delivered in sequence. A sequence counter lets the host
-  // discard anything older than what it has already applied.
-  const channel = pc.createDataChannel('input', { ordered: false, maxRetransmits: 0 })
-  channel.onopen = () => {
-    channelOpen = true
-  }
-  channel.onclose = () => {
-    channelOpen = false
-  }
-
-  pc.ontrack = (e) => {
-    if (e.streams[0]) onStream(e.streams[0])
-  }
-  attach(pc, sessionId, onConnected)
-
-  stopPoll = pollSignals(
-    sessionId,
-    (kind, payload) => {
-      if (kind === 'answer') {
-        void pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
-      } else if (kind === 'ice') {
-        void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
+    try {
+      const a = active = new Attempt(id, generation, () => {
+        backoff = 1000
+        settle(true)
+        onConnected(true)
+      }, fail)
+      const tx = a.pc.addTransceiver('video', { direction: 'recvonly' })
+      a.pc.addTransceiver('audio', { direction: 'recvonly' })
+      try {
+        const codecs = RTCRtpReceiver.getCapabilities('video')?.codecs ?? []
+        const h264 = codecs.filter(c => /h264/i.test(c.mimeType))
+        if (h264.length) tx.setCodecPreferences([...h264, ...codecs.filter(c => !h264.includes(c))])
+      } catch { /* codec preferences are optional */ }
+      a.bind(a.pc.createDataChannel('input', { ordered: true }))
+      a.pc.ontrack = ({ streams, track }) => {
+        if (active !== a || track.kind !== 'video') return
+        onStream(streams[0] ?? new MediaStream([track]))
+        if (active === a) a.setVideo(track)
       }
-    },
-    () => pc.connectionState === 'connected'
-  )
+      void a.local('offer').catch(() => { if (active === a) fail() })
+    } catch { fail() }
+  }
 
-  const offer = await pc.createOffer()
-  await pc.setLocalDescription(offer)
-  await signal(sessionId, 'offer', offer)
-
+  offer()
+  const stopPoll = pollSignals(id, async (kind, msg) => {
+    const a = active
+    if (!a || msg.generation !== a.generation) return
+    try {
+      if (kind === 'answer' && !a.pc.remoteDescription) await a.remote(msg.data, 'answer')
+      if (kind === 'ice') await a.ice(msg.data)
+    } catch { if (active === a) a.fail() }
+  }, () => !active || active.ready)
   return {
+    firstAttempt,
+    retiredGeneration: () => lastRetired,
+    connected: () => active?.ready ?? false,
     close: () => {
-      stopPoll?.()
-      try {
-        channel.close()
-      } catch {
-        // already closed
-      }
-      pc.close()
+      closed = true
+      stopPoll()
+      clearTimeout(retry)
+      active?.close()
+      active = null
+      settle(false)
     },
-    send: (event) => {
-      if (!channelOpen || channel.readyState !== 'open') return false
-      try {
-        channel.send(JSON.stringify(event))
-        return true
-      } catch {
-        return false
-      }
+    send: event => {
+      if (!active?.ready || active.channel?.readyState !== 'open') return false
+      try { active.channel.send(JSON.stringify(event)); return true } catch { return false }
     },
-    connected: () => pc.connectionState === 'connected',
+    stats: async () => {
+      const a = active
+      if (!a?.ready || !a.usable()) return null
+      try {
+        const report = await a.pc.getStats()
+        return a === active && a.usable() ? report : null
+      } catch { return null }
+    },
   }
 }
 
@@ -281,100 +352,37 @@ function degradationPreferenceFor(preset: QualityPreset): DegradationPreference 
   return 'balanced'
 }
 
-/**
- * Watches the outgoing video link and backs the encode off when it's clearly
- * struggling (rising packet loss or RTT), then eases it back up once things
- * recover. Simple step function, not full congestion control — just enough
- * that a weak uplink degrades gracefully instead of flooding the link and
- * making everything choppy.
- *
- * The ceiling it backs off FROM/recovers TOWARD is reconfigurable via
- * `setCeiling` — when the viewer picks a quality preset (e.g. "smooth" for a
- * game), the ceiling must move with it, or this loop just fights the choice
- * and quietly drags everything back to the old default.
- */
-function startAdaptiveBitrate(
-  pc: RTCPeerConnection,
-  senders: RTCRtpSender[],
-  initialBitrate: number,
-  initialFramerate: number
-): { stop: () => void; setCeiling: (bitrate: number, framerate: number) => void } {
-  let ceilingBitrate = initialBitrate
-  let ceilingFramerate = initialFramerate
-  let bitrate = initialBitrate
-  let framerate = initialFramerate
-  let lastPacketsLost = 0
-  let healthyStreak = 0
-
-  const apply = async (): Promise<void> => {
-    for (const sender of senders) {
-      try {
-        const params = sender.getParameters()
-        if (!params.encodings?.length) continue
-        params.encodings[0].maxBitrate = bitrate
-        params.encodings[0].maxFramerate = framerate
-        await sender.setParameters(params)
-      } catch {
-        // A renegotiation can race the connection closing — skip this tick.
-      }
-    }
-  }
-
-  const timer = window.setInterval(async () => {
-    if (pc.connectionState !== 'connected') return
+/** WebRTC's native congestion controller chooses the operating rate. We only
+ * set ceilings. Coalesce preset changes; overlapping setParameters calls can
+ * invalidate each other's parameter transaction, even on a healthy sender. */
+function ceilingSetter(a: Attempt, senders: RTCRtpSender[]): (preset: QualityPreset) => void {
+  let desired: QualityPreset | null = null
+  let busy = false
+  const apply = async () => {
+    busy = true
     try {
-      const stats = await pc.getStats()
-      let packetsLost = 0
-      let rtt = 0
-      stats.forEach((report) => {
-        if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
-          if (typeof report.packetsLost === 'number') packetsLost = report.packetsLost
-          if (typeof report.roundTripTime === 'number') rtt = Math.max(rtt, report.roundTripTime)
-        }
-        if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-          if (typeof report.currentRoundTripTime === 'number') rtt = Math.max(rtt, report.currentRoundTripTime)
-        }
-      })
-      const lossDelta = Math.max(0, packetsLost - lastPacketsLost)
-      lastPacketsLost = packetsLost
-      const struggling = lossDelta > 20 || rtt > 0.3
-
-      if (struggling) {
-        healthyStreak = 0
-        const nextBitrate = Math.max(MIN_BITRATE, Math.floor(bitrate * 0.7))
-        const nextFramerate = Math.max(MIN_FRAMERATE, framerate - 10)
-        if (nextBitrate !== bitrate || nextFramerate !== framerate) {
-          bitrate = nextBitrate
-          framerate = nextFramerate
-          await apply()
-        }
-      } else {
-        healthyStreak++
-        if (healthyStreak >= 3 && (bitrate < ceilingBitrate || framerate < ceilingFramerate)) {
-          healthyStreak = 0
-          bitrate = Math.min(ceilingBitrate, Math.floor(bitrate * 1.3))
-          framerate = Math.min(ceilingFramerate, framerate + 5)
-          await apply()
+      while (desired && !a.closed) {
+        const preset: QualityPreset = desired
+        desired = null
+        for (const sender of senders) {
+          if (a.closed) return
+          try {
+            const params = sender.getParameters()
+            if (!params.encodings?.length) continue
+            const q = QUALITY[preset]
+            params.encodings[0].maxBitrate = q.bitrate
+            params.encodings[0].maxFramerate = q.fps
+            params.degradationPreference = degradationPreferenceFor(preset)
+            await sender.setParameters(params)
+          } catch { /* unsupported parameters: keep the browser's defaults */ }
         }
       }
-    } catch {
-      // Stats unavailable this tick — try again next interval.
-    }
-  }, STATS_INTERVAL_MS)
-
-  return {
-    stop: () => window.clearInterval(timer),
-    // A preset change (e.g. switching to "smooth" for a game) is a deliberate
-    // choice, not a network condition — snap straight to it rather than
-    // easing toward it over several healthy ticks.
-    setCeiling: (nextBitrate: number, nextFramerate: number) => {
-      ceilingBitrate = nextBitrate
-      ceilingFramerate = nextFramerate
-      bitrate = nextBitrate
-      framerate = nextFramerate
-      healthyStreak = 0
-      void apply()
-    },
+    } finally { busy = false }
+  }
+  return preset => {
+    if (a.closed || a.pc.localDescription?.type !== 'answer') return
+    desired = preset
+    if (!busy) void apply()
   }
 }
 
@@ -382,105 +390,90 @@ function startAdaptiveBitrate(
  * The HOST: answers the offer, sends its screen, and applies whatever arrives
  * on the input channel.
  */
-export async function startHostPeer(
-  sessionId: string,
-  screen: MediaStream,
-  onInput: (events: unknown[]) => void,
-  onConnected: (ok: boolean) => void
-): Promise<PeerHandle> {
-  const pc = new RTCPeerConnection(iceConfig())
+function configureHost(a: Attempt, screen: MediaStream, onInput: (events: unknown[]) => void): void {
+  const pc = a.pc
+  const video = screen.getVideoTracks()[0]
+  if (!video || video.readyState === 'ended') throw new Error('No live screen')
+  a.setVideo(video)
   const videoSenders: RTCRtpSender[] = []
   for (const track of screen.getVideoTracks()) videoSenders.push(pc.addTrack(track, screen))
   // System audio, when the OS allowed us to capture it.
   for (const track of screen.getAudioTracks()) pc.addTrack(track, screen)
 
-  // Left alone, WebRTC targets a conservative bitrate and will happily halve
-  // the frame rate to protect image detail — which is exactly wrong for a
-  // moving screen. Seed from whatever quality preset is active right now
-  // (the viewer may have already requested "smooth" for a game before this
-  // peer finished connecting) rather than a fixed default — a fixed
-  // 16Mbps/60fps ceiling looked great on a LAN but overran most home
-  // uplinks, which is a big part of why this felt laggy in practice.
-  // startAdaptiveBitrate() below steps this down further in real time when
-  // the link can't keep up, and back up toward the preset's ceiling when it
-  // recovers; applyQualityToSenders() moves that ceiling when the viewer
-  // picks a different preset mid-session.
-  const applyQualityToSenders = async (preset: QualityPreset): Promise<void> => {
-    const q = QUALITY[preset]
-    const pref = degradationPreferenceFor(preset)
-    for (const sender of videoSenders) {
-      try {
-        const params = sender.getParameters()
-        if (!params.encodings || !params.encodings.length) params.encodings = [{}]
-        params.encodings[0].maxBitrate = q.bitrate
-        params.encodings[0].maxFramerate = q.fps
-        params.encodings[0].scaleResolutionDownBy = 1.0
-        ;(params as RTCRtpSendParameters & { degradationPreference?: DegradationPreference }).degradationPreference =
-          pref
-        await sender.setParameters(params)
-      } catch {
-        // Older/odd builds: the defaults still work, just less smoothly.
-      }
-    }
-  }
-
-  const initialQuality = QUALITY[getQuality()]
-  await applyQualityToSenders(getQuality())
-  const adaptive = startAdaptiveBitrate(pc, videoSenders, initialQuality.bitrate, initialQuality.fps)
+  a.setCeiling = ceilingSetter(a, videoSenders)
 
   pc.ondatachannel = (e) => {
     const ch = e.channel
+    if (!a.bind(ch)) return
     ch.onmessage = (msg) => {
+      if (!a.ready || a.closed) return
       try {
         const parsed = JSON.parse(String(msg.data))
-        // Batched input events or single — accept both.
-        const input: any[] = []
-        const items = Array.isArray(parsed) ? parsed : [parsed]
-        for (const item of items) {
-          // Control messages from the viewer: quality preset changes.
-          if (item?.t === 'quality' && item.preset && item.preset in QUALITY) {
-            const preset = item.preset as QualityPreset
-            void setQuality(preset)
-            void applyQualityToSenders(preset)
-            adaptive.setCeiling(QUALITY[preset].bitrate, QUALITY[preset].fps)
-            continue
-          }
-          input.push(item)
-        }
-        if (input.length) onInput(input)
+        onInput(Array.isArray(parsed) ? parsed : [parsed])
       } catch {
         // Ignore anything we can't read; never trust the wire blindly.
       }
     }
   }
-  attach(pc, sessionId, onConnected)
-
-  const stopPoll = pollSignals(
-    sessionId,
-    (kind, payload) => {
-      if (kind === 'offer') {
-        void (async () => {
-          await pc.setRemoteDescription(payload as RTCSessionDescriptionInit)
-          const answer = await pc.createAnswer()
-          await pc.setLocalDescription(answer)
-          await signal(sessionId, 'answer', answer)
-        })()
-      } else if (kind === 'ice') {
-        void pc.addIceCandidate(payload as RTCIceCandidateInit).catch(() => {})
-      }
-    },
-    () => pc.connectionState === 'connected'
-  )
-
-  return {
-    close: () => {
-      stopPoll()
-      adaptive.stop()
-      pc.close()
-    },
-    send: () => false,
-    connected: () => pc.connectionState === 'connected',
-  }
 }
 
-export { CONNECT_TIMEOUT_MS }
+export interface HostHandle extends PeerHandle {
+  setSenderQuality: (preset: QualityPreset) => void
+}
+
+/** A passive mailbox listener. Only a newer viewer offer may start a peer. */
+export function startHostPeer(
+  sessionId: string,
+  screen: MediaStream,
+  onInput: (events: unknown[]) => void,
+  onConnected: (ready: boolean) => void,
+): HostHandle {
+  let active: Attempt | null = null
+  let generation = 0
+  let lastReadyRetired = 0
+  const earlyIce = new Map<number, unknown[]>()
+  const drop = () => {
+    const wasReady = active?.ready
+    if (active?.ready) lastReadyRetired = active.generation
+    active?.close()
+    active = null
+    if (wasReady) onConnected(false)
+  }
+  const stopPoll = pollSignals(sessionId, async (kind, msg) => {
+    if (msg.generation < generation) return
+    if (kind === 'ice') {
+      if (msg.generation === generation) await active?.ice(msg.data)
+      else {
+        // Candidate POSTs can beat the offer POST even for a brand new peer.
+        if (!earlyIce.has(msg.generation) && earlyIce.size < 4) earlyIce.set(msg.generation, [])
+        const pending = earlyIce.get(msg.generation)
+        if (pending && pending.length < MAX_PENDING_ICE) pending.push(msg.data)
+      }
+      return
+    }
+    if (kind !== 'offer' || msg.generation <= generation) return
+    generation = msg.generation
+    drop()
+    try {
+      const a = active = new Attempt(sessionId, generation, () => onConnected(true), () => {
+        if (active?.generation === msg.generation) drop()
+      })
+      configureHost(a, screen, onInput)
+      await a.remote(msg.data, 'offer')
+      for (const data of earlyIce.get(generation) ?? []) await a.ice(data)
+      await a.local('answer')
+      if (!a.closed) a.setCeiling?.(getQuality())
+    } catch {
+      if (active?.generation === msg.generation) drop()
+    } finally {
+      for (const n of earlyIce.keys()) if (n <= generation) earlyIce.delete(n)
+    }
+  }, () => !!active?.ready)
+  return {
+    retiredGeneration: () => lastReadyRetired,
+    setSenderQuality: preset => active?.setCeiling?.(preset),
+    close: () => { stopPoll(); earlyIce.clear(); drop() },
+    send: () => false,
+    connected: () => active?.ready ?? false,
+  }
+}

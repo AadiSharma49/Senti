@@ -311,6 +311,7 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   },
 
   stop: () => {
+    import('../services/screenContext').then(({ stopScreenContext }) => stopScreenContext()).catch(() => {})
     unsubscribeLevel?.()
     unsubscribeLevel = null
     if (idleTimer !== null) {

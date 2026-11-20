@@ -1,6 +1,8 @@
 import { api } from './api'
 import { peerScreen } from './peers'
-import { startViewerPeer, type PeerHandle } from './webrtc'
+import { InputDelivery, type RemoteEvent } from './inputDelivery'
+export type { RemoteEvent } from './inputDelivery'
+import { startViewerPeer, type ViewerHandle } from './webrtc'
 
 /**
  * Driving another machine — the sending half of remote control.
@@ -10,8 +12,8 @@ import { startViewerPeer, type PeerHandle } from './webrtc'
  *
  * Mouse moves are throttled and coalesced on purpose: a mouse produces dozens
  * of events a second, and forwarding each as its own request would flood the
- * backend to no benefit — only the LATEST position matters. Clicks and
- * keystrokes are never dropped, because every one of those is intentional.
+ * backend to no benefit. Clicks and keystrokes stay ordered; an uncertain
+ * delivery is dropped rather than playing the same action twice.
  */
 const SESSION_PATH = '/api/device/remote/session'
 const INPUT_PATH = '/api/device/remote/input'
@@ -19,38 +21,21 @@ const INPUT_PATH = '/api/device/remote/input'
 const FLUSH_MS = 8
 /** Heartbeat so abandoned viewers time out on the target. */
 const HEARTBEAT_MS = 6000
-/** A session is dead if the viewer hasn't heartbeated in this long. */
-const VIEWER_STALE_MS = 30_000
-/** Prevent overlapping async flushes — a slow HTTP call must not delay the next batch. */
-let flushing = false
-
-export interface RemoteEvent {
-  /** `moverel` carries a delta rather than a position — see the game mode. */
-  t: 'move' | 'moverel' | 'click' | 'scroll' | 'type' | 'keydown' | 'keyup'
-  x?: number
-  y?: number
-  b?: 'left' | 'right' | 'middle'
-  d?: number
-  /** For scroll: 'y' (vertical) or 'x' (horizontal/trackpad). */
-  axis?: string
-  text?: string
-  k?: string
-  mods?: string[]
-}
-
 let sessionId: string | null = null
-let queue: RemoteEvent[] = []
-/** The newest pointer position, kept apart so it can be coalesced. */
-let pendingMove: RemoteEvent | null = null
+let sessionRequest = 0
+let delivery: InputDelivery | null = null
 let flushTimer: number | null = null
 let beatTimer: number | null = null
 /** Direct connection to the target, when one comes up. */
-let peer: PeerHandle | null = null
+let peer: ViewerHandle | null = null
 let peerLive = false
-/** Remember if peer was ever connected — if so, never fall back to HTTP for input. */
-let peerWasConnected = false
-/** When true, mouse moves are sent as relative deltas (game mode). */
-let gameMode = false
+interface ViewerOwner {
+  id: string
+  stream: MediaStream | null
+  onStream: (stream: MediaStream) => void
+  onConnected: (ready: boolean) => void
+}
+let peerOwner: ViewerOwner | null = null
 
 export type StartResult =
   | { ok: true; id: string; method: 'email' | 'pin'; sentTo?: string }
@@ -62,10 +47,15 @@ export type StartResult =
  * static PIN set on the target machine.
  */
 export async function startSession(targetDeviceId: string): Promise<StartResult> {
+  const request = ++sessionRequest
   const res = await api<{ id?: string; error?: string; message?: string; method?: string; sentTo?: string }>(
     SESSION_PATH,
     { method: 'POST', body: { action: 'start', targetDeviceId } }
   )
+  if (request !== sessionRequest) {
+    if (res.ok && res.data?.id) void api(SESSION_PATH, { method: 'POST', body: { action: 'end', id: res.data.id } }).catch(() => {})
+    return { ok: false, reason: 'failed', message: 'Session cancelled.' }
+  }
   if (res.ok && res.data?.id) {
     sessionId = res.data.id
     return {
@@ -90,10 +80,12 @@ export type VerifyResult = { ok: true } | { ok: false; attemptsLeft: number; mes
 /** Hand over the PIN. Only on success does the session start accepting input. */
 export async function verifyPin(pin: string): Promise<VerifyResult> {
   if (!sessionId) return { ok: false, attemptsLeft: 0, message: 'No session.' }
+  const id = sessionId
   const res = await api<{ ok?: boolean; attemptsLeft?: number }>(SESSION_PATH, {
     method: 'POST',
-    body: { action: 'verify', id: sessionId, pin },
+    body: { action: 'verify', id, pin },
   })
+  if (sessionId !== id) return { ok: false, attemptsLeft: 0, message: 'Session cancelled.' }
   if (res.ok && res.data?.ok) {
     startPumps()
     return { ok: true }
@@ -109,18 +101,12 @@ export async function verifyPin(pin: string): Promise<VerifyResult> {
 }
 
 export async function endSession(): Promise<void> {
+  sessionRequest++
   const id = sessionId
   sessionId = null
-  queue = []
-  pendingMove = null
+  delivery = null
   stopPumps()
-  try {
-    peer?.close()
-  } catch {
-    // already closed
-  }
-  peer = null
-  peerLive = false
+  closeViewerPeer()
   if (id) {
     try {
       await api(SESSION_PATH, { method: 'POST', body: { action: 'end', id } })
@@ -130,151 +116,104 @@ export async function endSession(): Promise<void> {
   }
 }
 
-/** Queue an event. Absolute moves coalesce; everything else is kept. */
+/** Notify after changing the current, ready input channel (not just video). */
+export function inputPathChanged(): void {
+  delivery?.setPath(peerLive ? peer : null, peer?.retiredGeneration?.() ?? 0)
+}
+
 export function sendEvent(e: RemoteEvent): void {
-  if (!sessionId) return
-
-  // In game mode, critical events go out IMMEDIATELY — no batching, no waiting.
-  // This is what makes fast key presses feel real-time.
-  if (gameMode && (e.t === 'keydown' || e.t === 'keyup' || e.t === 'click')) {
-    void immediateSend([e])
-    return
-  }
-
-  if (e.t === 'move' && !gameMode) {
-    pendingMove = e
-    return
-  }
-  if (e.t === 'moverel') {
-    const last = queue[queue.length - 1]
-    if (last?.t === 'moverel') {
-      last.x = (last.x ?? 0) + (e.x ?? 0)
-      last.y = (last.y ?? 0) + (e.y ?? 0)
-    } else {
-      queue.push({ ...e })
-    }
-    return
-  }
-  queue.push(e)
+  if (!sessionId || !delivery) return
+  inputPathChanged()
+  delivery.enqueue(e)
 }
 
-async function immediateSend(events: RemoteEvent[]): Promise<void> {
-  if (!sessionId) return
-  // Peer data channel is instant — no HTTP round trip.
-  if (peerLive && peer?.send(events)) return
-  // Fallback: fire and forget HTTP, don't wait.
-  void api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events } }).catch(() => {
-    // Dropped input is better than a growing backlog.
-  })
+function flush(): void {
+  inputPathChanged()
+  void delivery?.flush()
 }
 
-async function flush(): Promise<void> {
-  if (!sessionId || flushing) return
-  const batch = pendingMove ? [pendingMove, ...queue] : queue
-  pendingMove = null
-  queue = []
-  if (!batch.length) return
+function closeViewerPeer(): void {
+  const wasReady = peerLive
+  const owner = peerOwner
+  peerOwner = null
+  peerLive = false
+  peer?.close()
+  peer = null
+  inputPathChanged()
+  if (wasReady) owner?.onConnected(false)
+}
 
-  flushing = true
+/** Resolves on the first attempt's outcome. Subsequent drops/recoveries are
+ * reported through onConnected until endSession closes the session owner. */
+export async function connectPeer(
+  onStream: (stream: MediaStream) => void,
+  onConnected: (ready: boolean) => void = () => {},
+): Promise<boolean> {
+  const id = sessionId
+  if (!id) return false
+  if (peerOwner?.id === id && peer) {
+    const handle = peer
+    peerOwner.onStream = onStream
+    peerOwner.onConnected = onConnected
+    if (peerOwner.stream) onStream(peerOwner.stream)
+    onConnected(peerLive)
+    return (peerLive || await handle.firstAttempt) && peer === handle && peerLive
+  }
+  closeViewerPeer()
+  const owner: ViewerOwner = { id, onStream, onConnected, stream: null }
+  peerOwner = owner
+  const current = () => peerOwner === owner && sessionId === id
   try {
-    // If peer was ever connected, keep events queued and retry on next flush.
-    // HTTP fallback adds 100-300ms — deadly for gaming. We only use HTTP if
-    // the peer was never connected in this session.
-    if (peerLive && peer?.send(batch)) {
-      // Sent via peer — done.
-    } else if (!peerWasConnected) {
-      // Peer never connected — use HTTP as the only path.
-      await api(INPUT_PATH, { method: 'POST', body: { id: sessionId, events: batch } })
-    } else {
-      // Peer dropped but was connected — requeue everything and retry.
-      queue = [...batch, ...queue]
-    }
+    peer = startViewerPeer(id, stream => {
+      if (!current()) return
+      owner.stream = stream
+      owner.onStream(stream)
+    }, ready => {
+      if (!current()) return
+      peerLive = ready
+      inputPathChanged()
+      if (!ready) owner.stream = null
+      owner.onConnected(ready)
+    })
+    return await peer.firstAttempt && current() && peerLive
   } catch {
-    if (!peerWasConnected) {
-      // HTTP failed too — requeue and retry.
-      queue = [...batch, ...queue]
-    }
-  } finally {
-    flushing = false
-  }
-}
-
-/**
- * Try for a direct connection to the target. Resolves true once video is
- * actually flowing; on failure the caller keeps using the frame path, so a
- * network that won't allow peer-to-peer degrades instead of going black.
- *
- * Auto-reconnects if the peer drops — never falls back to HTTP for input
- * once a peer was successfully established.
- */
-export async function connectPeer(onStream: (s: MediaStream) => void): Promise<boolean> {
-  if (!sessionId) return false
-  // sessionId is a module-level `let` (can be cleared by endSession() from
-  // elsewhere), so TS can't narrow it as non-null inside the closures below —
-  // capture it in a local const once we've already confirmed it's set.
-  const activeSessionId = sessionId
-  let handle: PeerHandle | null = null
-  let reconnectAttempts = 0
-  const MAX_RECONNECT = 5
-
-  const tryConnect = async (): Promise<boolean> => {
-    try {
-      handle = await startViewerPeer(
-        activeSessionId,
-        onStream,
-        (ok) => {
-          peerLive = ok
-          if (ok) reconnectAttempts = 0
-        }
-      )
-      peer = handle
-    } catch {
-      if (handle) try { handle.close() } catch { /* ignore */ }
-      peer = null
-      peerLive = false
-      return false
-    }
-
-    const deadline = Date.now() + 15_000
-    while (Date.now() < deadline) {
-      if (peerLive) return true
-      if (!sessionId) {
-        handle?.close()
-        peer = null
-        peerLive = false
-        return false
-      }
-      await new Promise((r) => setTimeout(r, 400))
-    }
-    handle?.close()
-    peer = null
-    peerLive = false
+    if (current()) closeViewerPeer()
     return false
   }
+}
 
-  const connected = await tryConnect()
-  if (connected) return true
+export async function getViewerStats(): Promise<RTCStatsReport | null> {
+  const handle = peer
+  if (!handle || !peerLive || peerOwner?.id !== sessionId) return null
+  const report = await handle.stats()
+  return handle === peer && peerLive && peerOwner?.id === sessionId ? report : null
+}
 
-  // Auto-reconnect loop: if the peer was previously connected and then dropped,
-  // keep trying. Only give up after MAX_RECONNECT attempts.
-  while (reconnectAttempts < MAX_RECONNECT) {
-    reconnectAttempts++
-    await new Promise((r) => setTimeout(r, 1000 * reconnectAttempts))
-    if (!sessionId) break
-    const ok = await tryConnect()
-    if (ok) return true
-  }
-
-  peer = null
-  peerLive = false
-  return false
+const endedListeners = new Set<(id: string) => void>()
+/** A confirmed server-side hang-up, not a transient loss of connectivity. */
+export function onRemoteSessionEnded(cb: (id: string) => void): () => void {
+  endedListeners.add(cb)
+  return () => { endedListeners.delete(cb) }
 }
 
 function startPumps(): void {
   stopPumps()
+  const id = sessionId
+  if (!id) return
+  delivery = new InputDelivery(async events => (await api(INPUT_PATH, { method: 'POST', body: { id, events } })).ok)
   flushTimer = window.setInterval(() => void flush(), FLUSH_MS)
-  beatTimer = window.setInterval(() => {
-    if (sessionId) void api(SESSION_PATH, { method: 'POST', body: { action: 'heartbeat', id: sessionId } })
+  let beating = false
+  beatTimer = window.setInterval(async () => {
+    if (beating || id !== sessionId) return
+    beating = true
+    try {
+      const res = await api(SESSION_PATH, { method: 'POST', body: { action: 'heartbeat', id } })
+      if (sessionId === id && (res.status === 403 || res.status === 404)) {
+        void endSession() // invalidates the input pump synchronously, before UI callbacks
+        for (const cb of endedListeners) cb(id)
+      }
+    } catch { /* transient failure, try the next heartbeat */ }
+    finally { beating = false }
   }, HEARTBEAT_MS)
 }
 

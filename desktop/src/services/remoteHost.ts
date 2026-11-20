@@ -1,234 +1,219 @@
 import { api } from './api'
 import {
-  startScreenShare,
-  setFastFrames,
-  getScreenStream,
-  pauseFrameUpload,
-  setQuality,
-  QUALITY,
-  type QualityPreset,
+  getScreenStream, releaseRemoteScreen, onScreenShareChange,
+  setFastFrames, pauseFrameUpload, setQuality, QUALITY, type QualityPreset,
 } from './screenShare'
-import { startHostPeer, type PeerHandle } from './webrtc'
+import { startHostPeer, type HostHandle } from './webrtc'
 
-/**
- * Being controlled — the receiving half of remote control.
- *
- * This machine asks "is one of my other devices driving me right now?", and if
- * so it drains the input queue and hands the events to Windows, speeds its
- * screen feed up so the driver isn't clicking at a stale picture, and puts an
- * unmissable banner on screen.
- *
- * The banner is not decoration. Someone else operating your computer must
- * never be a silent state, and the banner's button ends the session instantly
- * from this side — whoever is physically at the machine always wins.
- */
 const SESSION_PATH = '/api/device/remote/session'
 const INPUT_PATH = '/api/device/remote/input'
-/** Fast enough to feel connected, slow enough not to hammer the backend. */
-const POLL_MS = 150
-/** When nobody is driving, checking every 150ms is pure waste. */
-const IDLE_POLL_MS = 4000
-/** When the peer is connected the HTTP path is only a fallback, but it still
- *  needs to be fast enough that a dropped peer doesn't add a full second of
- *  stale input before the next drain. */
-const PEER_POLL_MS = 50
+const SESSION_MS = 1000
+const IDLE_MS = 4000
+const INPUT_MS = 300
+// Even an IPC/HTTP request which never settles cannot extend permission indefinitely.
+const SESSION_LEASE_MS = 6000
 
-let timer: number | null = null
-let busy = false
-/** Explicit, so a tick already in flight when we stop can't reschedule itself. */
-let hostRunning = false
-let activeSessionId: string | null = null
-/** The direct peer connection, when one is up. */
-let peer: PeerHandle | null = null
-let peerConnected = false
-let peerReconnectAttempts = 0
-const MAX_PEER_RECONNECT = 5
+interface HostSession {
+  id: string
+  peer: HostHandle | null
+  ready: boolean
+  captured: boolean
+  pathVersion: number
+  lastSeq: number
+  inputTimer?: number
+  inputBusy: boolean
+  lease?: number
+  unsubscribe?: () => void
+}
+
+let active: HostSession | null = null
+let running = false
+let runVersion = 0
+let timer: number | undefined
+// A local hang-up wins even if the POST fails or a GET is already in flight.
+let refusedId: string | null = null
 const listeners = new Set<(on: boolean) => void>()
 
-/** Notified when this machine starts/stops being remotely controlled. */
 export function onControlledChange(cb: (on: boolean) => void): () => void {
   listeners.add(cb)
-  cb(!!activeSessionId)
+  cb(!!active)
   return () => listeners.delete(cb)
 }
 
 function emit(): void {
   for (const cb of listeners) {
-    try {
-      cb(!!activeSessionId)
-    } catch {
-      // a bad listener must not stop the session
-    }
+    try { cb(!!active) } catch { /* keep the banner independent of other listeners */ }
   }
 }
 
-function schedule(ms: number): void {
-  if (timer !== null) clearTimeout(timer)
-  if (!hostRunning) return
-  timer = window.setTimeout(() => void tick(), ms)
-}
-
-async function tick(): Promise<void> {
-  if (busy) return
-  busy = true
-  let nextDelay = IDLE_POLL_MS
-  try {
-    const res = await api<{ session?: { id: string } | null }>(SESSION_PATH)
-    const session = res.ok ? res.data?.session ?? null : null
-
-    if (!session) {
-      if (activeSessionId) await endLocally()
-      return
-    }
-
-    if (session.id !== activeSessionId) {
-      // A session just began: make sure the driver can actually see something.
-      activeSessionId = session.id
-      setFastFrames(true)
-      void startScreenShare()
-      void window.senti?.keepAwake?.(true, 'remoteControl')
-      emit()
-      void openPeer(session.id)
-    }
-
-    // Keep draining the HTTP queue even with a peer up: it's the fallback
-    // path, and anything already queued there still deserves to be applied.
-    const inp = await api<{ events?: unknown[] }>(INPUT_PATH)
-    const events = inp.ok ? inp.data?.events ?? [] : []
-    if (events.length) await window.senti?.remoteInput?.(events)
-
-    // A direct connection carries the video, so uploading JPEGs is pure waste.
-    pauseFrameUpload(peerConnected)
-    setFastFrames(!peerConnected)
-    // With a peer up the HTTP queue is only a fallback — poll it fast enough
-    // that a peer hiccup doesn't add a second of dead input.
-    nextDelay = peerConnected ? PEER_POLL_MS : POLL_MS
-  } catch {
-    // Offline — fall back to the idle cadence and try again.
-  } finally {
-    busy = false
-    schedule(nextDelay)
-  }
-}
-
-/**
- * Sort what arrives on the data channel.
- *
- * It carries two kinds of message: input to replay, and control messages from
- * the viewer (currently only a quality change). Control messages must never
- * reach the input injector — an unrecognised event there is at best ignored
- * and at worst a stray click.
- */
-async function applyIncoming(events: unknown[]): Promise<void> {
-  const input: unknown[] = []
-  for (const e of events) {
-    const ev = e as { t?: string; preset?: string }
-    if (ev?.t === 'quality' && ev.preset && ev.preset in QUALITY) {
-      await setQuality(ev.preset as QualityPreset)
-      continue
-    }
-    input.push(e)
-  }
-  if (input.length) await window.senti?.remoteInput?.(input)
-}
-
-/**
- * Offer this machine's screen over a direct connection, and take input back on
- * the data channel. If it never connects, the frame + HTTP path is still
- * running underneath, so control degrades instead of breaking.
- *
- * Auto-reconnects if the peer drops — keeps the screen share running and
- * re-establishes the data channel without user intervention.
- */
-async function openPeer(sessionId: string): Promise<void> {
-  closePeer()
-  peerReconnectAttempts = 0
-
-  const tryConnect = async (): Promise<boolean> => {
-    try {
-      const screen = await getScreenStream()
-      if (!screen) return false
-      peer = await startHostPeer(
-        sessionId,
-        screen,
-        (events) => void applyIncoming(events),
-        (ok) => {
-          peerConnected = ok
-          if (ok) peerReconnectAttempts = 0
-        }
-      )
-      return true
-    } catch {
-      closePeer()
-      return false
-    }
-  }
-
-  const connected = await tryConnect()
-  if (!connected) return
-
-  // Auto-reconnect loop: if the peer drops, keep trying.
-  while (peerReconnectAttempts < MAX_PEER_RECONNECT && activeSessionId === sessionId) {
-    await new Promise((r) => setTimeout(r, 1500))
-    if (!peerConnected && activeSessionId === sessionId) {
-      peerReconnectAttempts++
-      const ok = await tryConnect()
-      if (ok) continue
-    }
-    // If peer is connected, break the reconnect loop and let the normal
-    // connection state change handler manage future drops.
-    if (peerConnected) break
-  }
-}
-
-function closePeer(): void {
-  try {
-    peer?.close()
-  } catch {
-    // already gone
-  }
-  peer = null
-  peerConnected = false
-  // The fallback path has to come back to life, or losing the peer would
-  // leave the viewer staring at a frozen picture.
+function endLocally(): void {
+  const s = active
+  if (!s) return
+  active = null // Invalidate all pending capture, input, peer and lease callbacks first.
+  clearTimeout(s.lease)
+  clearTimeout(s.inputTimer)
+  s.unsubscribe?.()
+  s.peer?.close()
+  releaseRemoteScreen()
   pauseFrameUpload(false)
-}
-
-/** Tear down the controlled state on this side. */
-async function endLocally(): Promise<void> {
-  activeSessionId = null
-  closePeer()
   setFastFrames(false)
-  void window.senti?.remoteInputStop?.()
   void window.senti?.resetRemoteKeyState?.()
+  void window.senti?.remoteInputStop?.()
   void window.senti?.keepAwake?.(false, 'remoteControl')
   emit()
 }
 
-/** Hang up from the machine being controlled — always available, always wins. */
 export async function endControlSession(): Promise<void> {
-  const id = activeSessionId
-  await endLocally()
-  if (id) {
-    try {
-      await api(SESSION_PATH, { method: 'POST', body: { action: 'end', id } })
-    } catch {
-      // It'll go stale on its own if the call didn't land.
-    }
+  if (!active) return
+  const id = refusedId = active.id
+  endLocally()
+  try { await api(SESSION_PATH, { method: 'POST', body: { action: 'end', id } }) }
+  catch { /* refusedId still prevents readmission */ }
+}
+
+function renewLease(s: HostSession): void {
+  clearTimeout(s.lease)
+  s.lease = window.setTimeout(() => { if (active === s) void endControlSession() }, SESSION_LEASE_MS)
+}
+
+/** Both paths share a sequence watermark. Never replay queued HTTP actions
+ * that predate a newer direct packet (including its initial key reset). */
+function receive(s: HostSession, events: unknown[], relayFloor?: number): void {
+  if (active !== s || !s.captured) return
+  const input: unknown[] = []
+  for (const e of events) {
+    if (!e || typeof e !== 'object') continue
+    const ev = e as { t?: string; seq?: number; preset?: string; relayFence?: number }
+    // If the channel died before the first direct/reset packet, seq alone is
+    // insufficient: even the newest received seq could be a pre-RTC click.
+    // Compare the negotiated offer's ID, not two independent readiness counts.
+    if (relayFloor !== undefined && ev.relayFence !== undefined &&
+        (!Number.isSafeInteger(ev.relayFence) || ev.relayFence < relayFloor)) continue
+    if (ev.seq !== undefined) {
+      if (!Number.isSafeInteger(ev.seq) || ev.seq <= s.lastSeq) continue
+      s.lastSeq = ev.seq
+    } else if (s.lastSeq) continue // legacy fallback clients have no sequence numbers
+    if (ev.t === 'quality') {
+      if (ev.preset && Object.prototype.hasOwnProperty.call(QUALITY, ev.preset)) {
+        const preset = ev.preset as QualityPreset
+        void setQuality(preset)
+        s.peer?.setSenderQuality(preset)
+      }
+    } else input.push(e)
+  }
+  if (input.length) void window.senti?.remoteInput?.(input).catch(() => {})
+}
+
+function scheduleInput(s: HostSession, ms: number): void {
+  clearTimeout(s.inputTimer)
+  if (active === s && s.captured && !s.ready && !s.inputBusy) {
+    s.inputTimer = window.setTimeout(() => void drain(s), ms)
   }
 }
 
+async function drain(s: HostSession): Promise<void> {
+  if (active !== s || s.ready || s.inputBusy) return
+  const version = s.pathVersion
+  s.inputBusy = true
+  try {
+    const res = await api<{ events?: unknown[] }>(`${INPUT_PATH}?id=${encodeURIComponent(s.id)}`)
+    if (active !== s || s.pathVersion !== version) return
+    if (!res.ok) {
+      if ([0, 401, 403, 404].includes(res.status)) void endControlSession()
+      return
+    }
+    receive(s, res.data?.events ?? [], s.peer?.retiredGeneration() ?? 0)
+  } catch {
+    if (active === s && s.pathVersion === version) void endControlSession()
+  } finally {
+    s.inputBusy = false
+    scheduleInput(s, INPUT_MS)
+  }
+}
+
+function setReady(s: HostSession, ready: boolean): void {
+  if (active !== s || s.ready === ready) return
+  s.ready = ready
+  s.pathVersion++
+  void window.senti?.resetRemoteKeyState?.()
+  pauseFrameUpload(ready)
+  setFastFrames(!ready)
+  scheduleInput(s, 0)
+}
+
+async function acquire(s: HostSession): Promise<void> {
+  try {
+    const screen = await getScreenStream()
+    if (active !== s) return // endLocally already released the remote capture claim
+    if (!screen) { void endControlSession(); return }
+    s.captured = true
+    scheduleInput(s, 0)
+    // One listener for this session. Fresh viewer offers replace only its PC.
+    s.peer = startHostPeer(s.id, screen, events => {
+      if (s.ready) receive(s, events)
+    }, ready => setReady(s, ready))
+  } catch {
+    // Capture failure must not leave a blind input injector running. An RTC
+    // setup failure after capture, however, can continue safely over HTTP.
+    if (active === s && !s.captured) void endControlSession()
+  }
+}
+
+function begin(id: string): void {
+  endLocally()
+  const s: HostSession = { id, peer: null, ready: false, captured: false, pathVersion: 0, lastSeq: 0, inputBusy: false }
+  active = s
+  renewLease(s)
+  setFastFrames(true)
+  void window.senti?.keepAwake?.(true, 'remoteControl')
+  emit()
+  if (active !== s) return
+  let sawLiveCapture = false
+  s.unsubscribe = onScreenShareChange(on => {
+    if (on) sawLiveCapture = true
+    else if (active === s && sawLiveCapture) void endControlSession()
+  })
+  void acquire(s)
+}
+
+/** Session authorization is checked independently of HTTP input and RTC
+ * negotiation. In particular a healthy peer does not keep its own lease alive. */
+async function checkSession(version: number): Promise<void> {
+  const before = active
+  try {
+    const res = await api<{ session?: { id: string } | null }>(SESSION_PATH)
+    if (version !== runVersion || before !== active) return
+    if (!res.ok) {
+      // A busy mailbox is not a revocation. It cannot renew the existing
+      // short lease either: six seconds without a successful check fails shut.
+      if (res.status !== 429 && res.status < 500) void endControlSession()
+      return
+    }
+    const id = res.data?.session?.id
+    if (!id || id === refusedId) endLocally()
+    else if (active?.id === id) renewLease(active)
+    else begin(id)
+  } catch {
+    if (version === runVersion && before === active) void endControlSession()
+  } finally {
+    if (version === runVersion && running) timer = window.setTimeout(() => void checkSession(version), active ? SESSION_MS : IDLE_MS)
+  }
+}
+
+const offline = () => { void endControlSession() }
+
 export function startRemoteHost(): void {
-  if (hostRunning) return
-  hostRunning = true
-  schedule(0)
+  if (running) return
+  running = true
+  const version = ++runVersion
+  window.addEventListener('offline', offline)
+  timer = window.setTimeout(() => void checkSession(version), 0)
 }
 
 export function stopRemoteHost(): void {
-  hostRunning = false
-  if (timer !== null) {
-    clearTimeout(timer)
-    timer = null
-  }
-  void endLocally()
+  running = false
+  runVersion++
+  clearTimeout(timer)
+  window.removeEventListener('offline', offline)
+  void endControlSession()
 }

@@ -35,7 +35,7 @@ async function endpointFor(sessionId: string, deviceId: string, userId: string) 
 
 /** POST — leave a message for the other end. */
 export async function POST(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'rtcSignal')
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))
@@ -56,7 +56,7 @@ export async function POST(req: Request) {
 
 /** GET — collect everything the other end left, oldest first, then forget it. */
 export async function GET(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'rtcSignal')
   if (!auth.ok) return auth.response
 
   const sessionId = new URL(req.url).searchParams.get('id') || ''

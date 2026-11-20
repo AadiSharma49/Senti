@@ -11,6 +11,8 @@ const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, sessio
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveInside } from './pathSafety'
+import { InputOrder, RemoteKeyboard, type InputEvent } from './remoteKeyboard'
+import { drainInjector } from './drainInjector'
 
 // WebSocket server for the VS Code extension (code bridge).
 // Dynamic import so the desktop app can run without ws installed.
@@ -1119,25 +1121,38 @@ using System.Runtime.InteropServices;
 public class SentinelIn {
   [DllImport("user32.dll")] public static extern void mouse_event(uint f, int dx, int dy, int d, IntPtr e);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte sc, uint f, IntPtr e);
-  [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
+  // Unicode text taps do not synthesize (and then accidentally release) a
+  // Shift/Ctrl/Alt that belongs to a physically held remote chord. INPUT's
+  // union must also fit MOUSEINPUT, including pointer alignment on Win64.
+  [StructLayout(LayoutKind.Sequential)] struct Keyboard { public ushort vk, scan; public uint flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Sequential)] struct Mouse { public int x, y; public uint data, flags, time; public UIntPtr extra; }
+  [StructLayout(LayoutKind.Explicit)] struct Payload { [FieldOffset(0)] public Mouse mouse; [FieldOffset(0)] public Keyboard key; }
+  [StructLayout(LayoutKind.Sequential)] struct Input { public uint type; public Payload payload; }
+  [DllImport("user32.dll")] static extern uint SendInput(uint n, Input[] inputs, int size);
+  public static void TypeText(string text) {
+    foreach (char ch in text) {
+      Keyboard k = new Keyboard();
+      if (ch == '\\n') k.vk = 13;
+      else { k.scan = ch; k.flags = 4; }
+      Input press = new Input(); press.type = 1; press.payload.key = k;
+      Input release = press; release.payload.key.flags |= 2;
+      SendInput(2, new Input[] { press, release }, Marshal.SizeOf(typeof(Input)));
+    }
+  }
 }
 "@
 $MOVE=0x0001; $ABS=0x8000; $VDESK=0x4000; $LD=0x0002; $LU=0x0004; $RD=0x0008; $RU=0x0010
 $MD=0x0020; $MU=0x0040; $WHEEL=0x0800; $HWHEEL=0x01000; $KEYUP=0x0002
 
-function Send-Key([byte]$vk, [int]$shiftState) {
-  if ($shiftState -band 1) { [SentinelIn]::keybd_event(0x10,0,0,[IntPtr]::Zero) }
-  if ($shiftState -band 2) { [SentinelIn]::keybd_event(0x11,0,0,[IntPtr]::Zero) }
-  if ($shiftState -band 4) { [SentinelIn]::keybd_event(0x12,0,0,[IntPtr]::Zero) }
+$held = New-Object 'System.Collections.Generic.HashSet[byte]'
+function Key-Down([byte]$vk) {
+  [void]$held.Add($vk)
   [SentinelIn]::keybd_event($vk,0,0,[IntPtr]::Zero)
-  [SentinelIn]::keybd_event($vk,0,$KEYUP,[IntPtr]::Zero)
-  if ($shiftState -band 4) { [SentinelIn]::keybd_event(0x12,0,$KEYUP,[IntPtr]::Zero) }
-  if ($shiftState -band 2) { [SentinelIn]::keybd_event(0x11,0,$KEYUP,[IntPtr]::Zero) }
-  if ($shiftState -band 1) { [SentinelIn]::keybd_event(0x10,0,$KEYUP,[IntPtr]::Zero) }
 }
-
-function Key-Down([byte]$vk) { [SentinelIn]::keybd_event($vk,0,0,[IntPtr]::Zero) }
-function Key-Up([byte]$vk)   { [SentinelIn]::keybd_event($vk,0,0x0002,[IntPtr]::Zero) }
+function Key-Up([byte]$vk) {
+  [SentinelIn]::keybd_event($vk,0,0x0002,[IntPtr]::Zero)
+  [void]$held.Remove($vk)
+}
 
 while ($true) {
   $line = [Console]::In.ReadLine()
@@ -1170,12 +1185,7 @@ while ($true) {
     'H' { [SentinelIn]::mouse_event($HWHEEL, 0, 0, [int]$p[1], [IntPtr]::Zero) }
     'T' {
       $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($p[1]))
-      foreach ($ch in $text.ToCharArray()) {
-        if ($ch -eq "\`n") { Send-Key 0x0D 0; continue }
-        $scan = [SentinelIn]::VkKeyScan($ch)
-        if ($scan -eq -1) { continue }
-        Send-Key ([byte]($scan -band 0xFF)) (($scan -shr 8) -band 0xFF)
-      }
+      [SentinelIn]::TypeText($text)
     }
     'D' {
       $vk = [byte]([Convert]::ToInt32($p[1], 16))
@@ -1187,9 +1197,19 @@ while ($true) {
     }
   }
 }
+# Parent crashed/closed stdin before a tidy reset: release only our keys.
+foreach ($vk in @($held)) { [SentinelIn]::keybd_event($vk,0,2,[IntPtr]::Zero) }
 `
 
 let inputProc: import('child_process').ChildProcess | null = null
+let inputDrain: Promise<void> | null = null
+let inputOrder = new InputOrder()
+const keyboard = new RemoteKeyboard(writeInputLine)
+
+/** Writes never start a process. A late repeat/reset can't resurrect a stopped injector. */
+function writeInputLine(line: string): void {
+  try { inputProc?.stdin?.write(line + '\n') } catch { /* pipe closed */ }
+}
 
 /** Start (or reuse) the injector. Returns false if PowerShell won't start. */
 function ensureInputProc(): boolean {
@@ -1208,12 +1228,14 @@ function ensureInputProc(): boolean {
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', file],
       { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true }
     )
-    inputProc.on('error', (err) => {
-      console.error('[RemoteInput] PowerShell injector failed:', err)
+    const child = inputProc
+    // EPIPE is delivered asynchronously on the stream, not by write().
+    child.stdin?.on('error', () => { /* close handles cleanup below */ })
+    child.on('error', err => console.error('[RemoteInput] PowerShell injector failed:', err))
+    child.once('close', () => {
+      if (inputProc !== child) return
       inputProc = null
-    })
-    inputProc.on('exit', () => {
-      inputProc = null
+      keyboard.reset() // cancel leases/repeats; never write to a replacement child
     })
     return true
   } catch {
@@ -1222,34 +1244,19 @@ function ensureInputProc(): boolean {
   }
 }
 
-function stopInputProc(): void {
-  try {
-    inputProc?.kill()
-  } catch {
-    // already gone
-  }
-  inputProc = null
+function stopInputProc(): Promise<void> {
+  if (inputDrain) return inputDrain
+  inputOrder = new InputOrder() // only at SESSION end, never on a path change
+  const child = inputProc
+  if (!child) { keyboard.reset(); return Promise.resolve() }
+  inputDrain = drainInjector(child, () => keyboard.reset()).finally(() => {
+    if (inputProc === child) inputProc = null
+    inputDrain = null
+  })
+  return inputDrain
 }
 
-/** JS key names -> Windows virtual-key codes, for keys that aren't characters. */
-const VK: Record<string, number> = {
-  Backspace: 0x08, Tab: 0x09, Enter: 0x0d, Escape: 0x1b, ' ': 0x20,
-  PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24,
-  ArrowLeft: 0x25, ArrowUp: 0x26, ArrowRight: 0x27, ArrowDown: 0x28,
-  Insert: 0x2d, Delete: 0x2e, PrintScreen: 0x2c, Pause: 0x13,
-  NumLock: 0x90, CapsLock: 0x14, ScrollLock: 0x91,
-  Meta: 0x5b, ContextMenu: 0x5d,
-  F1: 0x70, F2: 0x71, F3: 0x72, F4: 0x73, F5: 0x74, F6: 0x75,
-  F7: 0x76, F8: 0x77, F9: 0x78, F10: 0x79, F11: 0x7a, F12: 0x7b,
-  Numpad0: 0x60, Numpad1: 0x61, Numpad2: 0x62, Numpad3: 0x63,
-  Numpad4: 0x64, Numpad5: 0x65, Numpad6: 0x66, Numpad7: 0x67,
-  Numpad8: 0x68, Numpad9: 0x69,
-  NumpadMultiply: 0x6a, NumpadAdd: 0x6b, NumpadEnter: 0x0d,
-  NumpadSubtract: 0x6d, NumpadDecimal: 0x6e, NumpadDivide: 0x6f,
-}
-
-interface RemoteEvent {
-  t: string
+interface RemoteEvent extends InputEvent {
   x?: number
   y?: number
   b?: string
@@ -1319,166 +1326,30 @@ function inputLine(e: RemoteEvent): string | null {
       if (!text) return null
       return `T ${Buffer.from(text, 'utf8').toString('base64')}`
     }
-    case 'keydown': {
-      const name = String(e.k)
-      const vk =
-        VK[name] ?? (/^[a-zA-Z0-9]$/.test(name) ? name.toUpperCase().charCodeAt(0) : undefined)
-      if (vk === undefined) return null
-      const mods = Array.isArray(e.mods) ? e.mods : []
-      const lines: string[] = []
-      if (mods.includes('shift')) lines.push(`D 0x10`)   // shift down
-      if (mods.includes('ctrl'))  lines.push(`D 0x11`)   // ctrl down
-      if (mods.includes('alt'))   lines.push(`D 0x12`)   // alt down
-      lines.push(`D 0x${vk.toString(16)}`)               // key down
-      return lines.join('\n')
-    }
-    case 'keyup': {
-      const name = String(e.k)
-      const vk =
-        VK[name] ?? (/^[a-zA-Z0-9]$/.test(name) ? name.toUpperCase().charCodeAt(0) : undefined)
-      if (vk === undefined) return null
-      const mods = Array.isArray(e.mods) ? e.mods : []
-      const lines: string[] = []
-      lines.push(`U 0x${vk.toString(16)}`)               // key up first
-      if (mods.includes('alt'))   lines.push(`U 0x12`)   // alt up
-      if (mods.includes('ctrl'))  lines.push(`U 0x11`)   // ctrl up
-      if (mods.includes('shift')) lines.push(`U 0x10`)   // shift up
-      return lines.join('\n')
-    }
     default:
       return null
   }
 }
 
 function injectInput(events: unknown): boolean {
-  if (!Array.isArray(events) || !events.length) return false
-  if (!ensureInputProc() || !inputProc?.stdin) return false
-  const psLines: string[] = []
+  if (quitting || inputDrain || !Array.isArray(events) || !events.length) return false
   for (const e of events) {
-    const ev = e as RemoteEvent
-    switch (ev.t) {
-      // Keyboard: handled directly in-process for zero-latency state tracking.
-      // The PowerShell script is used only for text typing (T) and mouse.
-      case 'keydown':
-        handleRemoteKeyDown(String(ev.k ?? ''), Array.isArray(ev.mods) ? ev.mods : [])
-        continue
-      case 'keyup':
-        handleRemoteKeyUp(String(ev.k ?? ''), Array.isArray(ev.mods) ? ev.mods : [])
-        continue
-      default:
-        break
-    }
-    const line = inputLine(ev)
-    if (typeof line === 'string') {
-      for (const part of line.split('\n')) {
-        const trimmed = part.trim()
-        if (trimmed) psLines.push(trimmed)
-      }
+    if (!e || typeof e.t !== 'string' || !inputOrder.accept(e)) continue
+    // Reconciliation is meaningful even before we start the child: the
+    // first delivered batch may report a chord whose down was never seen.
+    if (e.t === 'keyreset' || e.t === 'keysync' || e.t === 'keyup') { keyboard.handle(e); continue }
+    if (!ensureInputProc() || !inputProc?.stdin?.writable) return false
+    // Never buffer pointer/text separately from keys: a click between Ctrl
+    // down and Ctrl up must stay between the two writes in the injector FIFO.
+    if (!keyboard.handle(e)) {
+      const line = inputLine(e)
+      if (line) writeInputLine(line)
     }
   }
-  if (!psLines.length) return true
-  try {
-    inputProc.stdin.write(psLines.join('\n') + '\n')
-    return true
-  } catch {
-    stopInputProc()
-    return false
-  }
+  return true
 }
 
-// --- Host-side key state tracker -----------------------------------------
-//
-// The viewer sends keydown and keyup events. If a keyup is dropped in
-// transit (unordered data channel, network hiccup), the host would believe
-// that key is forever pressed — WASD stuck, Shift stuck, typing garbage.
-// This set mirrors what the viewer told us, and a watchdog cleans up if
-// the session ends without a tidy keyup.
-//
-// Keyboard events are sent to the long-lived PowerShell injector via stdin
-// (the same path as mouse and text), but we track state HERE so the host
-// can correct drift and the session cleanup can release every key.
-
-/** Virtual-key codes currently held down on this machine. */
-const heldVKs = new Set<number>()
-/** Repeats for held non-modifier keys: vk -> { downTimer, repeatInterval }. */
-const repeatTimers = new Map<number, { down: number; interval: number }>()
-const REPEAT_INITIAL_MS = 400
-const REPEAT_RATE_MS = 32
-
-const MODIFIER_VKS = new Set([0x10, 0x11, 0x12, 0x5b, 0x5c])
-
-function startRepeat(vk: number): void {
-  stopRepeat(vk)
-  // First repeat after a delay, then OS-rate repeats.
-  const downId = window.setTimeout(() => {
-    sendInputLine(`D 0x${vk.toString(16)}`)
-    const intId = window.setInterval(() => {
-      sendInputLine(`D 0x${vk.toString(16)}`)
-    }, REPEAT_RATE_MS)
-    repeatTimers.set(vk, { down: downId, interval: intId })
-  }, REPEAT_INITIAL_MS)
-  repeatTimers.set(vk, { down: downId, interval: -1 })
-}
-
-function stopRepeat(vk: number): void {
-  const existing = repeatTimers.get(vk)
-  if (existing) {
-    clearTimeout(existing.down)
-    clearInterval(existing.interval)
-    repeatTimers.delete(vk)
-  }
-}
-
-function sendInputLine(line: string): void {
-  if (!ensureInputProc() || !inputProc?.stdin) return
-  try {
-    inputProc.stdin.write(line + '\n')
-  } catch {
-    stopInputProc()
-  }
-}
-
-/** Process one keydown from the remote viewer. */
-function handleRemoteKeyDown(rawK: string, mods: string[]): void {
-  const vk = VK[rawK] ?? (/^[a-zA-Z0-9]$/.test(rawK) ? rawK.toUpperCase().charCodeAt(0) : undefined)
-  if (vk === undefined) return
-
-  // Press modifiers first (only if not already held), then the key.
-  if (mods.includes('shift') && !heldVKs.has(0x10)) sendInputLine('D 0x10')
-  if (mods.includes('ctrl')  && !heldVKs.has(0x11)) sendInputLine('D 0x11')
-  if (mods.includes('alt')   && !heldVKs.has(0x12)) sendInputLine('D 0x12')
-  sendInputLine(`D 0x${vk.toString(16)}`)
-  heldVKs.add(vk)
-
-  // Start key repeat for non-modifier keys (Backspace, letters, etc.).
-  if (!MODIFIER_VKS.has(vk)) startRepeat(vk)
-}
-
-/** Process one keyup from the remote viewer. */
-function handleRemoteKeyUp(rawK: string, mods: string[]): void {
-  const vk = VK[rawK] ?? (/^[a-zA-Z0-9]$/.test(rawK) ? rawK.toUpperCase().charCodeAt(0) : undefined)
-  if (vk === undefined) return
-
-  stopRepeat(vk)
-  sendInputLine(`U 0x${vk.toString(16)}`)
-  heldVKs.delete(vk)
-
-  // Release modifiers last, in reverse order.
-  if (mods.includes('alt'))   { sendInputLine('U 0x12'); heldVKs.delete(0x12) }
-  if (mods.includes('ctrl'))  { sendInputLine('U 0x11'); heldVKs.delete(0x11) }
-  if (mods.includes('shift')) { sendInputLine('U 0x10'); heldVKs.delete(0x10) }
-}
-
-/** Call once when a remote session starts. */
-export function resetRemoteKeyState(): void {
-  for (const vk of heldVKs) sendInputLine(`U 0x${vk.toString(16)}`)
-  heldVKs.clear()
-  for (const [, timers] of repeatTimers) {
-    clearTimeout(timers.down)
-    clearInterval(timers.interval)
-  }
-  repeatTimers.clear()
-}
+export function resetRemoteKeyState(): void { keyboard.reset() }
 
 /**
  * Doing the cleanup ON SCREEN, the way you'd do it yourself.
@@ -2008,8 +1879,14 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
+let waitingForInputDrain = false
+app.on('before-quit', (event) => {
   quitting = true
+  if (!inputProc && !inputDrain) return
+  event.preventDefault()
+  if (waitingForInputDrain) return
+  waitingForInputDrain = true
+  void stopInputProc().finally(() => app.quit())
 })
 
 app.on('before-quit', () => {
@@ -2018,8 +1895,6 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   globalShortcut.unregisterAll()
-  // Never leave the injector running after Senti is gone.
-  stopInputProc()
 })
 
 // --- Device token + backend access (main-process only) ---------------
@@ -2234,8 +2109,8 @@ ipcMain.handle('senti:active-window', () => activeWindow())
 
 // Remote control: apply input from the machine driving this one.
 ipcMain.handle('senti:remote-input', (_e: unknown, events: unknown) => injectInput(events))
-ipcMain.handle('senti:remote-input-stop', () => {
-  stopInputProc()
+ipcMain.handle('senti:remote-input-stop', async () => {
+  await stopInputProc()
   return true
 })
 ipcMain.handle('senti:reset-remote-key-state', () => {

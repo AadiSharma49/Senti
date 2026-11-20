@@ -31,6 +31,13 @@ export const LIMITS: Record<string, RateLimit> = {
    * exactly the kind of bug nobody can diagnose from the outside.
    */
   stream: { limit: 300, windowMs: 60_000 },
+  // Separate, bounded budgets: JPEG fallback must not spend the requests ICE
+  // needs to escape that fallback, or interrupt the host's session checks.
+  rtcSignal: { limit: 240, windowMs: 60_000 }, // 350ms negotiation polling + trickle ICE
+  remoteInput: { limit: 300, windowMs: 60_000 },
+  remoteSession: { limit: 90, windowMs: 60_000 },
+  frameWrite: { limit: 300, windowMs: 60_000 }, // fastest upload cadence is 200ms
+  frameRead: { limit: 300, windowMs: 60_000 },
   voiceprint: { limit: 10, windowMs: 60_000 },
   /** Unauthenticated attempts (bad/absent token) — brute-force defence. */
   reject: { limit: 30, windowMs: 60_000 },

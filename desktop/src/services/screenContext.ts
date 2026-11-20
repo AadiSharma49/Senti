@@ -1,5 +1,6 @@
 import { api } from './api'
-import { getScreenStream, setFastFrames } from './screenShare'
+import { contextStill, setContextCapture } from './screenShare'
+import { useSettingsStore } from '../state/settingsStore'
 import { useScreenContextStore, type ScreenContext } from '../state/screenContextStore'
 
 const VISION_CONTEXT_PATH = '/api/device/vision'
@@ -24,11 +25,10 @@ const MIN_CHANGE_RATIO = 0.03
 let timer: number | null = null
 let running = false
 let lastDataUrl: string | null = null
-let destroyed = false
+let generation = 0
+let unsubscribe: (() => void) | undefined
 let consecutiveErrors = 0
 const MAX_ERRORS_BEFORE_PAUSE = 5
-/** True when the watcher was stopped intentionally (dismissed) — don't auto-restart. */
-let manuallyStopped = false
 
 /**
  * Start the background watcher. Captures screen every WATCH_INTERVAL_MS and
@@ -39,76 +39,45 @@ let manuallyStopped = false
 export function startScreenContext(): void {
   if (running) return
   running = true
-  destroyed = false
-  manuallyStopped = false
   useScreenContextStore.getState().startWatching()
-  setFastFrames(true)
-  void tick()
+  const allowed = () => {
+    const { permissions, localMode } = useSettingsStore.getState()
+    return permissions.seeScreen && !localMode
+  }
+  let enabled = allowed()
+  setContextCapture(enabled)
+  unsubscribe = useSettingsStore.subscribe(() => {
+    if (enabled !== allowed()) { enabled = allowed(); setContextCapture(enabled) }
+  })
+  schedule(++generation, WATCH_INTERVAL_MS)
 }
 
 export function stopScreenContext(): void {
   running = false
-  destroyed = true
-  manuallyStopped = true
+  generation++
   if (timer !== null) {
     clearTimeout(timer)
     timer = null
   }
   lastDataUrl = null
   useScreenContextStore.getState().stopWatching()
-  setFastFrames(false)
+  unsubscribe?.()
+  unsubscribe = undefined
+  setContextCapture(false)
 }
 
-async function tick(): Promise<void> {
-  if (destroyed || !running) return
-  timer = window.setTimeout(() => void observe(), WATCH_INTERVAL_MS)
+function schedule(gen: number, delay: number): void {
+  if (gen === generation && running) timer = window.setTimeout(() => void observe(gen), delay)
 }
 
-async function observe(): Promise<void> {
-  if (destroyed || !running) return
-
+async function observe(gen: number): Promise<void> {
+  if (gen !== generation || !running) return
+  let next = WATCH_INTERVAL_MS
   try {
-    const stream = await getScreenStream()
-    if (!stream) {
-      // Capture failed — likely a display switch. Retry after a short delay.
-      timer = window.setTimeout(() => void observe(), 1000)
-      return
-    }
-
-    const video = document.createElement('video')
-    video.srcObject = stream
-    video.muted = true
-    await video.play().catch(() => {})
-
-    await new Promise<void>((resolve) => {
-      const onMeta = () => resolve()
-      video.addEventListener('loadedmetadata', onMeta, { once: true })
-      setTimeout(resolve, 500)
-    })
-
-    if (video.videoWidth === 0) {
-      void tick()
-      return
-    }
-
-    const canvas = document.createElement('canvas')
-    const MAX_W = 1280
-    const scale = Math.min(1, MAX_W / video.videoWidth)
-    canvas.width = Math.round(video.videoWidth * scale)
-    canvas.height = Math.round(video.videoHeight * scale)
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      void tick()
-      return
-    }
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.5)
-
-    if (dataUrl === lastDataUrl || !isChangedEnough(dataUrl, lastDataUrl)) {
-      void tick()
-      return
-    }
+    const { permissions, localMode } = useSettingsStore.getState()
+    if (!permissions.seeScreen || localMode) return
+    const dataUrl = await contextStill()
+    if (gen !== generation || !dataUrl || !isChangedEnough(dataUrl, lastDataUrl)) return
     lastDataUrl = dataUrl
 
     const question =
@@ -124,6 +93,7 @@ async function observe(): Promise<void> {
       }
     )
 
+    if (gen !== generation) return
     if (res.ok && res.data?.summary) {
       const ctx: ScreenContext = {
         ts: Date.now(),
@@ -145,8 +115,7 @@ async function observe(): Promise<void> {
       consecutiveErrors++
       if (consecutiveErrors >= MAX_ERRORS_BEFORE_PAUSE) {
         // Pause for a minute if vision is consistently busy.
-        timer = window.setTimeout(() => void observe(), 60000)
-        return
+        next = 60_000
       }
     }
   } catch {
@@ -154,9 +123,7 @@ async function observe(): Promise<void> {
     // stop the watcher. The next tick will try again.
     consecutiveErrors++
   } finally {
-    if (running && !destroyed) {
-      void tick()
-    }
+    schedule(gen, next)
   }
 }
 

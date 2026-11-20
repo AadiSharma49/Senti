@@ -185,10 +185,16 @@ export async function POST(req: Request) {
   if (action === 'heartbeat' || action === 'end') {
     const id = typeof body.id === 'string' ? body.id : ''
     const ending = action === 'end'
-    await prisma.remoteSession.updateMany({
-      where: { id, userId: auth.device.userId },
+    const { count } = await prisma.remoteSession.updateMany({
+      where: {
+        id, userId: auth.device.userId,
+        ...(ending
+          ? { OR: [{ viewerDeviceId: auth.device.id }, { targetDeviceId: auth.device.id }] }
+          : { viewerDeviceId: auth.device.id, state: 'active', heartbeatAt: { gte: new Date(Date.now() - SESSION_STALE_MS) } }),
+      },
       data: ending ? { state: 'ended', endedAt: new Date() } : { heartbeatAt: new Date() },
     })
+    if (!count) return NextResponse.json({ error: 'No session' }, { status: 404, headers: NO_STORE })
     return NextResponse.json({ ok: true }, { headers: NO_STORE })
   }
 
@@ -202,7 +208,7 @@ export async function POST(req: Request) {
  * abandoned session (viewer went away) reads as no session at all.
  */
 export async function GET(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'remoteSession')
   if (!auth.ok) return auth.response
 
   const session = await prisma.remoteSession.findFirst({

@@ -27,7 +27,9 @@ Every one sits behind a switch you control, and it refuses out loud when one is 
 
 **Build things with you.** Say *"build a chat app"* and Sentinel opens VS Code, reads your project structure, writes the code, runs the server, and tells you what's happening. It has a VS Code bridge that gives it real-time access to your editor, terminal, and diagnostics.
 
-**Remote control — AnyDesk-level smooth.** Full mouse-and-keyboard control of another device over WebRTC. Game mode sends relative mouse deltas at 120Hz with zero batching for instant key presses. Direct peer connection for sub-16ms latency; HTTP fallback if P2P fails. Cursor uses the real system cursor — no artificial overlays.
+**Remote control.** Drive another linked PC over WebRTC. After the PIN/email check, the session header reports the selected path (direct or TURN), negotiated codec, received resolution, decoded frame rate and round-trip time. Hover over it for bitrate, drops and freezes. `HTTP JPEG fallback` means low-rate stills, **not** TURN video. If it persists across different networks, configure a reachable TURN server in the Control Center. Try **720p60 — smoothest** for motion or **1080p30 — balanced** for text; presets are ceilings, not guaranteed frame rates.
+
+Update the dashboard and **both** desktop apps together: the two peers need the same generation-tagged signaling format. For test measurements, fault injection and reproduction commands, see [the two-peer loopback test](desktop/tests/loopback/README.md).
 
 **Know you.** Facts you tell it live in a local file. It also works out your habits on its own — which apps, when, for how long — and answers about the real you rather than in generalities.
 
@@ -105,7 +107,7 @@ cd desktop && npm run dist  # build the installer
 ## Current Status
 
 - **Desktop app**: Electron 30 + React 18, fully functional
-- **Remote control**: WebRTC peer connection + HTTP fallback, game mode, 120Hz input
+- **Remote control**: WebRTC video and ordered input; TURN support, HTTP/JPEG fallback, game mode and live receiver diagnostics
 - **Screen understanding**: Continuous background watcher with vision model
 - **VS Code bridge**: WebSocket server + extension for code operations
 - **Local AI**: Ollama integration (qwen2.5-coder:14b + llava:7b), Piper TTS

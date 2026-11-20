@@ -50,5 +50,5 @@ export async function peerScreen(deviceId: string): Promise<{ frame: string | nu
     `${PEER_SCREEN_PATH}?deviceId=${encodeURIComponent(deviceId)}`
   )
   if (!res.ok) return { frame: null, sharing: false }
-  return { frame: res.data?.frame ?? null, sharing: !!res.data?.sharing }
+  return { frame: res.data?.sharing ? res.data.frame ?? null : null, sharing: !!res.data?.sharing }
 }

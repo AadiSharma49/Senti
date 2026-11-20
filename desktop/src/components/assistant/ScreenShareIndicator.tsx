@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { onScreenShareChange, stopScreenShare } from '../../services/screenShare'
+import { onScreenCaptureChange, stopScreenShare } from '../../services/screenShare'
 
 /**
  * A small, unmissable badge shown the entire time this PC is streaming its
@@ -8,7 +8,7 @@ import { onScreenShareChange, stopScreenShare } from '../../services/screenShare
  */
 export default function ScreenShareIndicator() {
   const [sharing, setSharing] = useState(false)
-  useEffect(() => onScreenShareChange(setSharing), [])
+  useEffect(() => onScreenCaptureChange(setSharing), [])
 
   if (!sharing) return null
 

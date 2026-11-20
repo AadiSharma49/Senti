@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
@@ -22,7 +23,7 @@ const MAX_EVENT_CHARS = 2000
 
 /** POST — the viewer queues a batch of input events. */
 export async function POST(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'remoteInput')
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))
@@ -42,12 +43,16 @@ export async function POST(req: Request) {
   })
   if (!session) return NextResponse.json({ error: 'No active session' }, { status: 403, headers: NO_STORE })
 
-  await prisma.remoteInput.createMany({
-    data: events.map((e: unknown) => ({
-      sessionId,
-      data: JSON.stringify(e).slice(0, MAX_EVENT_CHARS),
-    })),
-  })
+  // Postgres now() is identical for every row in createMany. Preserve the
+  // sender's ordinal as a stable tie-breaker, including across GET pages.
+  const batchId = randomUUID()
+  const data = events.map((e: unknown, i: number) => ({
+    id: `${batchId}:${String(i).padStart(2, '0')}`, sessionId, data: JSON.stringify(e),
+  }))
+  if (data.some((r: { data: string }) => r.data.length > MAX_EVENT_CHARS)) {
+    return NextResponse.json({ error: 'Event too large' }, { status: 400, headers: NO_STORE })
+  }
+  await prisma.remoteInput.createMany({ data })
   // Sending input is itself proof the viewer is alive.
   await prisma.remoteSession.update({ where: { id: sessionId }, data: { heartbeatAt: new Date() } })
 
@@ -56,11 +61,12 @@ export async function POST(req: Request) {
 
 /** GET — the target drains everything queued for it, in order. */
 export async function GET(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'remoteInput')
   if (!auth.ok) return auth.response
 
+  const id = new URL(req.url).searchParams.get('id')
   const session = await prisma.remoteSession.findFirst({
-    where: { targetDeviceId: auth.device.id, state: 'active' },
+    where: { ...(id ? { id } : {}), userId: auth.device.userId, targetDeviceId: auth.device.id, state: 'active' },
     orderBy: { createdAt: 'desc' },
   })
   if (!session) return NextResponse.json({ events: [] }, { headers: NO_STORE })
@@ -76,17 +82,24 @@ export async function GET(req: Request) {
 
   const rows = await prisma.remoteInput.findMany({
     where: { sessionId: session.id },
-    orderBy: { createdAt: 'asc' },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
     take: 200,
   })
   if (rows.length) {
-    await prisma.remoteInput.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } })
+    const removed = await prisma.remoteInput.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } })
+    // Concurrent legacy pollers may have read the same rows. Only return a
+    // batch we claimed in full; never duplicate an ambiguous click or tap.
+    if (removed.count !== rows.length) return NextResponse.json({ events: [] }, { headers: NO_STORE })
   }
 
+  const cutoff = Date.now() - 2000
   const events = rows
     .map((r) => {
       try {
-        return JSON.parse(r.data)
+        const event = JSON.parse(r.data)
+        // After a polling outage it's safer to release a chord than to click
+        // or type into a different window seconds later. Keep its watermark.
+        return r.createdAt.getTime() < cutoff ? { t: 'keyreset', seq: event?.seq, relayFence: event?.relayFence } : event
       } catch {
         return null
       }

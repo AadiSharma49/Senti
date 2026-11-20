@@ -1,13 +1,16 @@
+import { viewerKeyboard } from './viewerKeyboard'
 import { useEffect, useRef, useState } from 'react'
 import {
   startSession,
   verifyPin,
   endSession,
+  onRemoteSessionEnded,
   sendEvent,
   targetFrame,
   connectPeer,
   type StartResult,
 } from '../../services/remoteControl'
+import RemoteLinkStatus from './RemoteLinkStatus'
 import { QUALITY, type QualityPreset } from '../../services/screenShare'
 
 /**
@@ -33,7 +36,10 @@ export default function RemoteControlWindow({
   const [pin, setPin] = useState('')
   const [frame, setFrame] = useState<string | null>(null)
   /** True once video is flowing peer-to-peer; false means the frame fallback. */
-  const [direct, setDirect] = useState(false)
+  const [rtcReady, setRtcReady] = useState(false)
+  const [playing, setPlaying] = useState(false)
+  const [jpegFps, setJpegFps] = useState<number | null>(null)
+  const direct = rtcReady && playing
   /**
    * Game mode: the pointer is locked to this window and we send MOVEMENT
    * rather than positions. Games capture the mouse and read raw deltas for
@@ -42,15 +48,6 @@ export default function RemoteControlWindow({
    */
   const [locked, setLocked] = useState(false)
   const [quality, setQuality] = useState<QualityPreset>('balanced')
-  /**
-   * Where to draw the visible remote cursor, in pixels relative to the
-   * surface. There's no guarantee the video frame itself shows a cursor —
-   * Electron's screen capture often doesn't composite one in — so this is
-   * drawn locally from the exact position we just told the host to move to.
-   * It's also instant (no encode/decode/network round trip), which reads as
-   * more responsive than whatever the video happens to show.
-   */
-  const [cursorPx, setCursorPx] = useState<{ left: number; top: number } | null>(null)
   /** Whether we're waiting on an emailed code or the machine's static PIN. */
   const [viaEmail, setViaEmail] = useState(false)
   const imgRef = useRef<HTMLImageElement>(null)
@@ -89,21 +86,31 @@ export default function RemoteControlWindow({
   useEffect(() => {
     if (phase !== 'live') return
     let alive = true
-    void (async () => {
-      const ok = await connectPeer((stream) => {
-        if (!alive) return
-        const v = videoRef.current
-        if (!v) return
-        if (v.srcObject !== stream) {
-          v.srcObject = stream
-          v.muted = true
-        }
-        void v.play().catch(() => {})
-      })
-      if (alive && ok) setDirect(true)
-    })()
+    const v = videoRef.current
+    const unsubscribe = onRemoteSessionEnded(() => {
+      if (!alive) return
+      setRtcReady(false)
+      setPlaying(false)
+      setPhase('error')
+      setMessage('This remote session has ended. Reconnect to start a new one.')
+    })
+    void connectPeer((stream) => {
+      if (!alive || !v) return
+      if (v.srcObject !== stream) {
+        setPlaying(false)
+        v.srcObject = stream
+      }
+      void v.play().catch(() => {})
+    }, (ready) => {
+      if (!alive) return
+      setRtcReady(ready)
+      if (!ready) setPlaying(false)
+      else if (v && v.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) setPlaying(true)
+    })
     return () => {
       alive = false
+      unsubscribe()
+      if (v) v.srcObject = null
       void endSession()
     }
   }, [phase])
@@ -112,9 +119,26 @@ export default function RemoteControlWindow({
   useEffect(() => {
     if (phase !== 'live' || direct) return
     let alive = true
+    let inFlight = false
+    let last: string | null = null
+    let since = performance.now()
+    let changed = 0
+    setJpegFps(null)
     const pull = async () => {
-      const f = await targetFrame(deviceId)
-      if (alive && f) setFrame(f)
+      if (inFlight) return // never display an older, slower response after a newer one
+      inFlight = true
+      try {
+        const f = await targetFrame(deviceId)
+        if (!alive) return
+        if (f !== last) { setFrame(f); if (f) changed++; last = f }
+        const now = performance.now()
+        if (now - since >= 2000) {
+          setJpegFps(1000 * changed / (now - since))
+          since = now
+          changed = 0
+        }
+      } catch { /* keep the last picture on a transient read failure */ }
+      finally { inFlight = false }
     }
     void pull()
     const t = setInterval(() => void pull(), 250)
@@ -124,86 +148,27 @@ export default function RemoteControlWindow({
     }
   }, [phase, direct, deviceId])
 
-  // Keyboard goes to the target while we're live. Capture phase so the app's
-  // own shortcuts don't swallow keys meant for the other machine.
-  //
-  // CRITICAL: keydown alone is not enough. Games and held keys need a real
-  // keydown (press) and a real keyup (release) — without keyup, no key is
-  // ever held, WASM doesn't work, and Shift/Ctrl modifiers are useless.
-  // We track held keys in a Set so we only fire on the first press (no
-  // OS auto-repeat spam) and send the matching keyup on release.
-  const heldKeysRef = useRef<Set<string>>(new Set())
-
+  // Re-renders (including cursor frames) must not tear down a live key hold.
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (phase !== 'live') return
-    const held = heldKeysRef.current
-    held.clear()
-
-    const sendDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        if (document.pointerLockElement) return
-        onClose()
-        return
-      }
-      e.preventDefault()
-      const mods: string[] = []
-      if (e.ctrlKey) mods.push('ctrl')
-      if (e.shiftKey) mods.push('shift')
-      if (e.altKey) mods.push('alt')
-
-      // Printable characters with no modifier: send as text. The host types
-      // the character directly — no keyup needed, the target app sees a
-      // normal character input.
-      if (e.key.length === 1 && !e.ctrlKey && !e.altKey) {
-        sendEvent({ t: 'type', text: e.key })
-        return
-      }
-      // Non-printable (WASM, arrows, function keys, etc.): send as a named
-      // keydown. Only on the first press — suppress OS auto-repeat.
-      const id = JSON.stringify({ k: e.key, mods })
-      if (held.has(id)) return
-      held.add(id)
-      sendEvent({ t: 'keydown', k: e.key, mods })
-    }
-
-    const sendUp = (e: KeyboardEvent) => {
-      e.preventDefault()
-      const mods: string[] = []
-      if (e.ctrlKey) mods.push('ctrl')
-      if (e.shiftKey) mods.push('shift')
-      if (e.altKey) mods.push('alt')
-      const id = JSON.stringify({ k: e.key, mods })
-      held.delete(id)
-      sendEvent({ t: 'keyup', k: e.key, mods })
-    }
-
-    // If the user Alt+Tabs or clicks away, release every key on the host
-    // so nothing stays stuck. Also fires on tab hide / screen lock.
-    const releaseAll = () => {
-      for (const id of held) {
-        try {
-          const { k, mods } = JSON.parse(id)
-          sendEvent({ t: 'keyup', k, mods })
-        } catch { /* ignore */ }
-      }
-      held.clear()
-    }
-
-    window.addEventListener('keydown', sendDown, true)
-    window.addEventListener('keyup', sendUp, true)
-    window.addEventListener('blur', releaseAll)
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) releaseAll()
-    })
-
+    const keys = viewerKeyboard(sendEvent, () => closeRef.current(), () => !!document.pointerLockElement)
+    const visibility = () => { if (document.hidden) keys.reset() }
+    window.addEventListener('keydown', keys.down, true)
+    window.addEventListener('keyup', keys.up, true)
+    window.addEventListener('blur', keys.reset)
+    document.addEventListener('visibilitychange', visibility)
+    document.addEventListener('pointerlockchange', keys.reset)
     return () => {
-      window.removeEventListener('keydown', sendDown, true)
-      window.removeEventListener('keyup', sendUp, true)
-      window.removeEventListener('blur', releaseAll)
-      document.removeEventListener('visibilitychange', releaseAll)
-      releaseAll()
+      window.removeEventListener('keydown', keys.down, true)
+      window.removeEventListener('keyup', keys.up, true)
+      window.removeEventListener('blur', keys.reset)
+      document.removeEventListener('visibilitychange', visibility)
+      document.removeEventListener('pointerlockchange', keys.reset)
+      keys.reset()
     }
-  }, [phase, onClose])
+  }, [phase])
 
   /**
    * Where the pointer is on the REMOTE screen, 0..1.
@@ -214,7 +179,7 @@ export default function RemoteControlWindow({
    * clicks would drift steadily worse the more the aspect ratios differ. So we
    * work out where the picture ACTUALLY sits inside the box first.
    */
-  const norm = (e: React.MouseEvent): { x: number; y: number; px: number; py: number } | null => {
+  const norm = (e: React.MouseEvent): { x: number; y: number } | null => {
     const el = direct ? videoRef.current : imgRef.current
     if (!el) return null
     const r = el.getBoundingClientRect()
@@ -234,9 +199,7 @@ export default function RemoteControlWindow({
     const y = (e.clientY - r.top - offY) / shownH
     // A click in the letterbox bar isn't on the remote screen at all.
     if (x < 0 || x > 1 || y < 0 || y > 1) return null
-    // Pixel position within the surface (same box the overlay cursor renders
-    // in), so the overlay can be placed without redoing this math on render.
-    return { x, y, px: offX + x * shownW, py: offY + y * shownH }
+    return { x, y }
   }
 
   // Take the whole display for as long as we're driving, and give it back on
@@ -256,24 +219,25 @@ export default function RemoteControlWindow({
   }, [])
 
   const toggleLock = () => {
-    const next = !locked
-    setLocked(next)
-    if (next) {
-      void surfaceRef.current?.requestPointerLock()
-      // Tell the host to switch to game-optimised encoding.
-      sendEvent({ t: 'quality', preset: 'smooth' } as never)
-    } else {
-      document.exitPointerLock()
-      sendEvent({ t: 'quality', preset: 'balanced' } as never)
-    }
+    if (!locked) {
+      void surfaceRef.current?.requestPointerLock()?.catch(() => {})
+    } else document.exitPointerLock()
   }
+
+  // Reapply the effective preset after reconnection; Esc exits game mode just
+  // like the button, returning to the user's selection rather than a stale cap.
+  useEffect(() => {
+    if (rtcReady) sendEvent({ t: 'quality', preset: locked ? 'smooth' : quality })
+  }, [rtcReady, locked, quality])
 
   const onMove = (e: React.MouseEvent) => {
     const now = Date.now()
     // Over a direct connection there's no HTTP round trip, so we can sample at
     // ~60Hz and the pointer feels attached to your hand. On the relay path
     // that rate would just queue up requests, so stay at ~20Hz there.
-    if (now - lastMove.current < (direct ? 16 : 50)) return
+    // Relative movement is distance, not a sampled position. The transport
+    // coalesces deltas per flush; discarding them here makes turns stutter.
+    if (!locked && now - lastMove.current < (direct ? 16 : 50)) return
     lastMove.current = now
 
     if (locked) {
@@ -285,17 +249,8 @@ export default function RemoteControlWindow({
       return
     }
     const p = norm(e)
-    if (p) {
-      sendEvent({ t: 'move', x: p.x, y: p.y })
-      setCursorPx({ left: p.px, top: p.py })
-    }
+    if (p) sendEvent({ t: 'move', x: p.x, y: p.y })
   }
-
-  // Pointer lock hides the real cursor already (and the overlay has no
-  // meaningful position in moverel mode) — drop any stale overlay position.
-  useEffect(() => {
-    if (locked) setCursorPx(null)
-  }, [locked])
 
   const onClick = (e: React.MouseEvent) => {
     const b = e.button === 2 ? 'right' : e.button === 1 ? 'middle' : 'left'
@@ -329,23 +284,17 @@ export default function RemoteControlWindow({
           <span className={`h-2 w-2 rounded-full ${phase === 'live' ? 'bg-green-400' : 'bg-amber-400'}`} />
           <span className="font-semibold">{deviceName}</span>
           <span className="text-white/40">
-            {phase !== 'live'
-              ? 'connecting'
-              : direct
-              ? 'direct connection — smooth, your mouse and keyboard control this machine'
-              : 'connected via relay — negotiating a direct link for smoother video'}
+            {phase === 'live'
+              ? <RemoteLinkStatus rtcReady={rtcReady} playing={playing} hasFallback={!!frame} jpegFps={jpegFps} />
+              : 'connecting'}
           </span>
         </div>
         <div className="flex items-center gap-2">
           {phase === 'live' && direct && (
             <select
-              value={quality}
-              onChange={(e) => {
-                const p = e.target.value as QualityPreset
-                setQuality(p)
-                // The host owns the capture, so the choice travels to it.
-                sendEvent({ t: 'quality', preset: p } as never)
-              }}
+              value={locked ? 'smooth' : quality}
+              disabled={locked}
+              onChange={(e) => setQuality(e.target.value as QualityPreset)}
               title="More pixels or more frames — a fixed connection can't give you both"
               className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs text-white outline-none focus:border-accent/60"
             >
@@ -381,13 +330,10 @@ export default function RemoteControlWindow({
       {phase === 'live' ? (
         <div
           ref={surfaceRef}
-          // No native cursor here — the overlay below is the ONE visible
-          // pointer, so it can't look doubled or offset from whatever (if
-          // anything) the captured frame itself shows.
-          style={{ cursor: 'none' }}
+          // Let the OS draw the local pointer; don't repaint React on every move.
+          style={{ cursor: locked ? 'none' : 'default' }}
           className="relative flex flex-1 items-center justify-center overflow-hidden bg-black"
           onMouseMove={onMove}
-          onMouseLeave={() => setCursorPx(null)}
           onMouseDown={onClick}
           onContextMenu={(e) => e.preventDefault()}
           onWheel={(e) => {
@@ -406,8 +352,9 @@ export default function RemoteControlWindow({
             autoPlay
             playsInline
             muted
+            onPlaying={() => setPlaying(true)}
             onLoadedMetadata={() => videoRef.current?.play().catch(() => {})}
-            className={`h-full w-full select-none object-contain ${direct ? '' : 'hidden'}`}
+            className={`absolute inset-0 h-full w-full select-none object-contain ${direct ? '' : 'opacity-0 pointer-events-none'}`}
           />
           {/* Fallback still frames until (or unless) the direct link comes up. */}
           {!direct &&
@@ -422,23 +369,6 @@ export default function RemoteControlWindow({
             ) : (
               <div className="text-sm text-white/40">Waiting for {deviceName}&apos;s screen…</div>
             ))}
-          {cursorPx && !locked && (
-            <svg
-              viewBox="0 0 24 24"
-              width={22}
-              height={22}
-              className="pointer-events-none absolute z-10 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
-              style={{ left: cursorPx.left, top: cursorPx.top }}
-            >
-              <path
-                d="M4 2 L4 20 L9 15.5 L12.5 22 L15.5 20.5 L12 14 L19 14 Z"
-                fill="white"
-                stroke="black"
-                strokeWidth={1.2}
-                strokeLinejoin="round"
-              />
-            </svg>
-          )}
         </div>
       ) : (
         <div className="flex flex-1 items-center justify-center px-6">

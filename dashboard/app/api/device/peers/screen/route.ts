@@ -10,7 +10,7 @@ import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 export const runtime = 'nodejs'
 
 export async function GET(req: Request) {
-  const auth = await authenticateDevice(req, 'stream')
+  const auth = await authenticateDevice(req, 'frameRead')
   if (!auth.ok) return auth.response
 
   const deviceId = new URL(req.url).searchParams.get('deviceId') || ''
@@ -25,7 +25,7 @@ export async function GET(req: Request) {
   // Stale after ~10s of no new frame — the PC likely stopped or slept.
   const fresh = Date.now() - new Date(frame.updatedAt).getTime() < 10_000
   return NextResponse.json(
-    { frame: frame.data, sharing: frame.sharing && fresh, updatedAt: frame.updatedAt },
+    { frame: frame.sharing && fresh ? frame.data : null, sharing: frame.sharing && fresh, updatedAt: frame.updatedAt },
     { headers: NO_STORE }
   )
 }
