@@ -5,7 +5,7 @@ import { useSettingsStore } from '../../state/settingsStore'
 import { useDeviceStore } from '../../state/deviceStore'
 import { useWakeStore } from '../../state/wakeStore'
 import { syncPolicyFromDashboard } from '../../services/policySync'
-import { apiBase, apiOverride, setApiBase } from '../../config'
+import { apiBase, apiOverride, saveServerOrigin } from '../../config'
 import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../services/screenShare'
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 import { api } from '../../services/api'
@@ -17,8 +17,8 @@ import RemoteControlWindow from '../remote/RemoteControlWindow'
 import RemoteFiles from '../remote/RemoteFiles'
 
 /**
- * Control Center. Voice can be enrolled/re-enrolled here; PIN and account
- * linking are managed too. (Dashboard remains the future source of truth.)
+ * Control Center — local permissions, microphone & language diagnostics,
+ * memories, remote peer control, and server/account linking.
  */
 export default function SettingsPanel() {
   const open = useUiStore((s) => s.settingsOpen)
@@ -47,7 +47,7 @@ export default function SettingsPanel() {
   const [linkMsg, setLinkMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   const [serverInput, setServerInput] = useState(apiOverride())
-  const [serverMsg, setServerMsg] = useState<string | null>(null)
+  const [serverMsg, setServerMsg] = useState<{ ok: boolean; text: string } | null>(null)
 
   // What Sentinel remembers about you — loaded fresh whenever the panel opens.
   const [memories, setMemories] = useState<{ id: string; text: string; createdAt: number }[]>([])
@@ -259,9 +259,23 @@ export default function SettingsPanel() {
     if (Array.isArray(m)) setMemories(m)
   }
 
-  const saveServer = () => {
-    setApiBase(serverInput)
-    setServerMsg(`Now talking to ${apiBase()}`)
+  const saveServer = async () => {
+    const res = await saveServerOrigin(serverInput)
+    if (!res.ok) {
+      setServerMsg({ ok: false, text: res.error || 'Invalid server URL.' })
+      return
+    }
+    setServerInput(res.override)
+    if (res.unlinked) {
+      await useDeviceStore.getState().refresh()
+      setLinkMsg(null)
+    }
+    setServerMsg({
+      ok: true,
+      text: res.unlinked
+        ? `Now talking to ${res.baseUrl}. Unlinked previous server token — link this device again for the new server.`
+        : `Now talking to ${res.baseUrl}`,
+    })
   }
 
   const linkDevice = async () => {
@@ -352,7 +366,8 @@ export default function SettingsPanel() {
               },
               { key: 'openApps', title: 'Open apps and websites', hint: '“Open Chrome”, “pull up YouTube”.' },
               { key: 'files', title: 'Open files and folders', hint: '“Open my downloads”, “find my resume”. Opens them — never edits or deletes.' },
-              { key: 'seeScreen', title: 'Look at my screen when I ask', hint: '“Take a screenshot”, “help me with this”, “what does this error mean”. Only ever when you ask — nothing runs in the background.' },
+              { key: 'seeScreen', title: 'Look at my screen when I ask', hint: '“Take a screenshot”, “help me with this”, “what does this error mean”. Captures one frame only when you ask.' },
+              { key: 'watchScreen', title: 'Watch my screen in the background', hint: 'Samples your screen every ~3 seconds when it changes so Sentinel already has context before you ask. Shows a red stop badge the whole time. Off by default.' },
               { key: 'screenShare', title: 'Share screen to my devices', hint: 'Stream this PC live to your own phone/laptop. Shows a red badge while active.' },
               { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Sentinel devices.' },
               { key: 'remoteControl', title: 'Allow remote control of this PC', hint: 'Let another of your devices drive this mouse and keyboard. Needs a remote PIN below. A banner shows the whole time, and you can stop it instantly.' },
@@ -368,7 +383,16 @@ export default function SettingsPanel() {
                     <div className="mt-1 text-xs text-secondary">{p.hint}</div>
                   </div>
                   <button
-                    onClick={() => setPermissions({ [p.key]: !permissions[p.key] })}
+                    onClick={() => {
+                      const nextVal = !permissions[p.key]
+                      if (p.key === 'watchScreen' && nextVal && !permissions.seeScreen) {
+                        setPermissions({ watchScreen: true, seeScreen: true })
+                      } else if (p.key === 'seeScreen' && !nextVal && permissions.watchScreen) {
+                        setPermissions({ seeScreen: false, watchScreen: false })
+                      } else {
+                        setPermissions({ [p.key]: nextVal })
+                      }
+                    }}
                     aria-pressed={permissions[p.key]}
                     aria-label={p.title}
                     className={`relative h-7 w-12 shrink-0 rounded-full transition ${
@@ -889,13 +913,17 @@ export default function SettingsPanel() {
                 className="input-glass"
               />
               <button
-                onClick={saveServer}
+                onClick={() => void saveServer()}
                 className="px-3 py-2 rounded-md border border-white/10 text-xs text-white/80 hover:bg-white/5"
               >
                 Save server
               </button>
             </div>
-            {serverMsg && <div className="mt-2 text-xs text-green-400">{serverMsg}</div>}
+            {serverMsg && (
+              <div className={`mt-2 text-xs ${serverMsg.ok ? 'text-green-400' : 'text-red-400'}`}>
+                {serverMsg.text}
+              </div>
+            )}
           </div>
         </motion.section>
 

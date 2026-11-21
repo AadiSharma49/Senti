@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import * as share from '../screenShare'
 import { startScreenContext, stopScreenContext } from '../screenContext'
+import { DEFAULT_PERMISSIONS, useSettingsStore } from '../../state/settingsStore'
 
 const request = vi.hoisted(() => vi.fn())
 vi.mock('../api', () => ({ api: request }))
@@ -23,6 +24,7 @@ beforeEach(() => {
 afterEach(async () => {
   stopScreenContext()
   await share.stopScreenShare()
+  useSettingsStore.setState({ permissions: { ...DEFAULT_PERMISSIONS } })
   vi.useRealTimers()
   vi.unstubAllGlobals()
 })
@@ -75,6 +77,7 @@ describe('remote video capture and JPEG fallback pacing', () => {
   })
 
   it('an unchanged screen has one vision timer and does not compete with a remote session', async () => {
+    useSettingsStore.getState().setPermissions({ watchScreen: true, seeScreen: true })
     startScreenContext()
     await vi.advanceTimersByTimeAsync(18_000)
     expect(canvas.toDataURL).toHaveBeenCalledTimes(6)

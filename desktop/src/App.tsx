@@ -14,13 +14,15 @@ import { startClipboardSync, stopClipboardSync } from './services/clipboardSync'
 import { startRemoteHost, stopRemoteHost } from './services/remoteHost'
 import { startProactive, stopProactive } from './services/proactive'
 import { startFileHost, stopFileHost } from './services/fileHost'
+import { startScreenContext, stopScreenContext } from './services/screenContext'
 
 function App() {
   const settings = useSettingsStore((s) => s)
   const settingsOpen = useUiStore((s) => s.settingsOpen)
+  const wakeHidden = useWakeStore((s) => s.hidden)
   const needsSetup = !settings.setupCompleted
 
-  // Senti is NOT a lock screen: once first-time setup is done, you're in.
+  // Sentinel is NOT a lock screen: once first-time setup is done, you're in.
   const signedIn = !needsSetup
 
   /**
@@ -92,11 +94,21 @@ function App() {
     else stopFileHost()
   }, [signedIn, settings.permissions.files])
 
-  // Let Senti notice what you're up to and speak first now and then.
+  // Let Sentinel notice what you're up to and speak first now and then.
   useEffect(() => {
     if (signedIn && settings.permissions.proactive) startProactive()
     else stopProactive()
   }, [signedIn, settings.permissions.proactive])
+
+  // Opt-in background screen context (off by default; paused while hidden).
+  useEffect(() => {
+    if (signedIn && settings.permissions.watchScreen && settings.permissions.seeScreen && !wakeHidden) {
+      startScreenContext()
+    } else {
+      stopScreenContext()
+    }
+    return () => stopScreenContext()
+  }, [signedIn, settings.permissions.watchScreen, settings.permissions.seeScreen, wakeHidden])
 
   // Setup wizard — its own full-window flow.
   if (needsSetup) {

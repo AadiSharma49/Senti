@@ -15,7 +15,8 @@
     "setup:voice": "node scripts/setup-voice-model.mjs",
     "make:icon": "node scripts/make-icon.mjs",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:loopback": "node tests/loopback/run.mjs"
   },
   "build": {
     "appId": "com.senti.desktop",
@@ -63,13 +64,11 @@
     "framer-motion": "^11.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "ws": "^8.21.2",
     "zustand": "^4.5.0"
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
-    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.0",
     "autoprefixer": "^10.4.19",
     "concurrently": "^8.2.2",

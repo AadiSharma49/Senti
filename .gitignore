@@ -48,9 +48,9 @@ desktop/public/models/
 temp/
 project_full.zip
 project_full.tar.gz
-project_full.zip
 *.zip
 # Desktop build output
+desktop/dist-electron/
 desktop/release/
 
 # Stray Next.js output (desktop is not a Next app)

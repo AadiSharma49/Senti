@@ -6,21 +6,18 @@ import { useScreenContextStore, type ScreenContext } from '../state/screenContex
 const VISION_CONTEXT_PATH = '/api/device/vision'
 
 /**
- * How often to grab a frame and ask the vision model "what's on screen?".
+ * Opt-in background screen context interval.
  *
- * 3 seconds is a balance: fast enough to catch context changes (switching apps,
- * game events), slow enough that we don't burn through the vision API budget.
- * Games change fast, but the HUD/menu screens where you actually need help
- * change slowly — 3s catches those.
+ * Disabled by default (`permissions.watchScreen === false`). When the user
+ * explicitly enables it in Settings alongside `seeScreen`, Sentinel samples a
+ * downscaled still every 3 seconds while the screen is changing and shows the
+ * red capture badge the entire time.
  */
-const WATCH_INTERVAL_MS = 3000
+export const WATCH_INTERVAL_MS = 3000
 
-/**
- * Don't bother asking the vision model when the screen hasn't changed at all
- * since the last observation. A pixel-level diff on the downscaled JPEG is
- * cheap and skits pointless API calls when you're staring at a static page.
- */
 const MIN_CHANGE_RATIO = 0.03
+const MAX_ERRORS_BEFORE_PAUSE = 5
+const MAX_BACKOFF_MS = 60_000
 
 let timer: number | null = null
 let running = false
@@ -28,126 +25,162 @@ let lastDataUrl: string | null = null
 let generation = 0
 let unsubscribe: (() => void) | undefined
 let consecutiveErrors = 0
-const MAX_ERRORS_BEFORE_PAUSE = 5
+
+interface VisionContextPayload {
+  summary?: string
+  apps?: string[]
+  activity?: string
+  label?: string
+}
+
+interface VisionContextResponse extends VisionContextPayload {
+  context?: VisionContextPayload
+}
+
+function isAllowed(): boolean {
+  const { permissions } = useSettingsStore.getState()
+  return permissions.watchScreen === true && permissions.seeScreen === true
+}
+
+function clearScheduledTimer(): void {
+  if (timer !== null) {
+    clearTimeout(timer)
+    timer = null
+  }
+}
+
+export function backoffDelay(errors: number): number {
+  if (errors <= 0) return WATCH_INTERVAL_MS
+  if (errors >= MAX_ERRORS_BEFORE_PAUSE) return MAX_BACKOFF_MS
+  return Math.min(MAX_BACKOFF_MS, WATCH_INTERVAL_MS * 2 ** errors)
+}
 
 /**
- * Start the background watcher. Captures screen every WATCH_INTERVAL_MS and
- * pushes ScreenContext observations to the store.
- *
- * Safe to call multiple times — only one watcher runs at a time.
+ * Start the opt-in background screen watcher. Safe to call multiple times —
+ * at most one timer is ever armed across start/stop/permission transitions.
  */
 export function startScreenContext(): void {
   if (running) return
   running = true
-  useScreenContextStore.getState().startWatching()
-  const allowed = () => {
-    const { permissions, localMode } = useSettingsStore.getState()
-    return permissions.seeScreen && !localMode
-  }
-  let enabled = allowed()
+  consecutiveErrors = 0
+  lastDataUrl = null
+  const gen = ++generation
+
+  let enabled = isAllowed()
   setContextCapture(enabled)
+  if (enabled) {
+    useScreenContextStore.getState().startWatching()
+    schedule(gen, WATCH_INTERVAL_MS)
+  } else {
+    useScreenContextStore.getState().reset()
+  }
+
   unsubscribe = useSettingsStore.subscribe(() => {
-    if (enabled !== allowed()) { enabled = allowed(); setContextCapture(enabled) }
+    const nextAllowed = isAllowed()
+    if (enabled === nextAllowed) return
+    enabled = nextAllowed
+    setContextCapture(enabled)
+    if (enabled) {
+      consecutiveErrors = 0
+      lastDataUrl = null
+      useScreenContextStore.getState().startWatching()
+      schedule(gen, WATCH_INTERVAL_MS)
+    } else {
+      clearScheduledTimer()
+      lastDataUrl = null
+      useScreenContextStore.getState().reset()
+    }
   })
-  schedule(++generation, WATCH_INTERVAL_MS)
 }
 
 export function stopScreenContext(): void {
   running = false
   generation++
-  if (timer !== null) {
-    clearTimeout(timer)
-    timer = null
-  }
+  clearScheduledTimer()
   lastDataUrl = null
-  useScreenContextStore.getState().stopWatching()
+  consecutiveErrors = 0
   unsubscribe?.()
   unsubscribe = undefined
   setContextCapture(false)
+  useScreenContextStore.getState().reset()
 }
 
 function schedule(gen: number, delay: number): void {
-  if (gen === generation && running) timer = window.setTimeout(() => void observe(gen), delay)
+  if (gen !== generation || !running || !isAllowed()) return
+  clearScheduledTimer()
+  timer = window.setTimeout(() => {
+    timer = null
+    void observe(gen)
+  }, delay)
 }
 
 async function observe(gen: number): Promise<void> {
-  if (gen !== generation || !running) return
+  if (gen !== generation || !running || !isAllowed()) return
   let next = WATCH_INTERVAL_MS
   try {
-    const { permissions, localMode } = useSettingsStore.getState()
-    if (!permissions.seeScreen || localMode) return
     const dataUrl = await contextStill()
-    if (gen !== generation || !dataUrl || !isChangedEnough(dataUrl, lastDataUrl)) return
-    lastDataUrl = dataUrl
+    if (gen !== generation || !running || !isAllowed()) return
+    if (!dataUrl || !isChangedEnough(dataUrl, lastDataUrl)) return
 
     const question =
       'Describe what is on this screen. Return a concise summary (1-2 sentences) ' +
       'of what the user is doing, which apps are visible, and what is happening. ' +
       'Also identify the primary app or activity.'
 
-    const res = await api<{ summary?: string; apps?: string[]; activity?: string; label?: string }>(
-      VISION_CONTEXT_PATH,
-      {
-        method: 'POST',
-        body: { image: dataUrl, question, language: 'en-US', context: true },
-      }
-    )
+    const res = await api<VisionContextResponse>(VISION_CONTEXT_PATH, {
+      method: 'POST',
+      body: { image: dataUrl, question, language: 'en-US', context: true },
+    })
 
-    if (gen !== generation) return
-    if (res.ok && res.data?.summary) {
-      const ctx: ScreenContext = {
-        ts: Date.now(),
-        summary: String(res.data.summary).slice(0, 500),
-        apps: Array.isArray(res.data.apps) ? res.data.apps.slice(0, 8) : [],
-        activity: normalizeActivity(res.data.activity),
-        label: String(res.data.label || res.data.summary).slice(0, 80),
-        fresh: true,
-      }
-      useScreenContextStore.getState().pushContext(ctx)
-
-      // If a game is detected, keep watching — the user wants Senti to see
-      // everything they do, including games. Don't pause.
-      // (Removed auto-pause so the watcher is truly always-on.)
-
+    if (gen !== generation || !running || !isAllowed()) return
+    if (res.ok) {
+      lastDataUrl = dataUrl
       consecutiveErrors = 0
-    } else if (res.status === 503) {
-      // Vision API busy — back off and retry later.
-      consecutiveErrors++
-      if (consecutiveErrors >= MAX_ERRORS_BEFORE_PAUSE) {
-        // Pause for a minute if vision is consistently busy.
-        next = 60_000
+      const payload = res.data?.context ?? res.data
+      if (payload?.summary) {
+        const ctx: ScreenContext = {
+          ts: Date.now(),
+          summary: String(payload.summary).slice(0, 500),
+          apps: Array.isArray(payload.apps) ? payload.apps.slice(0, 8).map(String) : [],
+          activity: normalizeActivity(payload.activity),
+          label: String(payload.label || payload.summary).slice(0, 80),
+          fresh: true,
+        }
+        useScreenContextStore.getState().pushContext(ctx)
       }
+    } else {
+      consecutiveErrors++
+      next = backoffDelay(consecutiveErrors)
     }
   } catch {
-    // Silently skip failed observations — a transient API error shouldn't
-    // stop the watcher. The next tick will try again.
     consecutiveErrors++
+    next = backoffDelay(consecutiveErrors)
   } finally {
     schedule(gen, next)
   }
 }
 
 /**
- * Quick-and-dirty change detection: compare the first N bytes of two JPEG
- * data URLs. If they match exactly, the screen is identical. If they differ
- * significantly, something changed. Not pixel-perfect, but good enough to
- * skip ~90% of static-screen API calls.
+ * Stride-sampled base64 diff across the full JPEG data URL so changes anywhere
+ * on the screen (not just the JPEG header or top rows) are caught in O(1) time.
  */
 function isChangedEnough(a: string | null, b: string | null): boolean {
   if (!a || !b) return true
   if (a === b) return false
-  // Compare a 4KB sample from each — enough to detect changes cheaply.
-  const sampleA = a.slice(0, 4000)
-  const sampleB = b.slice(0, 4000)
-  if (sampleA === sampleB) return false
-  // They differ — estimate ratio of different bytes.
-  let diff = 0
-  const len = Math.min(sampleA.length, sampleB.length)
-  for (let i = 0; i < len; i++) {
-    if (sampleA[i] !== sampleB[i]) diff++
+  if (Math.abs(a.length - b.length) / Math.max(a.length, b.length, 1) >= MIN_CHANGE_RATIO) {
+    return true
   }
-  const ratio = diff / len
-  return ratio >= MIN_CHANGE_RATIO
+
+  const len = Math.min(a.length, b.length)
+  const samples = Math.min(len, 2000)
+  const step = Math.max(1, Math.floor(len / samples))
+  let diff = 0
+  let checked = 0
+  for (let i = 0; i < len; i += step) {
+    checked++
+    if (a.charCodeAt(i) !== b.charCodeAt(i)) diff++
+  }
+  return checked > 0 && diff / checked >= MIN_CHANGE_RATIO
 }
 
 function normalizeActivity(raw: unknown): ScreenContext['activity'] {
@@ -160,7 +193,7 @@ function normalizeActivity(raw: unknown): ScreenContext['activity'] {
     reading: 'reading', 'reading document': 'reading',
     writing: 'writing', 'writing email': 'writing', 'writing doc': 'writing',
     working: 'working', 'in meeting': 'working', 'on a call': 'working',
-    idle: 'idle', 'desktop empty': 'idle', 'nothing': 'idle',
+    idle: 'idle', 'desktop empty': 'idle', nothing: 'idle',
   }
   return map[s] || 'unknown'
 }

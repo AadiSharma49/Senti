@@ -25,24 +25,10 @@ contextBridge.exposeInMainWorld('senti', {
   hudShow: () => ipcRenderer.invoke('senti:hud-show'),
   /** Shrink back to the small corner presence. */
   hudHide: () => ipcRenderer.invoke('senti:hud-hide'),
-  /** Fully hide the Senti window — it keeps listening in the background. */
+  /** Fully hide the Sentinel window — it keeps listening in the background. */
   hideWindow: () => ipcRenderer.invoke('senti:hide-window'),
-  /** Restore the Senti window to HUD mode after it was hidden. */
+  /** Restore the Sentinel window to HUD mode after it was hidden. */
   restoreWindow: () => ipcRenderer.invoke('senti:restore-window'),
-  /** Start/stop the background screen watcher. */
-  startScreenContext: () => ipcRenderer.invoke('senti:start-screen-context'),
-  stopScreenContext: () => ipcRenderer.invoke('senti:stop-screen-context'),
-  /** Code bridge: VS Code ↔ Senti. */
-  startCodeBridge: () => ipcRenderer.invoke('senti:start-code-bridge'),
-  stopCodeBridge: () => ipcRenderer.invoke('senti:stop-code-bridge'),
-  sendToVSCode: (msg: unknown) => ipcRenderer.invoke('senti:send-to-vscode', msg),
-  isCodeBridgeConnected: () => ipcRenderer.invoke('senti:is-code-bridge-connected'),
-  /** Listen for messages from the VS Code extension. */
-  onCodeBridgeMessage: (cb: (msg: unknown) => void) => {
-    const handler = (_e: unknown, msg: unknown) => cb(msg)
-    ipcRenderer.on('senti:code-bridge-message', handler)
-    return () => ipcRenderer.removeListener('senti:code-bridge-message', handler)
-  },
   /** Fired from the tray / second launch. Returns an unsubscribe function. */
   onOpenSettings: (cb: () => void) => {
     const handler = () => cb()
@@ -67,6 +53,24 @@ contextBridge.exposeInMainWorld('senti', {
     }
   })(),
   persistSetupCompleted: (done: boolean) => ipcRenderer.invoke('senti:set-setup', done),
+
+  // Configured backend server, owned by main so outbound authenticated calls
+  // are pinned there rather than trusting a renderer-supplied baseUrl.
+  serverAtBoot: (() => {
+    try {
+      return ipcRenderer.sendSync('senti:get-api-base') as { baseUrl: string; override: string }
+    } catch {
+      return null
+    }
+  })(),
+  setApiBase: (url: string) =>
+    ipcRenderer.invoke('senti:set-api-base', url) as Promise<{
+      ok: boolean
+      baseUrl: string
+      override: string
+      unlinked: boolean
+      error?: string
+    }>,
 
   /** Real vitals for THIS machine, so the assistant can answer about it. */
   systemInfo: () => ipcRenderer.invoke('senti:system-info'),
@@ -115,10 +119,8 @@ contextBridge.exposeInMainWorld('senti', {
   openFile: (query: string) => ipcRenderer.invoke('senti:open-file', query),
   lockWorkstation: () => ipcRenderer.invoke('senti:lock-workstation'),
   power: (mode: string) => ipcRenderer.invoke('senti:power', mode),
-  /** The foreground window's title + process, so Senti can speak up about it. */
+  /** The foreground window's title + process, so Sentinel can speak up about it. */
   activeWindow: () => ipcRenderer.invoke('senti:active-window'),
-  /** All running apps with window titles — for "close Chrome" etc. */
-  runningApps: () => ipcRenderer.invoke('senti:running-apps'),
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => ipcRenderer.invoke('senti:remote-input', events),
   remoteInputStop: () => ipcRenderer.invoke('senti:remote-input-stop'),
@@ -126,8 +128,8 @@ contextBridge.exposeInMainWorld('senti', {
   resetRemoteKeyState: () => ipcRenderer.invoke('senti:reset-remote-key-state'),
   volume: (direction: 'up' | 'down' | 'mute') => ipcRenderer.invoke('senti:volume', direction),
 
-  // Backend access — the token is attached in main, never exposed here.
-  api: (req: { baseUrl: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
+  // Backend access — the token is attached in main and pinned to the server configured there.
+  api: (req: { baseUrl?: string; path: string; method?: string; body?: unknown; auth?: boolean }) =>
     ipcRenderer.invoke('senti:api', req),
   tokenSet: (token: string) => ipcRenderer.invoke('senti:token-set', token),
   tokenClear: () => ipcRenderer.invoke('senti:token-clear'),

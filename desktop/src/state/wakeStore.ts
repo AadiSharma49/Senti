@@ -11,21 +11,11 @@ import { reportActivity } from '../services/statusReporter'
 import { useSettingsStore } from './settingsStore'
 import { useUiStore } from './uiStore'
 import { useScreenContextStore } from './screenContextStore'
-import type { ScreenContext } from './screenContextStore'
+import { startScreenContext, stopScreenContext } from '../services/screenContext'
 import type { Utterance } from '../types/audio'
 
-// Local brain (Ollama) — imported lazily so it doesn't block startup when
-// local mode is off.
-let localBrainModule: typeof import('../services/localBrain') | null = null
-async function getLocalBrain() {
-  if (!localBrainModule) {
-    localBrainModule = await import('../services/localBrain')
-  }
-  return localBrainModule
-}
-
 /**
- * wakeStore — talking to Senti, hands-free.
+ * wakeStore — talking to Sentinel, hands-free.
  *
  * This is a CONVERSATION, not a command line. It has two phases:
  *
@@ -215,18 +205,18 @@ function dismissSenti(): void {
   setHud(false)
   void window.senti?.hideWindow?.()
   void say({ text: 'Okay.', audio: null }, deviceLang())
-  // Stop watching the screen while hidden — the user dismissed Senti, which
-  // means they want it out of their life for now. Screen access stops.
-  import('../services/screenContext').then(({ stopScreenContext }) => stopScreenContext()).catch(() => {})
+  // Stop watching the screen while hidden — the user dismissed Sentinel, which
+  // means they want it out of the way for now.
+  stopScreenContext()
 }
 
-/** Bring Senti back — shows the window and opens a conversation. */
+/** Bring Sentinel back — shows the window and opens a conversation. */
 function restoreSenti(): void {
   useWakeStore.setState({ hidden: false, state: 'heard', detail: 'Listening…' })
   setHud(true)
   void window.senti?.restoreWindow?.()
-  // Resume screen watching now that the user has called Senti back.
-  import('../services/screenContext').then(({ startScreenContext }) => startScreenContext()).catch(() => {})
+  const { watchScreen, seeScreen } = useSettingsStore.getState().permissions
+  if (watchScreen && seeScreen) startScreenContext()
 }
 
 export const useWakeStore = create<WakeStore>((set, get) => ({
@@ -304,14 +294,12 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     recorder.onUtterance((u) => void onUtterance(u))
     recorder.start(audioCapture)
     set({ state: 'listening', detail: '', enabled: true, status: 'Listening.', hidden: false })
-    // Start the background screen watcher so Senti can see what the user is
-    // doing. It runs at low frequency (every 3s) and only when Senti is
-    // actually listening — dismissed = no watching = no screen access.
-    import('../services/screenContext').then(({ startScreenContext }) => startScreenContext()).catch(() => {})
+    const { watchScreen, seeScreen } = useSettingsStore.getState().permissions
+    if (watchScreen && seeScreen) startScreenContext()
   },
 
   stop: () => {
-    import('../services/screenContext').then(({ stopScreenContext }) => stopScreenContext()).catch(() => {})
+    stopScreenContext()
     unsubscribeLevel?.()
     unsubscribeLevel = null
     if (idleTimer !== null) {
@@ -356,8 +344,6 @@ async function onUtterance(utterance: Utterance): Promise<void> {
     if (!heard) return
     useWakeStore.setState({ lastHeard: heard })
 
-    const alwaysRespond = useSettingsStore.getState().alwaysRespond
-
     if (inConversation) {
       if (isEndPhrase(heard)) {
         endConversation(true)
@@ -370,10 +356,8 @@ async function onUtterance(utterance: Utterance): Promise<void> {
 
     const storeNow = useWakeStore.getState()
     if (storeNow.hidden) {
-      if (!alwaysRespond) {
-        const { woke } = parseWake(heard)
-        if (!woke) return
-      }
+      const { woke } = parseWake(heard)
+      if (!woke) return
       restoreSenti()
       beginConversation()
       await handleTurn(heard)
@@ -386,13 +370,10 @@ async function onUtterance(utterance: Utterance): Promise<void> {
       return
     }
 
-    if (!alwaysRespond) {
-      const { woke } = parseWake(heard)
-      if (!woke) return
-    }
+    const { woke, command } = parseWake(heard)
+    if (!woke) return
 
     beginConversation()
-    const { command } = parseWake(heard)
     if (command) await handleTurn(command)
     else await ackEngaged()
   } finally {
@@ -419,42 +400,28 @@ async function handleTurn(text: string): Promise<void> {
   const snap = await getSystemSnapshot()
   history.push({ role: 'user', content: text })
 
-  // Grab the latest screen context so the LLM can see what's on screen.
+  // Attach recent screen context only when opt-in background watching is active.
+  const { watchScreen, seeScreen } = useSettingsStore.getState().permissions
   const screenCtx = useScreenContextStore.getState().current
-  const ctxForLlm = screenCtx
-    ? { summary: screenCtx.summary, apps: screenCtx.apps, activity: screenCtx.activity, label: screenCtx.label }
-    : undefined
+  const ctxFresh = !!screenCtx && Date.now() - screenCtx.ts < 5 * 60_000
+  const ctxForLlm =
+    watchScreen && seeScreen && screenCtx && ctxFresh
+      ? { summary: screenCtx.summary, apps: screenCtx.apps, activity: screenCtx.activity, label: screenCtx.label }
+      : undefined
 
-  // Local mode: no cloud, all Ollama + Piper on this machine.
-  const localMode = useSettingsStore.getState().localMode
+  const reply = await askSenti(
+    history.slice(-HISTORY_TURNS),
+    lang,
+    snap ? describeSystem(snap) : null,
+    ctxForLlm
+  )
+  let spoken = reply.text
+  const replyAudio = reply.audio
 
-  let spoken: string
-  let replyAudio: string | null = null
-
-  if (localMode) {
-    const brain = await getLocalBrain()
-    const reply = await brain.localAsk(
-      history.slice(-HISTORY_TURNS).map((m) => ({ role: m.role, content: m.content })),
-      snap ? describeSystem(snap) : null,
-      ctxForLlm
-    )
-    spoken = reply.text
-    replyAudio = reply.audio
-  } else {
-    const reply = await askSenti(
-      history.slice(-HISTORY_TURNS),
-      lang,
-      snap ? describeSystem(snap) : null,
-      ctxForLlm
-    )
-    spoken = reply.text
-    replyAudio = reply.audio
-
-    if (reply.action) {
-      useWakeStore.setState({ detail: 'Working…' })
-      const outcome = await runAction(reply.action)
-      if (outcome) spoken = outcome
-    }
+  if (reply.action) {
+    useWakeStore.setState({ detail: 'Working…' })
+    const outcome = await runAction(reply.action)
+    if (outcome) spoken = outcome
   }
 
   history.push({ role: 'assistant', content: spoken })

@@ -232,116 +232,15 @@ const TOOLS = [
       },
     },
   },
-  {
-    type: 'function',
-    function: {
-      name: 'read_file',
-      description: 'Read the content of a file in the user\'s project. Use this when you need to see what\'s in a specific file — e.g. "read the server file", "show me the config", "what\'s in package.json". Always prefer reading the actual file over guessing what\'s in it.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Full path to the file, or relative to the workspace. e.g. "src/index.ts", "package.json"' },
-        },
-        required: ['path'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'write_file',
-      description: 'Write content to a file — creating or overwriting it. Use this to actually build code, create config files, add routes, write components, etc. When the user says "build a chat app", "create a server", "add a login page" — this is the tool that does the work. ALWAYS write the complete file content, not just a snippet.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Full path or workspace-relative path. e.g. "src/server.ts", "package.json"' },
-          text: { type: 'string', description: 'The complete file content to write. Must be the full file, not a partial update.' },
-        },
-        required: ['path', 'text'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'run_command',
-      description: 'Run a shell command in the project terminal — npm install, npm run dev, git commit, etc. Use for installing dependencies, starting servers, running builds, git operations. The output comes back so you can see if it worked.',
-      parameters: {
-        type: 'object',
-        properties: {
-          command: { type: 'string', description: 'The shell command to run. e.g. "npm install", "npm run dev", "git status"' },
-        },
-        required: ['command'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_folder',
-      description: 'List files and folders in a directory. Use to understand the project structure before writing files — "what\'s in the src folder", "show me the project structure", "what files exist here".',
-      parameters: {
-        type: 'object',
-        properties: {
-          folder: { type: 'string', description: 'Path to the folder. e.g. "src", ".", "src/components"' },
-        },
-        required: ['folder'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_active_file',
-      description: 'Get the content of whatever file is currently open in the user\'s editor. Use when they say "what am I looking at", "what\'s open", "read this file" without naming it — the active editor IS the file.',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'get_diagnostics',
-      description: 'Get the current errors and warnings from the editor. Use when something isn\'t working — "what\'s broken", "show me errors", "why isn\'t this compiling".',
-      parameters: { type: 'object', properties: {} },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'plan',
-      description: 'Create a step-by-step plan for a complex task BEFORE executing it. Use this when the user asks you to build, create, or fix something that requires multiple steps — e.g. "build a chat app", "create a React project", "set up authentication". The plan is a numbered list of steps you will execute. After creating the plan, execute each step one by one using the other tools (write_file, run_command, etc.). Do NOT announce the plan to the user — just create it and execute it.',
-      parameters: {
-        type: 'object',
-        properties: {
-          goal: { type: 'string', description: 'The high-level goal the user asked for, in your own words.' },
-          steps: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                step: { type: 'number', description: 'Step number, starting from 1.' },
-                action: { type: 'string', description: 'What to do in this step — which tool to use and what arguments.' },
-                tool: { type: 'string', description: 'Which tool to use: run_command, write_file, list_folder, read_file, etc.' },
-              },
-              required: ['step', 'action', 'tool'],
-            },
-            description: 'Ordered list of steps to accomplish the goal.',
-          },
-        },
-        required: ['goal', 'steps'],
-      },
-    },
-  },
 ]
 
-/** Actions the desktop knows how to run. */
+/** Actions the desktop knows how to run (plus server-handled ask_web). */
 const KNOWN_ACTIONS = new Set([
   'open_app', 'close_app', 'close_current', 'show_desktop',
   'open_folder', 'open_file', 'clean_temp',
   'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
   'take_screenshot', 'look_at_screen',
   'ask_web',
-  'read_file', 'write_file', 'run_command', 'list_folder', 'get_active_file', 'get_diagnostics', 'plan',
 ])
 import { generateSpeech } from '@/lib/tts'
 
@@ -596,6 +495,7 @@ export async function POST(req: Request) {
     if (typeof call.args?.name === 'string') args.name = call.args.name.slice(0, 60)
     if (typeof call.args?.direction === 'string') args.direction = call.args.direction.slice(0, 10)
     if (typeof call.args?.query === 'string') args.query = call.args.query.slice(0, 80)
+    if (typeof call.args?.question === 'string') args.question = call.args.question.slice(0, 300)
     if (typeof call.args?.fact === 'string') args.fact = call.args.fact.slice(0, 300)
     if (typeof call.args?.on === 'boolean') args.on = call.args.on
     if (typeof call.args?.mode === 'string') args.mode = call.args.mode.slice(0, 20)
@@ -627,20 +527,6 @@ export async function POST(req: Request) {
           ? `${args.mode === 'sleep' ? 'Putting your PC to sleep' : args.mode === 'restart' ? 'Restarting your PC' : 'Shutting your PC down'}.`
           : call.name === 'remember'
           ? "Got it, I'll remember that."
-          : call.name === 'read_file'
-          ? `Reading ${args.path ?? 'that file'}.`
-          : call.name === 'write_file'
-          ? `Writing to ${args.path ?? 'that file'}.`
-          : call.name === 'run_command'
-          ? `Running ${args.command ?? 'that command'}.`
-          : call.name === 'list_folder'
-          ? `Listing ${args.folder ?? 'that folder'}.`
-          : call.name === 'get_active_file'
-          ? 'Reading the active file.'
-          : call.name === 'get_diagnostics'
-          ? 'Checking for errors.'
-          : call.name === 'plan'
-          ? 'On it — breaking this into steps.'
           : 'Done.'
     }
   }

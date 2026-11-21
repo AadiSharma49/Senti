@@ -7,109 +7,120 @@ working; things that are rough are listed as rough.
 
 ## Built and working
 
-**Voice.** Conversation with memory, not commands. Wakes on its name, a
-greeting, a bare order ("open Chrome"), or `Ctrl+Shift+Space`. Speech
-recognised on-device by Whisper. Ten languages. The activity detector adapts to
-your microphone's level and your room's noise floor — a fixed threshold meant
-quiet mics only registered their loudest syllable, and whole sentences arrived
-as single words.
+**Voice.** Multi-turn conversation with memory, not one-off commands. Wakes on
+its name, a greeting, a bare order ("open Chrome"), or `Ctrl+Shift+Space`.
+Speech is recognised on-device by Whisper across ten languages. The voice
+activity detector adapts to your microphone's level and your room's noise floor
+so quiet microphones don't clip whole sentences down to a single syllable.
 
-**Fourteen things it can do.** Apps (including any installed game, and
-switching to one already open rather than launching a second), folders, finding
-and opening files, temp cleanup, recycle bin, volume, lock, sleep, restart,
-shutdown, screenshots, screen understanding, live web answers, and memory.
-Each is gated by a permission you control, and the gate is unit-tested.
+**Sixteen tools (15 local actions + live web search).** Opening apps, games, and
+websites (focusing an already-open window instead of launching duplicates),
+closing named apps or the active foreground app, showing the desktop, opening
+folders, finding and opening files, visible or silent temp cleanup, emptying the
+Recycle Bin, system volume, locking, sleep/restart/shutdown, screenshots,
+on-demand screen Q&A, screen sharing, live web answers, and local memory. Every
+action sits behind a unit-tested permission switch synchronized with the server
+tool list.
 
-**Seeing the screen, on request.** "Help me with this" grabs one frame and
-answers about it. Runs on the same Groq key as everything else.
+**Seeing the screen — on request by default, opt-in background context.**
+Saying *"help me with this"* grabs a single frame (`look_at_screen`) and answers
+about it. Users who want continuous context can explicitly enable *"Watch my
+screen in the background"* in Settings (`watchScreen`, off by default), which
+samples downscaled stills every ~3s on change while showing a persistent red
+stop badge.
 
-**Knowing you.** A local memory file, plus an aggregated habits journal it
-reflects on every few hours to work out what's durably true about you. Both
-stay on the machine.
+**Knowing you.** A local `memories.json` file plus an aggregated local habits
+journal (`activity.json`) that Sentinel reflects on every few hours to learn
+what's durably true about how you use your PC.
 
-**Speaking first.** Notices what you're doing and occasionally comments. Detects
-the *shape* of being stuck — one window held a long time, or repeated returns
-to it — and offers help with that specific thing.
+**Speaking first.** Reads the foreground window title (never pixels) and
+occasionally offers help when it detects the shape of being stuck — dwelling on
+one window for a long stretch or repeatedly bouncing back to it.
 
-**Your other devices.** Live screen viewing, full mouse-and-keyboard remote
-control over WebRTC (peer-to-peer, 1080p, system audio, game mode with relative
-mouse), file browsing, clipboard sync, remote power. Gated by an emailed code
-or a PIN.
+**Your other devices & account security.** Live screen viewing, peer-to-peer
+WebRTC remote control (1080p/720p60 presets, system audio, game mode with
+relative mouse deltas, ordered input delivery, automatic stuck-key release, and
+live receiver diagnostics), remote folder browsing, clipboard sync, remote
+power commands, and full account controls (one-click sign-out across all browser
+sessions + paired PCs, and permanent account deletion).
 
-**83 unit tests** on the code where a break would be invisible: the wake parser
-(Sentinel simply doesn't answer), the permission table (an action would run with
-its switch off), path containment for remote files (the UI looks identical
-while serving the whole drive), the voice threshold, and memory ranking.
+**189 unit tests + headless WebRTC loopback.** Covers wake parsing, action
+permissions and server tool parity, main-process server-origin token pinning,
+path containment, background vision timer/backoff invariants, WebRTC signaling
+and frame fallback, ordered remote input and key release, adaptive VAD, and
+memory recall — plus an automated two-peer Edge loopback suite
+(`desktop/tests/loopback/run.mjs`).
 
 ---
 
 ## Rough edges, honestly
 
-**Latency is the big one.** ~8s to look at a screen, ~11s for a web answer, a
-few seconds for anything else. A person answers in under a second. This is the
-single largest gap between "impressive" and "natural", and it's next.
+**Latency is the big one.** Several seconds for chat, ~8s to inspect a screen,
+and ~11s for a live web answer because speech waits for full LLM + TTS
+completion rather than streaming sentence-by-sentence.
 
-**It can't be interrupted.** Talk over a person and they stop. Sentinel finishes
-its sentence. That one behaviour is most of what separates talking to software
-from talking to someone.
+**It can't be interrupted mid-sentence.** Talking over a person makes them stop;
+Sentinel currently finishes playing its reply before listening for the next turn.
 
-**The voice is a stock one.** Every project on the free tier sounds identical.
+**Stock TTS voice by default.** Without a custom ElevenLabs voice ID configured,
+projects on the default voice sound alike.
 
-**Memory ranking is lexical, not semantic.** It matches "drive" to "drive" but
-not to "disk". Real embeddings mean bundling another model.
+**Memory ranking is lexical, not semantic.** Keyword overlap matches *"drive"* to
+*"drive"* but not *"disk"*. Semantic recall will require a small local embedding
+model.
 
-**Everything routes through the cloud.** Two machines on the same Wi-Fi still
-talk via the internet.
+**Signaling and AI route through the cloud.** Two PCs on the same Wi-Fi stream
+media peer-to-peer once connected, but still use the dashboard for pairing,
+signaling, and cloud LLM/vision calls.
 
 ---
 
 ## Next, in order
 
-1. **Latency.** Speak the answer while the audio is still generating, rather
-   than after. Biggest felt improvement for the least work.
-2. **Interruption.** Stop talking the moment you start.
-3. **Its own voice.** Voice *design* rather than cloning — describe how it
-   should sound and generate a voice that has never existed. Not a copy of a
-   real person, not a stock voice everyone else has.
-4. **LAN mode.** Local discovery and signalling so two machines on one network
-   don't need the internet.
-5. **Semantic memory.** On-device embeddings so recall matches meaning.
-6. **A phone PWA**, so the dashboard installs like an app.
+1. **Streaming TTS & lower latency.** Begin speaking the first clause while the
+   rest of the audio streams in.
+2. **Barge-in interruption.** Cut playback immediately when the VAD detects the
+   owner speaking over Sentinel.
+3. **True local offline mode.** Properly sandboxed main-process IPC for local
+   LLM/vision (Ollama) and local neural TTS, with real model health checks in
+   Settings.
+4. **Authenticated IDE integration.** An opt-in editor bridge with per-session
+   mutual token authentication and explicit path/command approval prompts.
+5. **LAN discovery & signaling.** Direct local-network pairing when both PCs are
+   on the same Wi-Fi.
+6. **Semantic memory.** On-device embeddings for meaning-based memory recall.
 
 ---
 
 ## Deliberately not building
 
-**Continuous screen capture.** Always-on capture plus autostart plus remote
-control is the exact behavioural signature of a RAT, and storing screens means
-storing passwords and bank pages. Sentinel reads the foreground window's *title*
-to know you're in a game or watching a video, and takes a screenshot only when
-you ask. That gets most of the value and none of the exposure.
+**Silent, always-on background screen capture.** Hidden screen polling combined
+with autostart and remote control behaves like spyware. Default screen access is
+strictly single-frame on request, and the opt-in background watcher is off by
+default and bound to a persistent red on-screen stop indicator whenever active.
 
-**Camera access.** Same reasoning, less justification.
+**Camera access.** Same privacy boundary, with even less reason on a desktop PC.
 
-**A raw "run any command" tool.** The model would then be one hallucination
-away from deleting your Windows folder, and a webpage it read could talk it
-into doing so. The action list is broad and grows on request; it will not
-become arbitrary.
+**An unguarded "run arbitrary shell command" voice tool.** Letting a cloud model
+emit raw PowerShell/cmd strings leaves the PC one hallucination or prompt
+injection away from destructive commands. Actions remain a typed, whitelisted
+set gated by local permissions.
 
-**Our own streaming protocol.** WebRTC already does UDP, hardware encoding and
-congestion control that Google spent a decade on. Rebuilding it means months of
-systems programming to land somewhere worse.
+**A custom video transport.** WebRTC already provides encrypted peer-to-peer
+UDP, hardware codecs, and congestion control.
 
-**Waking a powered-off PC.** Nothing is running to receive the request. That
-needs Wake-on-LAN configured in BIOS and router — hardware, not software.
+**Waking a powered-off PC.** Nothing is running on the host to receive a
+command; powering on requires Wake-on-LAN in BIOS and router hardware.
 
 ---
 
 ## Known limits worth stating plainly
 
-- **Fast games over the internet won't feel right.** Even perfect WebRTC is
-  40-100ms; games want under 30. On the same Wi-Fi it's genuinely playable.
-- **Remote control needs the PC awake** and Sentinel running. A sleeping machine
-  queues commands and runs them when it wakes.
-- **Bare imperatives are English-only.** Addressing Sentinel by name works in any
-  language; "open Chrome" with no name matches English verbs literally.
-- **Google's free Gemini tier is unreliable.** Some accounts get a zero
-  allocation, visible only as a 429. Tavily is the primary web provider for
-  that reason.
+- **Fast twitch games over the internet won't feel native.** WebRTC across WANs
+  adds 40–100ms; same-LAN sessions are much closer to local play.
+- **Remote control needs the PC awake** and Sentinel running. Commands queued to
+  a sleeping machine run once it wakes and polls.
+- **Bare imperatives without the wake word are English-only.** Addressing
+  Sentinel by name works across all ten supported languages.
+- **Free-tier Gemini quotas vary by region/account.** Tavily + Groq serve as the
+  primary web and vision path for reliability.

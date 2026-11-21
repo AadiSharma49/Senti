@@ -1,9 +1,11 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { PageHeader, Card } from '@/components/ui'
+import AccountDangerZone from '@/components/AccountDangerZone'
 import { clerkEnabled } from '@/lib/auth'
 
 // Per-user, live data — never serve a cached copy of somebody's account.
 export const dynamic = 'force-dynamic'
+
 export default async function SettingsPage() {
   const user = clerkEnabled ? await currentUser() : null
   const name = user?.fullName || user?.firstName || user?.username || 'Your account'
@@ -11,7 +13,7 @@ export default async function SettingsPage() {
 
   return (
     <div>
-      <PageHeader title="Settings" subtitle="Account and security policy — the source of truth for your devices." />
+      <PageHeader title="Settings" subtitle="Account and session security across your browsers and paired PCs." />
 
       <div className="grid gap-6">
         <Card>
@@ -24,14 +26,10 @@ export default async function SettingsPage() {
 
         <Card>
           <h2 className="text-lg font-semibold text-white">Danger zone</h2>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button className="rounded-full border border-red-400/30 px-5 py-2.5 text-sm text-red-300 transition hover:bg-red-500/10">
-              Sign out all devices
-            </button>
-            <button className="rounded-full border border-red-400/30 px-5 py-2.5 text-sm text-red-300 transition hover:bg-red-500/10">
-              Delete account
-            </button>
-          </div>
+          <p className="mt-1 text-sm text-white/50">
+            Revoke active sessions and paired device tokens, or permanently delete your Sentinel account.
+          </p>
+          <AccountDangerZone clerkEnabled={clerkEnabled} />
         </Card>
       </div>
     </div>

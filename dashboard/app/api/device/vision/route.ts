@@ -19,7 +19,7 @@ export const runtime = 'nodejs'
 const MAX_IMAGE_CHARS = 4_000_000
 
 export async function POST(req: Request) {
-  const auth = await authenticateDevice(req, 'chat')
+  const auth = await authenticateDevice(req, 'vision')
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({}))

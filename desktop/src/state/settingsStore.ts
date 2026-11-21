@@ -9,6 +9,7 @@ export interface SettingsState {
     cleanup: boolean
     files: boolean
     seeScreen: boolean
+    watchScreen: boolean
     screenShare: boolean
     clipboardSync: boolean
     remoteControl: boolean
@@ -19,13 +20,8 @@ export interface SettingsState {
 
   showWork: boolean
 
-  localMode: boolean
-  alwaysRespond: boolean
-
   setPermissions: (p: Partial<SettingsState['permissions']>) => void
   setShowWork: (on: boolean) => void
-  setLocalMode: (on: boolean) => void
-  setAlwaysRespond: (on: boolean) => void
   setSetupCompleted: (completed: boolean) => void
   resetConfiguration: () => void
 }
@@ -56,12 +52,13 @@ const loadSetupCompleted = (): boolean => {
   return safe('senti:setupCompleted', false)
 }
 
-const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
+export const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   openApps: true,
   closeApps: false,
   cleanup: false,
   files: true,
   seeScreen: true,
+  watchScreen: false,
   screenShare: true,
   clipboardSync: true,
   remoteControl: false,
@@ -75,31 +72,19 @@ const loadPermissions = (): SettingsState['permissions'] => ({
   ...safe<Partial<SettingsState['permissions']>>('senti:permissions', {}),
 })
 
-export const useSettingsStore = create<SettingsState>((set) => ({
+export const useSettingsStore = create<SettingsState>((set, get) => ({
   permissions: loadPermissions(),
 
   setupCompleted: loadSetupCompleted(),
   showWork: safe<boolean>('senti:showWork', true),
-  localMode: safe<boolean>('senti:localMode', false),
-  alwaysRespond: safe<boolean>('senti:alwaysRespond', false),
 
   setShowWork: (on) => {
     persist('senti:showWork', on)
     set({ showWork: on })
   },
 
-  setLocalMode: (on: boolean) => {
-    persist('senti:localMode', on)
-    set({ localMode: on })
-  },
-
-  setAlwaysRespond: (on: boolean) => {
-    persist('senti:alwaysRespond', on)
-    set({ alwaysRespond: on })
-  },
-
   setPermissions: (p) => {
-    const next = { ...loadPermissions(), ...p }
+    const next = { ...get().permissions, ...p }
     persist('senti:permissions', next)
     set({ permissions: next })
   },

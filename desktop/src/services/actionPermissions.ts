@@ -17,7 +17,7 @@ export type PermissionKey =
 
 /**
  * null means "needs no permission" — and every one of those is deliberate:
- * `remember` only writes to Senti's own local memory file. It touches
+ * `remember` only writes to Sentinel's own local memory file. It touches
  * nothing on the machine.
  */
 export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
@@ -36,13 +36,6 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
   power: 'systemControl',
   set_volume: 'systemControl',
   remember: null,
-  read_file: 'files',
-  write_file: 'files',
-  run_command: 'systemControl',
-  list_folder: 'files',
-  get_active_file: 'files',
-  get_diagnostics: 'systemControl',
-  plan: null,
 }
 
 export const DENIED_PHRASE: Record<string, string> = {
@@ -60,12 +53,6 @@ export const DENIED_PHRASE: Record<string, string> = {
   lock_workstation: 'lock your PC',
   power: 'power off or restart your PC',
   set_volume: 'change the volume',
-  read_file: 'read your files',
-  write_file: 'write to your files',
-  run_command: 'run terminal commands',
-  list_folder: 'list your folders',
-  get_active_file: 'read your open files',
-  get_diagnostics: 'read editor diagnostics',
 }
 
 /** True when this action may run under the given permission settings. */

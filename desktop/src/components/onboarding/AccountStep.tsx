@@ -60,7 +60,7 @@ export default function AccountStep({ onLinked }: AccountStepProps) {
     return (
       <div className="flex items-center gap-2 rounded-2xl border border-green-400/30 bg-green-500/10 p-4 text-sm text-green-300">
         <span className="inline-block h-2 w-2 rounded-full bg-green-400" />
-        Linked to your Senti account.
+        Linked to your Sentinel account.
       </div>
     )
   }
@@ -68,7 +68,7 @@ export default function AccountStep({ onLinked }: AccountStepProps) {
   return (
     <div className="grid gap-4">
       <p className="text-sm text-secondary">
-        Senti needs to know whose computer this is. Sign in on your dashboard, open{' '}
+        Sentinel needs to know whose computer this is. Sign in on your dashboard, open{' '}
         <span className="text-white">Devices</span>, click <span className="text-white">Link a device</span>,
         and paste the pairing token here.
       </p>

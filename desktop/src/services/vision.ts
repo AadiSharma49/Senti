@@ -4,13 +4,10 @@ import { deviceLang } from './greetingService'
 /**
  * "Have a look at this and help me."
  *
- * Grabs ONE frame of the screen, at the moment you asked, and sends it to be
- * described. Nothing runs on a timer and nothing is kept: the image exists for
- * the length of one answer.
- *
- * That distinction is the whole design. A single frame you asked for is
- * ordinary software; a loop sampling your screen unprompted is surveillance,
- * and it is deliberately not built.
+ * Grabs ONE frame of the screen at the moment you asked (`look_at_screen`,
+ * gated by `permissions.seeScreen`) and sends it to be described. The image is
+ * used for this single answer and never stored. (Continuous background screen
+ * context is a separate, default-off `watchScreen` toggle in Settings.)
  */
 const VISION_PATH = '/api/device/vision'
 

@@ -7,10 +7,8 @@ import type { Utterance } from '../types/audio'
  * On-device speech recognition (multilingual Whisper), running fully offline
  * via onnxruntime-web WASM.
  *
- * This is used ONLY by the conversational assistant, to turn what the user
- * says into text. It plays no part in unlocking: unlock is voice-only and
- * checks WHO is speaking (the voiceprint), never WHAT they said. There is no
- * wake phrase or keyword anywhere in the auth path.
+ * Turns spoken utterances into text locally on the machine so raw microphone
+ * audio is never uploaded to the server.
  */
 
 // Multilingual Whisper — transcribes speech in any language and auto-detects it.

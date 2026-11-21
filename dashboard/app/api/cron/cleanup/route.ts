@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import { prisma } from '@/lib/prisma'
+import { dbEnabled, prisma } from '@/lib/prisma'
 
 export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
 
 /**
  * Housekeeping for remote-control tables. Nothing here is load-bearing for a
@@ -27,6 +28,9 @@ export async function GET(req: Request) {
     if (auth !== `Bearer ${secret}`) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+  }
+  if (!dbEnabled) {
+    return NextResponse.json({ error: 'Database not configured' }, { status: 503 })
   }
 
   const now = Date.now()

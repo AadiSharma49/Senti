@@ -1,12 +1,20 @@
 /// <reference types="vite/client" />
 
 export interface ApiRequest {
-  baseUrl: string
+  baseUrl?: string
   path: string
   method?: string
   body?: unknown
   /** Attach the device token (default true). */
   auth?: boolean
+}
+
+export interface ServerConfigResult {
+  ok: boolean
+  baseUrl: string
+  override: string
+  unlinked: boolean
+  error?: string
 }
 
 export interface ApiResponse<T = unknown> {
@@ -34,16 +42,6 @@ interface SentinelAPI {
   hideWindow: () => Promise<boolean>
   /** Restore the Sentinel window to HUD mode after it was hidden. */
   restoreWindow: () => Promise<boolean>
-  /** Start/stop the background screen watcher. */
-  startScreenContext: () => Promise<boolean>
-  stopScreenContext: () => Promise<boolean>
-  /** Code bridge: VS Code ↔ Sentinel via WebSocket. */
-  startCodeBridge: () => Promise<boolean>
-  stopCodeBridge: () => Promise<boolean>
-  sendToVSCode: (msg: unknown) => Promise<boolean>
-  isCodeBridgeConnected: () => Promise<boolean>
-  /** Listen for messages from the VS Code extension. */
-  onCodeBridgeMessage: (cb: (msg: unknown) => void) => () => void
   /** Fired from the tray / second launch to open Settings. Returns unsubscribe. */
   onOpenSettings: (cb: () => void) => () => void
   /** Tap-to-talk hotkey pressed — open a conversation. Returns unsubscribe. */
@@ -51,6 +49,10 @@ interface SentinelAPI {
   /** Setup-completion flag read from a file at boot (survives port changes). */
   setupCompletedAtBoot: boolean
   persistSetupCompleted: (done: boolean) => Promise<boolean>
+  /** Configured backend server read from main at boot. */
+  serverAtBoot: { baseUrl: string; override: string } | null
+  /** Persist a new backend server origin in main (unlinks any old server's token). */
+  setApiBase: (url: string) => Promise<ServerConfigResult>
   /** Real vitals for this machine (memory, disk, top processes, startup apps). */
   systemInfo: () => Promise<SystemSnapshot>
   /** Screenshots — only ever taken because you asked for one. */
@@ -87,8 +89,6 @@ interface SentinelAPI {
   power: (mode: string) => Promise<boolean>
   /** The foreground window's title + process, so Sentinel can speak up about it. */
   activeWindow: () => Promise<{ title: string; process: string } | null>
-  /** All running apps with window titles — for "close Chrome" etc. */
-  runningApps: () => Promise<Array<{ name: string; title: string }>>
   /** Apply input from the machine remotely driving this one. */
   remoteInput: (events: unknown[]) => Promise<boolean>
   remoteInputStop: () => Promise<boolean>

@@ -1,7 +1,5 @@
 /**
- * Audio types for Senti authentication pipeline.
- * Shared across Voice Engine, Clap Engine, and future Wake Word.
- * No business logic - only type definitions.
+ * Audio types for Sentinel's local microphone capture, VAD, and Whisper STT pipeline.
  */
 
 /** Current state of the microphone capture system */

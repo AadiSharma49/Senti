@@ -11,13 +11,14 @@ const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, sessio
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveInside } from './pathSafety'
+import {
+  normalizeServerOrigin,
+  resolveConfiguredOrigin,
+  resolveDeviceApiUrl,
+  shouldClearTokenOnServerChange,
+} from './apiGuard'
 import { InputOrder, RemoteKeyboard, type InputEvent } from './remoteKeyboard'
 import { drainInjector } from './drainInjector'
-
-// WebSocket server for the VS Code extension (code bridge).
-// Dynamic import so the desktop app can run without ws installed.
-let codeBridgeWss: any = null
-let codeBridgeClient: any = null
 
 // ESM compatibility: Define __dirname and __filename
 const __filename = fileURLToPath(import.meta.url)
@@ -52,10 +53,9 @@ const MIME: Record<string, string> = {
 }
 
 // A FIXED port, so the origin — and therefore localStorage — is STABLE across
-// launches. With a random port, every start was a different origin with empty
-// storage, so Senti forgot the PIN, the voiceprint, and "setup done", and made
-// the user redo onboarding every single boot. Only fall back to nearby ports if
-// this one is somehow taken (rare — the single-instance lock means it's ours).
+// launches. Critical flags (device token, setup-completed, configured server,
+// selected monitor) also live in userData files owned by main so a port fallback
+// never loses account or onboarding state.
 const STATIC_PORT_BASE = 47615
 
 function firstExisting(paths: string[]): string | null {
@@ -239,6 +239,43 @@ function writeSetupFlag(done: boolean): void {
   } catch {
     // ignore
   }
+}
+
+// --- Configured backend server (main-process owned) -------------------
+//
+// Stored in userData rather than renderer localStorage for two reasons:
+//  1. Packaged builds serve over an ephemeral localhost port, so localStorage
+//     changes origin if the port changes.
+//  2. Main attaches the device bearer token — it must pin outbound requests to
+//     the server configured here, never an arbitrary `baseUrl` passed per call.
+
+const serverConfigFile = () => path.join(app.getPath('userData'), 'server.json')
+
+function readServerOverride(): string | null {
+  try {
+    if (!existsSync(serverConfigFile())) return null
+    const raw = JSON.parse(readFileSync(serverConfigFile(), 'utf8'))?.url
+    return normalizeServerOrigin(raw)
+  } catch {
+    return null
+  }
+}
+
+function writeServerOverride(url: string | null): void {
+  try {
+    if (!url) {
+      if (existsSync(serverConfigFile())) unlinkSync(serverConfigFile())
+      return
+    }
+    mkdirSync(path.dirname(serverConfigFile()), { recursive: true })
+    writeFileSync(serverConfigFile(), JSON.stringify({ url }))
+  } catch {
+    // ignore
+  }
+}
+
+function configuredServerOrigin(): string {
+  return resolveConfiguredOrigin(readServerOverride(), process.env.VITE_SENTI_API_URL)
 }
 
 // --- Senti's memory ---------------------------------------------------
@@ -1603,14 +1640,15 @@ async function systemSnapshot(): Promise<SystemSnapshot> {
 }
 
 /**
- * The ONLY path from Senti to its backend.
+ * The ONLY path from Sentinel to its backend.
  *
  * Runs in Node, not a browser context — so these requests carry no Origin
- * header and are not subject to CORS. That is what lets the server refuse
- * every browser outright instead of publishing `Access-Control-Allow-Origin: *`.
+ * header and are not subject to CORS. Outbound URLs are strictly pinned to
+ * `configuredServerOrigin()` and `/api/device/*` before the bearer token is
+ * loaded, so renderer code cannot redirect the token to an arbitrary host.
  */
 async function apiRequest(opts: {
-  baseUrl: string
+  baseUrl?: string
   path: string
   method?: string
   body?: unknown
@@ -1618,8 +1656,8 @@ async function apiRequest(opts: {
 }): Promise<{ ok: boolean; status: number; data: unknown }> {
   const { baseUrl, path: p, method = 'GET', body, auth = true } = opts
 
-  // Only ever talk to the configured backend, and only to the device API.
-  if (!/^https?:\/\//i.test(baseUrl) || !p.startsWith('/api/device/')) {
+  const targetUrl = resolveDeviceApiUrl(configuredServerOrigin(), baseUrl, p)
+  if (!targetUrl) {
     return { ok: false, status: 400, data: { error: 'Blocked request' } }
   }
 
@@ -1631,7 +1669,7 @@ async function apiRequest(opts: {
   }
 
   try {
-    const res = await fetch(`${baseUrl}${p}`, {
+    const res = await fetch(targetUrl, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
@@ -1923,6 +1961,44 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
   return true
 })
 
+// Configured server URL: read synchronously at boot; changing the server origin
+// unlinks any stored device token before persisting so an existing token can
+// never be redirected to a different host.
+ipcMain.on('senti:get-api-base', (e: { returnValue: unknown }) => {
+  e.returnValue = {
+    baseUrl: configuredServerOrigin(),
+    override: readServerOverride() ?? '',
+  }
+})
+ipcMain.handle('senti:set-api-base', (_e: unknown, raw: unknown) => {
+  const trimmed = typeof raw === 'string' ? raw.trim() : ''
+  const previous = configuredServerOrigin()
+
+  if (!trimmed) {
+    writeServerOverride(null)
+    const next = configuredServerOrigin()
+    const unlinked = !!loadToken() && shouldClearTokenOnServerChange(previous, next)
+    if (unlinked) clearToken()
+    return { ok: true, baseUrl: next, override: '', unlinked }
+  }
+
+  const normalized = normalizeServerOrigin(trimmed)
+  if (!normalized) {
+    return {
+      ok: false,
+      baseUrl: previous,
+      override: readServerOverride() ?? '',
+      unlinked: false,
+      error: 'Enter a valid server URL such as https://your-sentinel.vercel.app or http://localhost:3000.',
+    }
+  }
+
+  const unlinked = !!loadToken() && shouldClearTokenOnServerChange(previous, normalized)
+  if (unlinked) clearToken()
+  writeServerOverride(normalized)
+  return { ok: true, baseUrl: normalized, override: normalized, unlinked }
+})
+
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
 
@@ -1946,13 +2022,10 @@ ipcMain.handle('senti:clipboard-write', (_e: unknown, text: unknown) => {
 
 // --- Screenshots ------------------------------------------------------
 //
-// Senti seeing your screen, but ONLY when you ask.
-//
-// This is deliberately not the same thing as watching: there is no timer, no
-// background capture, and nothing happens unless a request comes in from
-// something you said. A single frame, at the moment you asked for it, is
-// ordinary software. A loop that samples your screen unprompted is
-// surveillance, and that is not built.
+// Single-frame screen capture for explicit `take_screenshot` and `look_at_screen`
+// voice requests. (Continuous background screen context, when explicitly opted
+// into in Settings, uses the renderer display stream and shows the red capture
+// indicator for the entire duration.)
 
 /** Grab the primary screen once. Returns a PNG data URL, or null. */
 async function captureScreen(maxWidth = 1600): Promise<string | null> {
@@ -2124,7 +2197,7 @@ ipcMain.handle('senti:volume', (_e: unknown, dir: unknown) => {
 
 ipcMain.handle('senti:api', (_e: unknown, req: unknown) => {
   const r = (req ?? {}) as { baseUrl?: string; path?: string; method?: string; body?: unknown; auth?: boolean }
-  if (typeof r.baseUrl !== 'string' || typeof r.path !== 'string') {
+  if (typeof r.path !== 'string') {
     return { ok: false, status: 400, data: { error: 'Bad request' } }
   }
   return apiRequest({
@@ -2332,7 +2405,7 @@ function updateTrayMenu(): void {
   const isHidden = mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: isHidden ? 'Show Senti' : 'Hide Senti',
+      label: isHidden ? 'Show Sentinel' : 'Hide Sentinel',
       click: () => {
         if (isHidden) restoreWindowFromTray()
         else hideWindowFromTray()
@@ -2344,7 +2417,7 @@ function updateTrayMenu(): void {
       click: () => openSettingsWindow(),
     },
     {
-      label: 'Quit Senti',
+      label: 'Quit Sentinel',
       click: () => {
         quitting = true
         app.quit()
@@ -2352,7 +2425,7 @@ function updateTrayMenu(): void {
     },
   ]
   tray.setContextMenu(Menu.buildFromTemplate(template))
-  tray.setToolTip(isHidden ? 'Senti — hidden, listening' : 'Senti — listening for you')
+  tray.setToolTip(isHidden ? 'Sentinel — hidden, listening' : 'Sentinel — listening for you')
 }
 
 function hideWindowFromTray(): void {
@@ -2417,117 +2490,12 @@ ipcMain.handle('senti:hide-window', () => {
   mainWindow.hide()
   return true
 })
-/** Restore the Senti window to HUD mode after it was hidden. */
+/** Restore the Sentinel window to HUD mode after it was hidden. */
 ipcMain.handle('senti:restore-window', () => {
   if (!mainWindow || mainWindow.isDestroyed()) return false
   setWindowMode('hud')
   mainWindow.showInactive()
   return true
-})
-
-/** Start/stop the background screen watcher (called from renderer). */
-ipcMain.handle('senti:start-screen-context', () => {
-  // The actual capture loop runs in the renderer; main just records the
-  // intent so it can gate on permissions if needed later.
-  return true
-})
-ipcMain.handle('senti:stop-screen-context', () => {
-  return true
-})
-
-// --- Code Bridge: VS Code ↔ Senti via WebSocket --------------------------
-//
-// The VS Code extension connects to localhost:9876. Main forwards messages
-// to/from the renderer via IPC so Senti's code tools can read files, write
-// code, run terminal commands, etc.
-
-ipcMain.handle('senti:start-code-bridge', async () => {
-  if (codeBridgeWss) return true
-  try {
-    const ws = await import('ws')
-    const ServerCtor = (ws as any).Server || (ws as any).default.Server
-    if (!ServerCtor) return false
-    codeBridgeWss = new ServerCtor({ port: 9876, host: '127.0.0.1' })
-
-    codeBridgeWss.on('connection', (socket: any) => {
-      codeBridgeClient = socket
-      mainWindow?.webContents.send('senti:code-bridge-message', { type: 'connected' })
-
-      socket.on('message', (data: Buffer) => {
-        try {
-          const msg = JSON.parse(data.toString())
-          mainWindow?.webContents.send('senti:code-bridge-message', msg)
-        } catch {
-          // ignore
-        }
-      })
-
-      socket.on('close', () => {
-        codeBridgeClient = null
-        mainWindow?.webContents.send('senti:code-bridge-message', { type: 'disconnected' })
-      })
-    })
-
-    if (codeBridgeWss) {
-      codeBridgeWss.on('error', () => {
-        // Port in use or other error — VS Code extension will retry.
-      })
-    }
-
-    return true
-  } catch {
-    return false
-  }
-})
-
-ipcMain.handle('senti:stop-code-bridge', () => {
-  if (codeBridgeWss) {
-    try {
-      codeBridgeWss.close()
-    } catch {
-      // ignore
-    }
-    codeBridgeWss = null
-    codeBridgeClient = null
-  }
-  return true
-})
-
-ipcMain.handle('senti:send-to-vscode', (_e: unknown, msg: unknown) => {
-  if (!codeBridgeClient || codeBridgeClient.readyState !== 1) return false
-  try {
-    codeBridgeClient.send(JSON.stringify(msg))
-    return true
-  } catch {
-    return false
-  }
-})
-
-ipcMain.handle('senti:is-code-bridge-connected', () => {
-  return codeBridgeClient !== null && codeBridgeClient.readyState === 1
-})
-
-/** List running apps with window titles — used by the "close X" voice command. */
-ipcMain.handle('senti:running-apps', () => {
-  const psExe = powershellPath()
-  if (!psExe) return []
-  const script = `
-$ErrorActionPreference='SilentlyContinue'
-Get-Process | Where-Object { $_.MainWindowTitle -ne '' } | Select-Object -Property ProcessName, MainWindowTitle | ForEach-Object {
-  [pscustomobject]@{ name=$_.ProcessName; title=$_.MainWindowTitle }
-} | ConvertTo-Json -Compress
-`
-  try {
-    const result = execFileSync(psExe, ['-NoProfile', '-NonInteractive', '-Command', script], {
-      timeout: 5000,
-      windowsHide: true,
-      maxBuffer: 1024 * 1024,
-    }).toString().trim()
-    const parsed = JSON.parse(result)
-    return Array.isArray(parsed) ? parsed.slice(0, 50) : []
-  } catch {
-    return []
-  }
 })
 
 ipcMain.handle('senti:quit', () => {

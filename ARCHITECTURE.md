@@ -1,120 +1,140 @@
 # Sentinel — how it works, end to end
 
 Two parts, with a deliberate line between them: **everything that acts on a
-machine happens on that machine**, behind its own permissions. The server holds
-accounts and passes messages.
+machine happens on that machine**, behind its own local permissions. The server
+manages accounts, authenticates devices, runs cloud LLM/TTS/vision calls, and
+relays signaling or queued commands.
 
 ```
    ┌────────────────────────────────┐        ┌──────────────────────────┐
    │  YOUR PC — desktop app         │        │  DASHBOARD (Vercel)      │
-   │  Electron + React              │        │  Next.js + Clerk         │
+   │  Electron 30 + React 18        │        │  Next.js 14 + Clerk      │
    │                                │        │  Postgres (Neon)         │
    │  • Whisper STT      (on-device)│◄──────►│                          │
-   │  • 13 OS actions               │  text  │  • accounts, devices     │
-   │  • screenshots (on request)    │  only  │  • the AI brain + voice  │
-   │  • memory + habits  (local)    │        │  • message passing       │
-   │  • remote control host/viewer  │        │  • web + vision lookup   │
-   │                                │        │  device token: hashed    │
-   │  audio + memory NEVER  ────────┼───X    │  no audio, ever          │
+   │  • 15 local actions            │  HTTPS │  • accounts & sessions   │
+   │  • screen vision (on-demand    │  pinned│  • device API (SHA-256)  │
+   │    by default; 3s watch opt-in)│  origin│  • LLM, TTS, web, vision │
+   │  • memory + habits  (local)    │        │  • WebRTC signaling      │
+   │  • WebRTC remote host/viewer   │        │  • web status/screen UI  │
+   │                                │        │                          │
+   │  raw audio NEVER leaves ───────┼───X    │  no raw audio, ever      │
    └────────────────────────────────┘        └──────────────────────────┘
               ▲                                        ▲
-              │  WebRTC: video + input                 │  read-only web view
-              │  peer-to-peer, never via server        │  (watch a screen)
-              ▼                                        │
-   ┌────────────────────────────────┐                  │
-   │  YOUR LAPTOP / PHONE           │──────────────────┘
+              │  WebRTC: video + ordered input         │  Clerk-authed web UI
+              │  peer-to-peer (or user TURN)           │  (devices, live screen,
+              ▼                                        │   queued commands,
+   ┌────────────────────────────────┐                  │   account security)
+   │  YOUR OTHER PC                 │──────────────────┘
    └────────────────────────────────┘
 ```
 
 ## The desktop app
 
-**Hearing you.** The mic feeds a voice-activity detector whose threshold tracks
-the room's noise floor — a fixed cutoff meant a quiet microphone only registered
-its loudest syllable, so sentences arrived as fragments. Speech segments go to
-Whisper, running locally. Audio never leaves.
+**Hearing you.** The microphone feeds a voice-activity detector whose threshold
+tracks the room's noise floor — a fixed cutoff meant quiet microphones only
+registered their loudest syllable, so sentences arrived as fragments. Speech
+segments go to Whisper running locally in WebAssembly. Raw audio never leaves
+the machine. Sentinel uses the standard OS cursor and runs as a small floating
+orb HUD plus a full Control Center window.
 
 **Deciding it was addressed.** `wakeParse` decides whether you were talking to
 Sentinel: its name, a greeting, or a bare imperative ("open Chrome") all count;
-ordinary conversation doesn't. That gate is the only thing between you and an
-assistant that answers the television, and it fails *silently* when wrong — so
-it's pure, Electron-free, and unit-tested in both directions.
+background chatter doesn't. Once engaged, a multi-turn conversation stays open
+until idle timeout or an explicit stop phrase ("stop", "never mind").
 
-**Doing things.** Thirteen actions on the machine (plus `ask_web`, which the
-server answers), each mapped to a permission in a table
-(`actionPermissions.ts`) that's tested, because an action shipped without a
-permission would run regardless of the user's switches. `runAction` consults
-that same table — it previously checked its own inline conditions, which meant
-the tests were green against a table the running code never read. The model
-chooses an action by NAME; it never supplies a command. Unknown names are
-refused.
+**Doing things.** Sixteen tools exist in `/api/device/chat`: **15 client-side
+actions** (`open_app`, `close_app`, `close_current`, `show_desktop`,
+`open_folder`, `open_file`, `clean_temp`, `empty_recycle_bin`, `screen_share`,
+`take_screenshot`, `look_at_screen`, `lock_workstation`, `power`, `set_volume`,
+and `remember`) plus **1 server-answered tool** (`ask_web`). Every client action
+maps through `actionPermissions.ts`, and `actionPermissions.test.ts` parses both
+`actions.ts` and `dashboard/app/api/device/chat/route.ts` so no tool can ever
+drift out of sync or bypass its permission switch. Unknown actions fail shut,
+and there is no arbitrary shell-execution tool.
 
-**Seeing.** `take_screenshot` saves a frame; `look_at_screen` sends one to a
-vision model and answers about it. Both fire only on request — there is no
-timer and nothing is retained. That is the entire distinction between this and
-surveillance, and it's structural rather than a policy: no code path captures
-the screen without an incoming request.
+**Server-pinned token isolation.** The device pairing token is stored in
+`userData/device.token` encrypted via Electron `safeStorage` (Windows DPAPI).
+Renderer JavaScript can never read the token; it invokes `senti:api` in main.
+`apiGuard.ts` normalizes and pins the server origin in `userData/server.json`,
+rejects any renderer call whose `baseUrl` or path deviates from the configured
+origin and `/api/device/*`, and automatically clears any stored token when the
+user switches servers.
 
-**Knowing you.** Facts live in a local file. An aggregated activity journal —
-app, day, rough time-of-day, minutes — lets Sentinel reflect every few hours and
-write down what's durably true about you. Aggregation is the privacy design:
-storing every window title with a timestamp would be a log of everything you
-opened.
+**Seeing.** Screen access is split into two explicit switches:
+- `seeScreen` (**on by default**): powers one-shot `take_screenshot` and
+  `look_at_screen` ONLY when you ask. Nothing runs on a timer.
+- `watchScreen` (**off by default**): opt-in 3-second background screen context
+  (`screenContext.ts`). When enabled alongside `seeScreen`, it samples downscaled
+  stills only when the frame changes, backs off exponentially (`6s` up to `60s`)
+  on errors without double-arming timers, pauses automatically while hidden or
+  during remote control, and keeps a red **`Watching screen · stop`** pill on
+  screen the entire time.
+
+**Knowing you.** Durable facts live in `userData/memories.json`. An aggregated
+activity journal (`activity.json` — app, day, rough time-of-day, minutes) lets
+Sentinel reflect every few hours without recording timestamped window titles.
 
 ## The dashboard
 
-Accounts, devices, and the AI brain. It is **not** a control panel: the web view
-can watch a screen and see device status, and that's it. Everything that acts on
-a machine goes through the desktop app on that machine.
-
-Device routes (`/api/device/*`) are called from Electron's main process, so they
-carry no `Origin` header — and any request that *does* have one is rejected.
-That's stronger than a CORS allowlist: instead of telling one origin "yes", it
-tells every browser "no".
+Accounts, device pairing, the cloud AI endpoints, and the web dashboard:
+- **Browser routes** are gated by Clerk (`middleware.ts`). Users can pair/unlink
+  devices, watch a live screen feed, queue whitelisted remote commands (which
+  the target PC still checks against its own local permissions), sign out all
+  devices (atomically unlinking all paired PCs and revoking all active Clerk
+  sessions), or permanently delete their account (`POST`/`DELETE /api/account`).
+- **Device routes (`/api/device/*`)** are called from Electron's main process
+  (Node), so legitimate requests carry no `Origin` header; any request with an
+  `Origin` header is rejected with `403`. Tokens are stored as SHA-256 hashes
+  and rate-limited in isolated per-capability buckets (`chat`, `vision`,
+  `policy`, `stream`, `rtcSignal`, `remoteInput`, `remoteSession`, `frameWrite`,
+  `frameRead`, `reject`) so high-rate streams or vision checks never starve
+  signaling or voice chat.
 
 ## Remote control
 
-A session needs a code emailed to the owner (or a PIN set on the target). Until
-it's verified the session grants nothing; input sent before then is rejected.
+A session requires a one-time emailed code (when Resend is configured) or a
+static remote PIN set on the target PC. Until verified, input is rejected.
 
-Once verified, the two machines exchange a WebRTC handshake through the server
-and then talk **directly** — screen video and every keystroke flow peer-to-peer
-and stop touching our infrastructure. Input rides a data channel, which removes
-the poll latency from every click.
+Once verified, single-owner generation-tagged WebRTC signaling (`webrtc.ts`)
+connects the two PCs peer-to-peer (or via user-configured TURN), buffering early
+ICE candidates until remote description settles. Video and audio ride media
+tracks (with HTTP JPEG fallback only while RTC is disconnected), and mouse/key
+events ride an ordered reliable data channel (falling back to sequenced HTTP
+delivery).
 
-Injected input goes through one long-lived PowerShell process using
-`mouse_event`/`keybd_event`. Positions are normalised and applied as
-DPI-independent absolute coordinates; game mode sends relative deltas instead,
-because games read raw movement and never see a cursor position.
-
-Input events are **deleted the moment they're delivered**. This must not become
-a keylogger, and not keeping the data is the only way to be sure.
+Injected input runs through a single long-lived PowerShell Win32 injector in
+Electron main (`remoteKeyboard.ts` + `drainInjector.ts`), tracking held virtual
+keys and releasing every held key automatically when a session ends or times out
+so keys can never stick on the host. Input rows queued in Postgres are deleted
+immediately upon delivery.
 
 ## What crosses the boundary
 
-**Never leaves your PC:** raw audio, your memory file, your habits journal.
+**Never leaves your PC:** raw microphone audio, your full `memories.json` file,
+your `activity.json` habits journal, and the raw device token after pairing.
 
-**Leaves by design:** the text of what you say (to reach the brain), device
-status, one screenshot when you ask a question about your screen, and — only
-while you're sharing — screen frames or a peer-to-peer video stream.
-
-**Not built, on purpose:** CONTINUOUS screen capture and camera access.
-Always-on capture plus autostart plus remote control is the exact behavioural
-signature of a RAT, and storing screens means storing other people's passwords
-and bank pages. Sentinel reads the foreground window's *title* to know you're in a
-game or watching a video, and takes a screenshot only when asked — which gets
-most of the value and none of that.
+**Leaves by design:** transcribed text once you engage Sentinel, top relevant
+memory snippets for prompt context, device status/vitals, one screenshot when
+you invoke `look_at_screen` (or downscaled stills every ~3s only if you opt into
+`watchScreen`), and screen video/stills while sharing or under verified remote
+control. Images are never persisted beyond the single live `ScreenFrame` slot
+used during active screen sharing.
 
 ## Safety-critical code, and why it's tested
 
-| Module | Why a break would be invisible |
+| Suite | What it guards |
 | --- | --- |
-| `wakeParse` | Sentinel just doesn't answer. No error anywhere. |
-| `actionPermissions` | An action would run with its switch off. |
-| `pathSafety` | Remote file access would serve the whole drive, looking identical. |
-| `voiceActivityDetector` | Sentences arrive as fragments; transcription looks wrong instead. |
-| `memoryRecall` | Relevant memories quietly stop being sent. |
-| `stuckSignal` | It nags while you're concentrating, or never offers help at all. |
+| `wakeParse.test.ts` | Wake/dismiss detection across greetings, names, imperatives, and noise |
+| `actionPermissions.test.ts` | Permission gating + 1-to-1 sync between `actions.ts` and server `TOOLS` |
+| `apiGuard.test.ts` | Main-process server-origin pinning, traversal blocking, and token clear on server change |
+| `pathSafety.test.ts` | Directory containment and symlink/UNC/traversal rejection for remote file browsing |
+| `screenContext.test.ts` | Default-off background vision, single-timer invariant, exponential backoff, and `{ context }` parsing |
+| `webrtc.test.ts`, `remoteHost.test.ts`, `remoteFrames.test.ts`, `remoteHeartbeat.test.ts`, `remoteVideoStats.test.ts` | Generation-isolated WebRTC signaling, early ICE buffering, frame pacing, and session liveness |
+| `inputDelivery.test.ts`, `remoteKeyboard.test.ts` | Sequenced input ordering, coalescing, and stuck-key release |
+| `vadThreshold.test.ts`, `audioNormalize.test.ts` | Adaptive noise-floor speech cutoff and quiet-mic gain normalization |
+| `memoryRecall.test.ts`, `stuckSignal.test.ts` | Lexical memory ranking and dwell/revisit stuck detection |
 
 ```bash
-cd desktop && npm test
+cd desktop && npm test               # 189 Vitest unit tests
+cd desktop && npm run test:loopback  # Two-peer headless Edge WebRTC loopback
 ```
