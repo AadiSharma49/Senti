@@ -1,3 +1,4 @@
+import { isEditorAction } from '../../../shared/codeBridgeActions'
 import { create } from 'zustand'
 import { audioCapture } from '../services/audioCapture'
 import { UtteranceRecorder } from '../services/utteranceRecorder'
@@ -75,6 +76,8 @@ export interface WakeStore {
   state: WakeState
   /** What Senti is doing right now, shown in the HUD. */
   detail: string
+  /** Last bounded editor reply, held only in memory so long results can be read after the HUD closes. */
+  editorResult: string
   enabled: boolean
   /** True while a conversation is open — the orb shows it's actively yours. */
   talking: boolean
@@ -222,6 +225,7 @@ function restoreSenti(): void {
 export const useWakeStore = create<WakeStore>((set, get) => ({
   state: 'off',
   detail: '',
+  editorResult: '',
   enabled: false,
   talking: false,
   lastHeard: '',
@@ -356,11 +360,12 @@ async function onUtterance(utterance: Utterance): Promise<void> {
 
     const storeNow = useWakeStore.getState()
     if (storeNow.hidden) {
-      const { woke } = parseWake(heard)
+      const { woke, command } = parseWake(heard)
       if (!woke) return
       restoreSenti()
       beginConversation()
-      await handleTurn(heard)
+      if (command) await handleTurn(command)
+      else await ackEngaged()
       return
     }
 
@@ -376,8 +381,14 @@ async function onUtterance(utterance: Utterance): Promise<void> {
     beginConversation()
     if (command) await handleTurn(command)
     else await ackEngaged()
+  } catch {
+    // An IPC/network failure is not a successful action. Don't leave the
+    // conversation stuck working, holding the machine awake indefinitely.
+    reportActivity('Voice request interrupted', false)
+    if (inConversation) useWakeStore.setState({ state: 'listening', detail: 'Request interrupted.' })
   } finally {
     busy = false
+    if (inConversation) keepConversationAlive()
   }
 }
 
@@ -392,13 +403,17 @@ async function ackEngaged(): Promise<void> {
 
 /** One turn of the conversation: you said something, Senti answers (or acts). */
 async function handleTurn(text: string): Promise<void> {
+  // Editor approval and configured tests may legitimately take longer than
+  // the idle timeout. That timer is for silence BETWEEN turns, not active work.
+  if (idleTimer !== null) clearTimeout(idleTimer)
+  idleTimer = null
   setHud(true)
   useWakeStore.setState({ state: 'working', detail: text })
-  reportActivity(text, true)
+  reportActivity('Responding to a voice request', true)
 
   const lang = deviceLang()
   const snap = await getSystemSnapshot()
-  history.push({ role: 'user', content: text })
+  const userTurn: ChatTurn = { role: 'user', content: text }
 
   // Attach recent screen context only when opt-in background watching is active.
   const { watchScreen, seeScreen } = useSettingsStore.getState().permissions
@@ -410,28 +425,55 @@ async function handleTurn(text: string): Promise<void> {
       : undefined
 
   const reply = await askSenti(
-    history.slice(-HISTORY_TURNS),
+    [...history, userTurn].slice(-HISTORY_TURNS),
     lang,
     snap ? describeSystem(snap) : null,
-    ctxForLlm
+    ctxForLlm,
+    true
   )
+  if (!inConversation) {
+    reportActivity('Idle', false)
+    return
+  }
   let spoken = reply.text
-  const replyAudio = reply.audio
-
+  let audio = reply.audio
+  const privateResult = !!reply.action && isEditorAction(reply.action.name)
   if (reply.action) {
     useWakeStore.setState({ detail: 'Working…' })
-    const outcome = await runAction(reply.action)
-    if (outcome) spoken = outcome
+    const outcome = await runAction(reply.action, 'voice')
+    if (outcome !== null) {
+      spoken = outcome
+      audio = null // the model's recording describes a prediction, not this outcome
+    }
   }
 
-  history.push({ role: 'assistant', content: spoken })
-  reportActivity(spoken.slice(0, 120), false)
+  if (!inConversation) {
+    reportActivity('Idle', false)
+    return
+  }
+  if (privateResult && useSettingsStore.getState().permissions.codeBridge) {
+    useWakeStore.setState({ editorResult: spoken })
+  }
+  if (!privateResult && text.length <= 4000 && spoken.length <= 4000) {
+    history.push(userTurn, { role: 'assistant', content: spoken })
+    history = history.slice(-HISTORY_TURNS)
+  }
+  reportActivity(privateResult ? 'Local VS Code request finished' : spoken.slice(0, 120), false)
 
+  // Don't let the wake recorder hear the editor reply through the speakers and
+  // transcribe it as the user's next turn. stop() also discards its pre-roll.
+  const paused = privateResult ? recorder : null
+  paused?.stop()
   useWakeStore.setState({ state: 'speaking', detail: spoken })
-  await say({ text: spoken, audio: replyAudio }, lang)
-
-  if (inConversation) {
-    keepConversationAlive()
-    useWakeStore.setState({ state: 'listening', detail: 'Listening…' })
+  try {
+    await Promise.all([
+      say({ text: spoken, audio, localOnly: privateResult }, lang),
+      // Keep the HUD readable even on a machine with no speech service.
+      privateResult ? new Promise(r => setTimeout(r, 2200)) : undefined,
+    ])
+  } finally {
+    if (paused && recorder === paused) paused.start(audioCapture)
   }
+
+  if (inConversation) useWakeStore.setState({ state: 'listening', detail: 'Listening…' })
 }

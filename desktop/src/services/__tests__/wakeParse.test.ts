@@ -52,6 +52,9 @@ describe('parseWake — bare commands need no wake word', () => {
     ['mute', 'mute'],
     ['close spotify', 'close spotify'],
     ['pull up youtube', 'pull up youtube'],
+    ['read my active file', 'read my active file'],
+    ['Can you run my tests?', 'Can you run my tests?'],
+    ['Hey Senti, list workspace files', 'list workspace files'],
   ]
 
   it.each(commands)('runs %j directly', (input, command) => {
@@ -132,6 +135,8 @@ describe('parseWake — must stay quiet', () => {
     'okay',
     'tell Sentinel I said hi',
     'i think we should open a new office',
+    'read my book',
+    'run to the store',
     '',
     '   ',
   ]

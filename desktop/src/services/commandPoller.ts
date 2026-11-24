@@ -42,7 +42,7 @@ async function poll(): Promise<void> {
       let result = 'Done.'
       let ok = true
       try {
-        const outcome = await runAction({ name: cmd.action, args: cmd.args })
+        const outcome = await runAction({ name: cmd.action, args: cmd.args }, 'remote')
         if (outcome) result = outcome
         // A refusal from the permission dial is a real answer, not a crash.
         ok = !/not allowed/i.test(result)

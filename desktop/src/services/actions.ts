@@ -1,3 +1,4 @@
+import { EDITOR_COMMANDS, editorArgs, isEditorAction } from '../../../shared/codeBridgeActions'
 import { useSettingsStore } from '../state/settingsStore'
 import { isActionAllowed, DENIED_PHRASE } from './actionPermissions'
 import { startScreenShare, stopScreenShare } from './screenShare'
@@ -15,7 +16,7 @@ import { lookAtScreen } from './vision'
 export async function runAction(action: {
   name: string
   args: Record<string, unknown>
-}): Promise<string | null> {
+}, source: 'voice' | 'remote' = 'voice'): Promise<string | null> {
   const perms = useSettingsStore.getState().permissions
   const senti = window.senti
   const target = String(action.args?.name ?? '')
@@ -23,6 +24,21 @@ export async function runAction(action: {
 
   if (!isActionAllowed(action.name, perms as unknown as Record<string, boolean>)) {
     return denied(DENIED_PHRASE[action.name] ?? 'do that')
+  }
+
+  if (isEditorAction(action.name)) {
+    // Remote commands report their result to the dashboard. Never expose this
+    // local-only channel (including editor content and diagnostics) to that path.
+    if (source !== 'voice') return "I'm not allowed to use the VS Code bridge from a remote command."
+    const args = editorArgs(action.name, action.args)
+    if (!args) return 'Invalid VS Code request. Nothing was sent to the editor.'
+    try {
+      const res = await senti?.codeBridgeRequest?.(EDITOR_COMMANDS[action.name], args)
+      if (!res || typeof res.ok !== 'boolean' || typeof res.text !== 'string') return 'The VS Code bridge is unavailable.'
+      return res.text || (res.ok ? 'The editor returned an empty result.' : 'The editor declined the request.')
+    } catch {
+      return 'No response from VS Code. Check the editor before retrying.'
+    }
   }
 
   switch (action.name) {

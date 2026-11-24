@@ -1,3 +1,5 @@
+import { EDITOR_COMMANDS } from '../../../shared/codeBridgeActions'
+
 /**
  * Which switch in the Control Center governs which action.
  *
@@ -11,6 +13,7 @@ export type PermissionKey =
   | 'closeApps'
   | 'cleanup'
   | 'files'
+  | 'codeBridge'
   | 'screenShare'
   | 'seeScreen'
   | 'systemControl'
@@ -21,6 +24,7 @@ export type PermissionKey =
  * nothing on the machine.
  */
 export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
+  ...Object.fromEntries(Object.keys(EDITOR_COMMANDS).map(name => [name, 'codeBridge' as const])),
   open_app: 'openApps',
   close_app: 'closeApps',
   close_current: 'closeApps',
@@ -39,6 +43,7 @@ export const ACTION_PERMISSIONS: Record<string, PermissionKey | null> = {
 }
 
 export const DENIED_PHRASE: Record<string, string> = {
+  ...Object.fromEntries(Object.keys(EDITOR_COMMANDS).map(name => [name, 'use the VS Code bridge'])),
   open_app: 'open apps',
   close_app: 'close apps',
   close_current: 'close apps',
@@ -59,7 +64,7 @@ export const DENIED_PHRASE: Record<string, string> = {
 export function isActionAllowed(action: string, perms: Record<string, boolean>): boolean {
   // An action we don't recognise is refused rather than allowed. Failing shut
   // is the only safe default for something that acts on a real machine.
-  if (!(action in ACTION_PERMISSIONS)) return false
+  if (!Object.prototype.hasOwnProperty.call(ACTION_PERMISSIONS, action)) return false
   const key = ACTION_PERMISSIONS[action]
   if (key === null) return true
   return perms[key] === true

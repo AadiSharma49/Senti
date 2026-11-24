@@ -85,6 +85,8 @@ export interface Greeting {
   text: string
   /** data: URI of human-voice audio (ElevenLabs), or null → use browser TTS. */
   audio: string | null
+  /** This text must never be given to a non-local voice or replaced by model audio. */
+  localOnly?: boolean
 }
 
 /** Get a greeting: from the account (in the device's language) if linked, else local. */
@@ -175,41 +177,43 @@ function pickVoice(voices: SpeechSynthesisVoice[], lang: string): SpeechSynthesi
  * fall back to the browser's built-in voice.
  */
 export async function say(greeting: Greeting, lang: string): Promise<void> {
-  if (greeting.audio) {
+  if (!greeting.localOnly && greeting.audio) {
     await playAudio(greeting.audio)
     return
   }
-  await speak(greeting.text, lang)
+  // A full source file or test log is not useful as a minutes-long utterance.
+  // Keep the actual result on the HUD and voice a clearly bounded preview.
+  const text = greeting.localOnly && greeting.text.length > 320
+    ? `${greeting.text.slice(0, 320)}… End of preview.` : greeting.text
+  await speak(text, lang, greeting.localOnly)
 }
 
 /** Speak text aloud with the browser voice. Resolves when speech ends (or times out). */
-export async function speak(text: string, lang: string): Promise<void> {
+export async function speak(text: string, lang: string, localOnly = false): Promise<void> {
   const synth = typeof window !== 'undefined' ? window.speechSynthesis : undefined
   if (!synth) return
-  return new Promise(async (resolve) => {
-    try {
-      if (!cachedVoices) cachedVoices = await loadVoices()
-      synth.cancel()
-      const utter = new SpeechSynthesisUtterance(text)
-      const voice = pickVoice(cachedVoices, lang)
-      if (voice) utter.voice = voice
-      utter.lang = voice?.lang || lang
-      utter.rate = 0.96 // slightly slower — measured, assistant-like
-      utter.pitch = 0.9 // a touch deeper for gravitas
-      utter.volume = 1
-      let done = false
-      const finish = () => {
-        if (done) return
-        done = true
+  try {
+    if (!cachedVoices?.length) cachedVoices = await loadVoices()
+    const voice = pickVoice(localOnly ? cachedVoices.filter(v => v.localService) : cachedVoices, lang)
+    // An unspecified/default voice can also be online. When there is no offline
+    // voice, speak only this non-sensitive notice and leave the result on screen.
+    const utter = new SpeechSynthesisUtterance(localOnly && !voice ? 'The editor result is on screen. No offline voice is available.' : text)
+    if (voice) utter.voice = voice
+    utter.lang = voice?.lang || lang
+    utter.rate = 0.96
+    utter.pitch = 0.9
+    utter.volume = 1
+    synth.cancel()
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        if (localOnly) synth.cancel() // don't resume recording over private speech
         resolve()
-      }
-      utter.onend = finish
-      utter.onerror = finish
+      }, localOnly ? 35_000 : 9000)
+      utter.onend = utter.onerror = () => { clearTimeout(timer); resolve() }
       synth.speak(utter)
-      setTimeout(finish, 9000)
-    } catch {
-      resolve()
-    }
-  })
+    })
+  } catch {
+    // No audio device/voice — the outcome is still shown locally.
+  }
 }
 

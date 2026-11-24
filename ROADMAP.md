@@ -13,7 +13,7 @@ Speech is recognised on-device by Whisper across ten languages. The voice
 activity detector adapts to your microphone's level and your room's noise floor
 so quiet microphones don't clip whole sentences down to a single syllable.
 
-**Sixteen tools (15 local actions + live web search).** Opening apps, games, and
+**Core tools (15 desktop actions + live web search).** Opening apps, games, and
 websites (focusing an already-open window instead of launching duplicates),
 closing named apps or the active foreground app, showing the desktop, opening
 folders, finding and opening files, visible or silent temp cleanup, emptying the
@@ -21,6 +21,11 @@ Recycle Bin, system volume, locking, sleep/restart/shutdown, screenshots,
 on-demand screen Q&A, screen sharing, live web answers, and local memory. Every
 action sits behind a unit-tested permission switch synchronized with the server
 tool list.
+
+**VS Code.** Pair one trusted local workspace to read the active buffer, read or
+write a named file, list a folder, open a file in the editor, check diagnostics
+or Git status, or run a user-approved test task. The bridge returns the actual
+result; it does not expose a shell. See the [pairing guide](vscode-extension/README.md).
 
 **Seeing the screen — on request by default, opt-in background context.**
 Saying *"help me with this"* grabs a single frame (`look_at_screen`) and answers
@@ -44,7 +49,7 @@ live receiver diagnostics), remote folder browsing, clipboard sync, remote
 power commands, and full account controls (one-click sign-out across all browser
 sessions + paired PCs, and permanent account deletion).
 
-**189 unit tests + headless WebRTC loopback.** Covers wake parsing, action
+**Automated tests, including a real editor host and WebRTC loopback.** Covers wake parsing, action
 permissions and server tool parity, main-process server-origin token pinning,
 path containment, background vision timer/backoff invariants, WebRTC signaling
 and frame fallback, ordered remote input and key release, adaptive VAD, and
@@ -84,11 +89,9 @@ signaling, and cloud LLM/vision calls.
 3. **True local offline mode.** Properly sandboxed main-process IPC for local
    LLM/vision (Ollama) and local neural TTS, with real model health checks in
    Settings.
-4. **Authenticated IDE integration.** An opt-in editor bridge with per-session
-   mutual token authentication and explicit path/command approval prompts.
-5. **LAN discovery & signaling.** Direct local-network pairing when both PCs are
+4. **LAN discovery & signaling.** Direct local-network pairing when both PCs are
    on the same Wi-Fi.
-6. **Semantic memory.** On-device embeddings for meaning-based memory recall.
+5. **Semantic memory.** On-device embeddings for meaning-based memory recall.
 
 ---
 

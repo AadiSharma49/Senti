@@ -1,0 +1,33 @@
+{
+  "name": "workspace-bridge",
+  "displayName": "Sentinel Workspace Bridge",
+  "description": "Pair Sentinel Desktop with one trusted local workspace.",
+  "publisher": "local-workspace",
+  "version": "0.1.0",
+  "private": true,
+  "repository": { "type": "git", "url": "https://github.com/AadiSharma49/Senti.git", "directory": "vscode-extension" },
+  "engines": { "vscode": "^1.90.0" },
+  "extensionKind": ["workspace"],
+  "categories": ["Other"],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": false },
+    "virtualWorkspaces": { "supported": false }
+  },
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.cjs",
+  "contributes": {
+    "commands": [
+      { "command": "workspaceBridge.pair", "title": "Sentinel: Pair Workspace Bridge" },
+      { "command": "workspaceBridge.unpair", "title": "Sentinel: Unpair Workspace Bridge" },
+      { "command": "workspaceBridge.retry", "title": "Sentinel: Retry Workspace Bridge Connection" },
+      { "command": "workspaceBridge.status", "title": "Sentinel: Show Workspace Bridge Status" }
+    ]
+  },
+  "scripts": {
+    "package:vsix": "vsce package --skip-license --out workspace-bridge.vsix",
+    "test:host": "node tests/run.mjs",
+    "test:activation": "node --test tests/activation.test.cjs"
+  },
+  "dependencies": { "ws": "8.23.0" },
+  "devDependencies": { "@vscode/vsce": "4.1.1" }
+}

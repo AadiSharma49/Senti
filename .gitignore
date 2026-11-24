@@ -52,6 +52,7 @@ project_full.tar.gz
 # Desktop build output
 desktop/dist-electron/
 desktop/release/
+vscode-extension/*.vsix
 
 # Stray Next.js output (desktop is not a Next app)
 desktop/.next/

@@ -8,6 +8,7 @@ export interface SettingsState {
     closeApps: boolean
     cleanup: boolean
     files: boolean
+    codeBridge: boolean
     seeScreen: boolean
     watchScreen: boolean
     screenShare: boolean
@@ -57,6 +58,7 @@ export const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   closeApps: false,
   cleanup: false,
   files: true,
+  codeBridge: false,
   seeScreen: true,
   watchScreen: false,
   screenShare: true,

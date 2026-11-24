@@ -88,7 +88,8 @@ export interface ChatOpts {
 /** What the model wants Sentinel to do on the machine. */
 export interface ToolCall {
   name: string
-  args: Record<string, unknown>
+  /** null means the provider supplied malformed or truncated arguments, not {}. */
+  args: Record<string, unknown> | null
 }
 
 export interface ChatResult {
@@ -165,11 +166,12 @@ async function callModel(p: Provider, model: string, opts: ChatOpts): Promise<Ca
     let toolCall: ToolCall | null = null
     const raw = msg?.tool_calls?.[0]
     if (raw?.function?.name) {
-      let args: Record<string, unknown> = {}
+      let args: ToolCall['args'] = null
       try {
-        args = JSON.parse(raw.function.arguments || '{}')
+        const parsed = JSON.parse(raw.function.arguments)
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && data.choices[0].finish_reason !== 'length') args = parsed
       } catch {
-        args = {}
+        // Preserve the parse failure. Treating it as {} could run a no-arg task.
       }
       toolCall = { name: raw.function.name, args }
     }

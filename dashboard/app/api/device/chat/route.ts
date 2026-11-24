@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { CODE_BRIDGE_VERSION, editorArgs, isEditorAction } from '../../../../../shared/codeBridgeActions'
+import { EDITOR_TOOLS } from '@/lib/editorChatTools'
 import { prisma } from '@/lib/prisma'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 import { llmChatRich, type ChatMsg } from '@/lib/llm'
@@ -234,14 +236,8 @@ const TOOLS = [
   },
 ]
 
-/** Actions the desktop knows how to run (plus server-handled ask_web). */
-const KNOWN_ACTIONS = new Set([
-  'open_app', 'close_app', 'close_current', 'show_desktop',
-  'open_folder', 'open_file', 'clean_temp',
-  'empty_recycle_bin', 'lock_workstation', 'power', 'set_volume', 'screen_share', 'remember',
-  'take_screenshot', 'look_at_screen',
-  'ask_web',
-])
+// Editor tools have a separately negotiated, stricter argument contract below.
+const KNOWN_ACTIONS = new Set(TOOLS.map(tool => tool.function.name))
 import { generateSpeech } from '@/lib/tts'
 
 /**
@@ -386,7 +382,7 @@ export async function POST(req: Request) {
   if (!auth.ok) return auth.response
   const { device } = auth
 
-  let body: { messages?: ChatMsg[]; language?: string; system?: string; memories?: unknown; screenContext?: unknown }
+  let body: { messages?: ChatMsg[]; language?: string; system?: string; memories?: unknown; screenContext?: unknown; codeBridgeVersion?: unknown }
   try {
     body = await req.json()
   } catch {
@@ -395,12 +391,28 @@ export async function POST(req: Request) {
 
   // Keep only the last ~12 turns to bound the prompt, and drop empties. Also
   // cap each turn: an unbounded message is a way to burn tokens on our bill.
-  const messages: ChatMsg[] = (body.messages || [])
-    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (m.content || '').trim())
+  // Capability negotiation: legacy clients do not know these names. Never
+  // offer OR emit a bridge action unless the requesting voice client supports v1.
+  const supportsEditor = body?.codeBridgeVersion === CODE_BRIDGE_VERSION
+  const turns = Array.isArray(body?.messages) ? body.messages : []
+  if (supportsEditor && turns.some(m => typeof m?.content === 'string' && m.content.length > 4000)) {
+    return NextResponse.json({ reply: 'That request is too long. No action was taken.', audio: null, action: null }, { headers: NO_STORE })
+  }
+  const messages: ChatMsg[] = turns
+    .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
     .slice(-12)
     .map((m) => ({ role: m.role, content: String(m.content).slice(0, 4000) }))
   if (!messages.length || messages[messages.length - 1].role !== 'user')
     return NextResponse.json({ error: 'No question' }, { status: 400, headers: NO_STORE })
+
+  // These common utterances have one unambiguous, argument-free meaning. Don't
+  // let a text-only provider (or a model announcing a task without calling it)
+  // turn them into a fictional result. Never match inside a longer sentence.
+  if (supportsEditor) {
+    const utterance = messages[messages.length - 1].content.trim().toLowerCase().replace(/[.!?]+$/, '').trimEnd()
+    const shortcut = utterance === 'read my active file' ? 'get_active_file' : utterance === 'run my tests' ? 'run_tests' : null
+    if (shortcut) return NextResponse.json({ reply: 'Waiting for VS Code.', audio: null, action: { name: shortcut, args: {} } }, { headers: NO_STORE })
+  }
 
   const user = await prisma.user.findUnique({ where: { id: device.userId } })
   const name = user?.name || user?.email?.split('@')[0] || null
@@ -420,12 +432,13 @@ export async function POST(req: Request) {
   const devicesBlock = await deviceContext(device)
 
   const result = await llmChatRich({
-    system: persona(name, language) + systemContext(system) + memoryContext(memories) + devicesBlock + screenContextPrompt(screenCtx),
+    system: persona(name, language) + systemContext(system) + memoryContext(memories) + devicesBlock + screenContextPrompt(screenCtx) +
+      (supportsEditor ? '\nFor explicit editor/workspace requests, use the corresponding VS Code tool, not open_app, OS file search, a screenshot, or web search. Never claim an editor result yourself. If the complete write will not fit, ask for a smaller change.' : ''),
     messages,
     search: true,
     maxTokens: 400,
     temperature: 0.85,
-    tools: TOOLS,
+    tools: supportsEditor ? [...TOOLS, ...EDITOR_TOOLS] : TOOLS,
   })
 
   // Groq/Llama sometimes writes the tool call as PLAIN TEXT instead of a
@@ -433,6 +446,18 @@ export async function POST(req: Request) {
   // speak that gibberish. Recover it into a real call and scrub the text.
   let call = result?.toolCall
   let recoveredText = result?.text || ''
+  // Editor operations require a complete, structured tool call. In particular,
+  // never turn partial JSON in model prose into a write or a no-argument task.
+  const editorName = call?.name ?? recoveredText.match(/<function[=\\:\s]*([a-z_]+)/i)?.[1]
+  if (editorName && isEditorAction(editorName)) {
+    const args = supportsEditor && call ? editorArgs(editorName, call.args) : null
+    return NextResponse.json({
+      reply: !supportsEditor ? 'This client does not support VS Code requests.'
+        : args ? 'Waiting for VS Code.' : 'Invalid or incomplete VS Code request. No action was taken.',
+      audio: null, // Only the local editor can supply the outcome.
+      action: args ? { name: editorName, args } : null,
+    }, { headers: NO_STORE })
+  }
   if (!call && recoveredText.includes('<function')) {
     const m = recoveredText.match(/<function[=\\:\s]*([a-z_]+)\s*(\{[\s\S]*?\})?/i)
     const named = m?.[1] || ''

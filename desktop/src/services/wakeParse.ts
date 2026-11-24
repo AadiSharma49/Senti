@@ -18,7 +18,7 @@
 
 /** The name, plus the ways Whisper mishears it. */
 const NAME_PATTERNS = [
-  'sentinel', 'sentinal', 'sentinol', 'sentanel', 'sentenal', 'sentnel',
+  'senti', 'sentinel', 'sentinal', 'sentinol', 'sentanel', 'sentenal', 'sentnel',
   'sennel', 'centennial', 'sentimental', 'sent in el', 'sent in all', 'cent in el',
 ]
 
@@ -249,7 +249,10 @@ export function parseWake(textRaw: string): WakeMatch {
   // the assistant reads "can you open Chrome" perfectly well, and trimming it
   // only risks mangling a sentence that wasn't an order at all.
   const afterPolite = i + politeAt(i)
-  if (COMMAND_VERBS.includes(norm[i]) || COMMAND_VERBS.includes(norm[afterPolite])) {
+  // Match editor-specific objects, not broad verbs like "read" or "run" —
+  // "read my book" and "run to the store" are not addressed to this machine.
+  const editorOrder = /^(?:read (?:my |the )?(?:active|current) file|run (?:my |the |workspace |project )?tests|list (?:my |the )?(?:workspace|project) files|(?:show|get) (?:my |the )?(?:git status|editor diagnostics))$/
+  if (COMMAND_VERBS.includes(norm[i]) || COMMAND_VERBS.includes(norm[afterPolite]) || editorOrder.test(norm.slice(afterPolite).join(' '))) {
     return { woke: true, command }
   }
 

@@ -96,6 +96,12 @@ interface SentinelAPI {
   resetRemoteKeyState: () => Promise<boolean>
   volume: (direction: 'up' | 'down' | 'mute') => Promise<boolean>
 
+  /** Local VS Code pairing. The secret is shown in native UI, never returned over IPC. */
+  codeBridgePair: () => Promise<{ ok: boolean; text: string }>
+  codeBridgeDisable: () => Promise<{ ok: boolean; text: string }>
+  codeBridgeStatus: () => Promise<string>
+  codeBridgeRequest: (command: string, args: Record<string, unknown>) => Promise<{ ok: boolean; text: string }>
+
   /** Call the backend from the main process (token attached there). */
   api: <T = unknown>(req: ApiRequest) => Promise<ApiResponse<T>>
   /** Store the pairing token (encrypted by the OS keystore, in main). */

@@ -1,6 +1,6 @@
 # Sentinel — how it works, end to end
 
-Two parts, with a deliberate line between them: **everything that acts on a
+The desktop, its optional local VS Code extension, and the dashboard share one rule: **everything that acts on a
 machine happens on that machine**, behind its own local permissions. The server
 manages accounts, authenticates devices, runs cloud LLM/TTS/vision calls, and
 relays signaling or queued commands.
@@ -42,7 +42,7 @@ Sentinel: its name, a greeting, or a bare imperative ("open Chrome") all count;
 background chatter doesn't. Once engaged, a multi-turn conversation stays open
 until idle timeout or an explicit stop phrase ("stop", "never mind").
 
-**Doing things.** Sixteen tools exist in `/api/device/chat`: **15 client-side
+**Doing things.** The base `/api/device/chat` toolset includes **15 client-side
 actions** (`open_app`, `close_app`, `close_current`, `show_desktop`,
 `open_folder`, `open_file`, `clean_temp`, `empty_recycle_bin`, `screen_share`,
 `take_screenshot`, `look_at_screen`, `lock_workstation`, `power`, `set_volume`,
@@ -51,6 +51,18 @@ maps through `actionPermissions.ts`, and `actionPermissions.test.ts` parses both
 `actions.ts` and `dashboard/app/api/device/chat/route.ts` so no tool can ever
 drift out of sync or bypass its permission switch. Unknown actions fail shut,
 and there is no arbitrary shell-execution tool.
+
+**Editor commands.** Eight additional tools target the paired VS Code workspace.
+`open_editor_file(path)` uses the editor's `open_file` command; it does not replace
+Windows `open_file(query)`. Electron main owns the opt-in `127.0.0.1:9876`
+listener. VS Code and Sentinel prove possession of a separate random 256-bit
+pairing key with role-specific HMACs over two fresh nonces before a command can
+run. The key is stored using Electron safeStorage and VS Code SecretStorage.
+Loopback binding alone is not authentication. Only one authenticated window is
+served at a time. Requests have IDs, deadlines and bounded replies; a disconnect
+is reported as a failure, not retried as a second write. `run_tests` selects a
+workspace test task with local approval and returns its exit status; the model
+cannot supply a terminal command. See [setup and limits](vscode-extension/README.md).
 
 **Server-pinned token isolation.** The device pairing token is stored in
 `userData/device.token` encrypted via Electron `safeStorage` (Windows DPAPI).
@@ -135,6 +147,7 @@ used during active screen sharing.
 | `memoryRecall.test.ts`, `stuckSignal.test.ts` | Lexical memory ranking and dwell/revisit stuck detection |
 
 ```bash
-cd desktop && npm test               # 189 Vitest unit tests
+cd desktop && npm test               # Vitest, including live socket authentication tests
+cd vscode-extension && npm run test:host  # Real VS Code extension host, isolated profile + workspace
 cd desktop && npm run test:loopback  # Two-peer headless Edge WebRTC loopback
 ```

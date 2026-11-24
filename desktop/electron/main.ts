@@ -1,13 +1,15 @@
 import {
   existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync,
-  readdirSync, statSync, rmdirSync,
+  readdirSync, statSync, rmdirSync, renameSync,
 } from 'fs'
 import { execFile, execFileSync, spawn } from 'child_process'
 import http from 'http'
 import os from 'os'
 import electron from 'electron'
-import type { BrowserWindow as BrowserWindowType, Display } from 'electron'
-const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer, clipboard } = electron
+import type { BrowserWindow as BrowserWindowType, Display, IpcMainInvokeEvent } from 'electron'
+const { app, BrowserWindow, screen, ipcMain, globalShortcut, safeStorage, session, shell, Tray, Menu, nativeImage, powerSaveBlocker, desktopCapturer, clipboard, dialog } = electron
+import { randomBytes } from 'node:crypto'
+import { CodeBridgeServer, type CodeBridgeResult } from './codeBridge'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveInside } from './pathSafety'
@@ -157,6 +159,123 @@ function clearToken(): void {
     if (existsSync(tokenFile())) unlinkSync(tokenFile())
   } catch {
     // ignore
+  }
+}
+
+// --- VS Code pairing (main-only) -------------------------------------
+const bridgeKeyFile = () => path.join(app.getPath('userData'), 'code-bridge.key')
+const bridgeDisabled = 'VS Code bridge disabled. Pair it in Settings to connect.'
+const keyDialogTitle = 'Sentinel — VS Code pairing key'
+let bridgeNote = bridgeDisabled
+let bridgeKey: string | null = null
+let bridge: CodeBridgeServer | null = null
+let bridgeClosing: Promise<void> | null = null
+let pairing: AbortController | null = null
+const bridgeError = (text: string): CodeBridgeResult => ({ ok: false, text })
+const bridgeStatus = () => bridge?.status() ?? bridgeNote
+
+function secureBridgeStorage(): boolean {
+  return safeStorage.isEncryptionAvailable() &&
+    (process.platform !== 'linux' || safeStorage.getSelectedStorageBackend() !== 'basic_text')
+}
+
+function stopBridge(): Promise<void> | null {
+  if (bridge) {
+    const closing = bridge.stop().finally(() => { if (bridgeClosing === closing) bridgeClosing = null })
+    bridgeClosing = closing
+    bridge = null
+  }
+  return bridgeClosing
+}
+
+async function startBridge(secret: string): Promise<void> {
+  const server = new CodeBridgeServer({ secret })
+  bridge = server
+  try { await server.start() } catch {
+    if (bridge !== server) return
+    bridgeNote = 'Paired, but Sentinel could not listen on 127.0.0.1:9876. Free the port and restart Sentinel.'
+    await stopBridge()
+  }
+}
+
+async function restoreBridge(): Promise<void> {
+  if (quitting || !existsSync(bridgeKeyFile())) return
+  try {
+    if (!secureBridgeStorage()) throw new Error()
+    const secret = safeStorage.decryptString(readFileSync(bridgeKeyFile()))
+    if (!/^[a-f0-9]{64}$/.test(secret)) throw new Error()
+    bridgeKey = secret
+    await startBridge(secret)
+  } catch {
+    bridgeNote = 'Could not unlock the VS Code pairing key. Unlock OS secure storage or pair again.'
+  }
+}
+
+function trustedBridgeCaller(e: IpcMainInvokeEvent): boolean {
+  try {
+    return !quitting && e.sender === mainWindow?.webContents && e.senderFrame === e.sender.mainFrame &&
+      new URL(e.senderFrame.url).origin === (VITE_DEV_SERVER_URL ? DEV_SERVER_URL : prodBaseUrl)
+  } catch { return false }
+}
+
+function sharingScreen(): boolean {
+  return awakeHolders.has('screenShare') || awakeHolders.has('remoteControl')
+}
+
+async function pairBridge(e: IpcMainInvokeEvent): Promise<CodeBridgeResult> {
+  if (!trustedBridgeCaller(e) || !mainWindow) return bridgeError('Pairing is available only in Sentinel Settings.')
+  if (pairing || bridgeClosing) return bridgeError('Another VS Code pairing change is in progress.')
+  if (sharingScreen()) return bridgeError('Stop screen sharing, screen context and remote control before pairing.')
+  const owner = mainWindow
+  const controller = pairing = new AbortController()
+  const signal = controller.signal
+  try {
+    if (!secureBridgeStorage()) return bridgeError('Pairing requires an unlocked OS keyring. Nothing was changed.')
+    const existing = existsSync(bridgeKeyFile())
+    const consent = await dialog.showMessageBox(owner, {
+      type: 'question', title: 'Pair Sentinel with VS Code', signal, noLink: true,
+      message: existing ? 'Replace the existing VS Code pairing key?' : 'Enable a local connection to VS Code?',
+      detail: 'The next dialog displays a private key. Stop all screen recording and sharing first. Type the key into the Sentinel extension in VS Code; clipboard managers can retain or sync copied keys.',
+      buttons: ['Cancel', existing ? 'Show replacement key' : 'Show pairing key'], defaultId: 0, cancelId: 0,
+    })
+    if (signal.aborted || consent.response !== 1 || sharingScreen()) return bridgeError('Pairing cancelled.')
+    const secret = randomBytes(32).toString('hex')
+    const answer = await dialog.showMessageBox(owner, {
+      type: 'info', title: keyDialogTitle, signal, noLink: true,
+      message: 'In VS Code run “Sentinel: Pair Workspace Bridge” and type this key.', detail: secret,
+      buttons: ['Cancel', existing ? 'Replace key and enable' : 'Enable bridge'], defaultId: 0, cancelId: 0,
+    })
+    if (answer.response !== 1 || signal.aborted || !trustedBridgeCaller(e) || sharingScreen()) return bridgeError('Pairing cancelled.')
+    // Replace atomically, only after native confirmation. The old pairing survives cancellation or a vault write failure.
+    const file = bridgeKeyFile()
+    mkdirSync(path.dirname(file), { recursive: true })
+    writeFileSync(file + '.tmp', safeStorage.encryptString(secret), { mode: 0o600 })
+    renameSync(file + '.tmp', file)
+    bridgeKey = secret
+    await stopBridge()
+    if (signal.aborted || quitting) return bridgeError('Pairing was interrupted.')
+    await startBridge(secret)
+    if (signal.aborted || quitting) return bridgeError('Pairing was interrupted.')
+    return { ok: !!bridge, text: bridgeStatus() }
+  } catch {
+    return bridgeError('Could not complete VS Code pairing. Check OS secure storage and try again.')
+  } finally { pairing = null }
+}
+
+async function disableBridge(): Promise<CodeBridgeResult> {
+  pairing?.abort()
+  const stopped = stopBridge()
+  try {
+    for (const file of [bridgeKeyFile(), bridgeKeyFile() + '.tmp']) {
+      if (existsSync(file)) unlinkSync(file)
+    }
+    bridgeKey = null
+    bridgeNote = bridgeDisabled
+    await stopped
+    return { ok: true, text: bridgeDisabled }
+  } catch {
+    bridgeNote = 'Bridge stopped, but could not remove the stored pairing key. Retry Disable before restarting Senti.'
+    return bridgeError(bridgeNote)
   }
 }
 
@@ -1369,7 +1488,7 @@ function inputLine(e: RemoteEvent): string | null {
 }
 
 function injectInput(events: unknown): boolean {
-  if (quitting || inputDrain || !Array.isArray(events) || !events.length) return false
+  if (quitting || pairing || inputDrain || !Array.isArray(events) || !events.length) return false
   for (const e of events) {
     if (!e || typeof e.t !== 'string' || !inputOrder.accept(e)) continue
     // Reconciliation is meaningful even before we start the child: the
@@ -1849,7 +1968,9 @@ app.whenReady().then(async () => {
   // "Monitor to share", defaults to primary) with no picker UI, since the
   // whole point is "start when I say so", not a dialog to click through.
   session.defaultSession.setDisplayMediaRequestHandler((_req, callback) => {
+    if (pairing) return callback({})
     void desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } }).then((sources) => {
+      if (pairing) return callback({})
       const wantId = String(selectedDisplay().id)
       const match = sources.find((s) => (s as unknown as { display_id?: string }).display_id === wantId)
       const chosen = match || sources[0]
@@ -1868,6 +1989,8 @@ app.whenReady().then(async () => {
     }
   }
 
+  await restoreBridge()
+  if (quitting) return
   createWindow()
 
   // Tray icon from the start — Senti is always listening in the background,
@@ -1917,14 +2040,16 @@ app.on('window-all-closed', () => {
   }
 })
 
-let waitingForInputDrain = false
+let waitingForShutdown = false
 app.on('before-quit', (event) => {
   quitting = true
-  if (!inputProc && !inputDrain) return
+  pairing?.abort()
+  const bridgeDrain = stopBridge()
+  if (!bridgeDrain && !inputProc && !inputDrain) return
   event.preventDefault()
-  if (waitingForInputDrain) return
-  waitingForInputDrain = true
-  void stopInputProc().finally(() => app.quit())
+  if (waitingForShutdown) return
+  waitingForShutdown = true
+  void Promise.all([bridgeDrain, stopInputProc()]).finally(() => app.quit())
 })
 
 app.on('before-quit', () => {
@@ -2002,11 +2127,26 @@ ipcMain.handle('senti:set-api-base', (_e: unknown, raw: unknown) => {
 // Real machine vitals, so the assistant can answer about THIS computer.
 ipcMain.handle('senti:system-info', () => systemSnapshot())
 
+ipcMain.handle('senti:code-bridge-pair', pairBridge)
+ipcMain.handle('senti:code-bridge-disable', e => trustedBridgeCaller(e) ? disableBridge() : bridgeError('Not available outside Sentinel.'))
+ipcMain.handle('senti:code-bridge-status', e => trustedBridgeCaller(e) ? bridgeStatus() : 'Not available outside Sentinel.')
+ipcMain.handle('senti:code-bridge-request', async (e, command, args) => {
+  if (!trustedBridgeCaller(e)) return bridgeError('Not available outside Sentinel.')
+  if (!bridge) return bridgeError(bridgeStatus())
+  const result = await bridge.request(command, args)
+  // A misbehaving client must not use a result to hand its key to renderer code.
+  return bridgeKey && result.text.includes(bridgeKey) ? bridgeError('VS Code returned private pairing data.') : result
+})
+
 // The OS clipboard, for cross-device sync. Text only — files and images stay
 // on the machine they were copied on.
 ipcMain.handle('senti:clipboard-read', () => {
   try {
-    return clipboard.readText()
+    // Windows can copy the ENTIRE native message box on Ctrl+C. Don't sync
+    // clipboard text during pairing, or forward a copied dialog/key afterwards.
+    if (pairing) return ''
+    const text = clipboard.readText()
+    return text.includes(keyDialogTitle) || (bridgeKey && text.includes(bridgeKey)) ? '' : text
   } catch {
     return ''
   }
@@ -2029,6 +2169,7 @@ ipcMain.handle('senti:clipboard-write', (_e: unknown, text: unknown) => {
 
 /** Grab the primary screen once. Returns a PNG data URL, or null. */
 async function captureScreen(maxWidth = 1600): Promise<string | null> {
+  if (pairing) return null
   try {
     const displays = screen.getPrimaryDisplay()
     const { width, height } = displays.size
@@ -2038,7 +2179,7 @@ async function captureScreen(maxWidth = 1600): Promise<string | null> {
       thumbnailSize: { width: Math.round(width * scale), height: Math.round(height * scale) },
     })
     const shot = sources[0]?.thumbnail
-    if (!shot || shot.isEmpty()) return null
+    if (pairing || !shot || shot.isEmpty()) return null
     return shot.toDataURL()
   } catch {
     return null
@@ -2071,6 +2212,7 @@ ipcMain.handle('senti:screenshot-save', () => saveScreenshot())
 ipcMain.handle('senti:screenshot-grab', () => captureScreen(1600))
 
 ipcMain.handle('senti:screen-sources', async () => {
+  if (pairing) return []
   try {
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: 0, height: 0 } })
     const currentId = String(selectedDisplay().id)

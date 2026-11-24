@@ -15,6 +15,7 @@ import { LANGUAGES, savedLang, setLang } from '../../services/greetingService'
 import { getTurn, setTurn } from '../../services/webrtc'
 import RemoteControlWindow from '../remote/RemoteControlWindow'
 import RemoteFiles from '../remote/RemoteFiles'
+import CodeBridgeSettings from './CodeBridgeSettings'
 
 /**
  * Control Center — local permissions, microphone & language diagnostics,
@@ -520,6 +521,8 @@ export default function SettingsPanel() {
             ))}
           </div>
         </motion.section>
+
+        <CodeBridgeSettings />
 
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <div className="mb-3 flex items-center justify-between">

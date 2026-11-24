@@ -87,6 +87,15 @@ contextBridge.exposeInMainWorld('senti', {
   clipboardRead: () => ipcRenderer.invoke('senti:clipboard-read'),
   clipboardWrite: (text: string) => ipcRenderer.invoke('senti:clipboard-write', text),
 
+  /** Only main can generate, display and store the VS Code pairing key. */
+  codeBridgePair: () => ipcRenderer.invoke('senti:code-bridge-pair'),
+  codeBridgeDisable: () => ipcRenderer.invoke('senti:code-bridge-disable'),
+  codeBridgeStatus: () => ipcRenderer.invoke('senti:code-bridge-status'),
+  codeBridgeRequest: async (command: string, args: Record<string, unknown>) => {
+    try { return await ipcRenderer.invoke('senti:code-bridge-request', command, args) }
+    catch { return { ok: false, text: 'Could not send the request to the VS Code bridge.' } }
+  },
+
   /** Senti's memory — facts it keeps about you. Local file, never uploaded. */
   memoryList: () => ipcRenderer.invoke('senti:memory-list'),
   memoryAdd: (text: string) => ipcRenderer.invoke('senti:memory-add', text),

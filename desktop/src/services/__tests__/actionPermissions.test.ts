@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'fs'
 import { join } from 'path'
+import { EDITOR_COMMANDS } from '../../../../shared/codeBridgeActions'
+import { EDITOR_TOOLS } from '../../../../dashboard/lib/editorChatTools'
 import { ACTION_PERMISSIONS, DENIED_PHRASE, isActionAllowed, type PermissionKey } from '../actionPermissions'
 
 /**
@@ -72,7 +74,7 @@ describe('action permissions', () => {
 
   it('covers every action runAction can handle, and vice versa', () => {
     const src = readFileSync(join(__dirname, '..', 'actions.ts'), 'utf8')
-    const handled = [...src.matchAll(/case '([a-z_]+)':/g)].map((m) => m[1]).sort()
+    const handled = [...Object.keys(EDITOR_COMMANDS), ...[...src.matchAll(/case '([a-z_]+)':/g)].map((m) => m[1])].sort()
     const mapped = Object.keys(ACTION_PERMISSIONS).sort()
     expect(handled).toEqual(mapped)
   })
@@ -84,7 +86,7 @@ describe('action permissions', () => {
     )
     const serverTools = [...chatRoute.matchAll(/function:\s*\{\s*name:\s*'([a-z_]+)'/g)].map((m) => m[1])
     // ask_web is answered directly on the server and never sent as a desktop action.
-    const clientBoundTools = serverTools.filter((name) => name !== 'ask_web').sort()
+    const clientBoundTools = [...serverTools.filter(name => name !== 'ask_web'), ...EDITOR_TOOLS.map(tool => tool.function.name)].sort()
     expect(clientBoundTools).toEqual(Object.keys(ACTION_PERMISSIONS).sort())
   })
 

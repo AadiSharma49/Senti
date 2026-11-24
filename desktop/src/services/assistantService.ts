@@ -1,3 +1,4 @@
+import { CODE_BRIDGE_VERSION } from '../../../shared/codeBridgeActions'
 import { api } from './api'
 import { rankMemories } from './memoryRecall'
 
@@ -48,7 +49,9 @@ export async function askSenti(
   /** Plain-text vitals for this machine, so Senti can answer about it. */
   system?: string | null,
   /** Live screen context from the background watcher. */
-  screenContext?: Record<string, unknown> | null
+  screenContext?: Record<string, unknown> | null,
+  /** Only a direct voice turn can execute a local editor action. */
+  voiceTurn = false
 ): Promise<Reply> {
   // Rank against the newest user turn — that's what the reply must serve.
   const latest = [...messages].reverse().find((m) => m.role === 'user')?.content ?? ''
@@ -60,7 +63,10 @@ export async function askSenti(
     error?: string
   }>(CHAT_PATH, {
     method: 'POST',
-    body: { messages, language: lang, system: system || undefined, memories, screenContext },
+    body: {
+      messages, language: lang, system: system || undefined, memories, screenContext,
+      codeBridgeVersion: voiceTurn && typeof window.senti?.codeBridgeRequest === 'function' ? CODE_BRIDGE_VERSION : undefined,
+    },
   })
 
   if (!res.ok) {

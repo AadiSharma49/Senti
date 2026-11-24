@@ -8,7 +8,7 @@ A voice assistant that lives on your Windows PC and actually operates it. Not a 
 
 **Talk, properly.** Say its name, say hello, give it an order, or press `Ctrl+Shift+Space`. Then keep talking — it's a multi-turn conversation with memory, not a one-shot command line. Say *"stop"* when you're done. Supports ten languages; speech recognition runs on-device via Whisper.
 
-**Run your machine.** Sentinel exposes 16 tools (15 desktop actions + server-side live web search):
+**Run your machine.** Sentinel has 15 desktop actions and server-side live web search. Pairing VS Code adds eight editor tools:
 
 | Category | Actions |
 |---|---|
@@ -18,6 +18,9 @@ A voice assistant that lives on your Windows PC and actually operates it. Not a 
 | Cleanup | `clean_temp` (visibly in Explorer or silently), `empty_recycle_bin` |
 | Screen | `take_screenshot` (saved to `Pictures/Senti`), `look_at_screen` (one-shot vision Q&A), `screen_share` (stream to your devices) |
 | Knowledge & Memory | `ask_web` (live web lookup on the server), `remember` (durable facts saved locally) |
+| Paired VS Code workspace | `get_active_file`, `read_file`, `write_file`, `list_files`, `open_editor_file`, `get_diagnostics`, `get_git_status`, `run_tests` |
+
+**Use VS Code by voice.** [Install and pair the extension](vscode-extension/README.md), then try *“Sentinel, read my active file”* or *“Sentinel, run my tests.”* The first reads the editor buffer, including unsaved edits. The second asks you to approve a workspace **Test** task in VS Code and reports how it exited; it cannot type arbitrary commands into a terminal. Writes also require approval. The editor connection stays on this PC and is separate from dashboard device pairing.
 
 Every machine action maps through a tested permission table (`desktop/src/services/actionPermissions.ts`), and Sentinel refuses out loud when a switch is off. There is no arbitrary shell-command tool by design.
 
@@ -44,7 +47,7 @@ Update the dashboard and **both** desktop apps together: the two peers use the s
 - **Browser-proof device API:** `/api/device/*` rejects any request carrying an `Origin` header, hashes tokens with SHA-256 at rest, and rate-limits chat, vision, signaling, frames, and auth failures in separate buckets.
 - **Visible capture & control:** Screen sharing, opt-in background screen watching, and remote mouse/keyboard control each display a persistent on-screen indicator/banner with one-click local stop.
 - **Local memory:** `memories.json` and the aggregated habits journal stay on your PC; only top relevant facts are attached as text context during chat.
-- **No camera access and no arbitrary shell execution.** Sentinel uses the standard OS cursor and never hides it.
+- **No camera access and no arbitrary shell execution.** The editor can run only a test task that you select and approve in VS Code, not a command supplied by the model. Sentinel uses the standard OS cursor and never hides it.
 
 ---
 
@@ -53,9 +56,11 @@ Update the dashboard and **both** desktop apps together: the two peers use the s
 ```
 desktop/    Electron 30 + React 18 — voice HUD, Control Center, OS actions, WebRTC remote control
 dashboard/  Next.js 14 + Clerk + Prisma (Neon Postgres) — accounts, device API, web remote view
+shared/     Versioned editor action names and argument validation (used by dashboard and desktop)
+vscode-extension/  Optional VS Code extension — authenticated local workspace commands
 ```
 
-Everything that acts on a PC runs inside the desktop app on that PC behind its own local permission switches.
+Actions run on the target PC, either in the desktop app or its paired VS Code extension. The dashboard does not execute editor commands.
 
 ---
 
@@ -78,7 +83,8 @@ cd desktop   && npm install && npm run dev   # Electron desktop app
 ### Tests & Packaging
 
 ```bash
-cd desktop && npm test                    # 189 Vitest unit tests across 16 suites
+cd desktop && npm test                    # Vitest (permissions, bridge, voice, remote control)
+cd vscode-extension && npm run test:host  # Installed VS Code, Node 24+, git; run npm ci in desktop and vscode-extension first
 cd desktop && npm run test:loopback       # Headless Edge two-peer WebRTC + input loopback
 cd desktop && npm run build               # Type-check & bundle renderer + Electron main/preload
 cd desktop && npm run dist                # Build desktop/release/Sentinel-Setup.exe
