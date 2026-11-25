@@ -97,3 +97,19 @@ export function resolveDeviceApiUrl(
 export function shouldClearTokenOnServerChange(previousOrigin: string, nextOrigin: string): boolean {
   return previousOrigin !== nextOrigin
 }
+
+/** The only methods the device API uses. Anything else fails shut. */
+const ALLOWED_API_METHODS = ['GET', 'POST', 'PATCH', 'DELETE'] as const
+export type ApiMethod = (typeof ALLOWED_API_METHODS)[number]
+
+/**
+ * Normalize a renderer-supplied HTTP method against the device API whitelist.
+ * Absent method defaults to GET; anything unrecognized returns null so main
+ * never forwards an arbitrary verb from a potentially compromised renderer.
+ */
+export function normalizeApiMethod(method: unknown): ApiMethod | null {
+  if (method === undefined || method === null) return 'GET'
+  if (typeof method !== 'string') return null
+  const upper = method.trim().toUpperCase()
+  return (ALLOWED_API_METHODS as readonly string[]).includes(upper) ? (upper as ApiMethod) : null
+}

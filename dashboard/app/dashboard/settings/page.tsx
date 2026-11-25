@@ -1,13 +1,13 @@
 import { currentUser } from '@clerk/nextjs/server'
 import { PageHeader, Card } from '@/components/ui'
 import AccountDangerZone from '@/components/AccountDangerZone'
-import { clerkEnabled } from '@/lib/auth'
+import { clerkBackendEnabled, clerkEnabled } from '@/lib/auth'
 
 // Per-user, live data — never serve a cached copy of somebody's account.
 export const dynamic = 'force-dynamic'
 
 export default async function SettingsPage() {
-  const user = clerkEnabled ? await currentUser() : null
+  const user = clerkEnabled ? await currentUser().catch(() => null) : null
   const name = user?.fullName || user?.firstName || user?.username || 'Your account'
   const email = user?.primaryEmailAddress?.emailAddress || user?.emailAddresses?.[0]?.emailAddress || '—'
 
@@ -29,7 +29,7 @@ export default async function SettingsPage() {
           <p className="mt-1 text-sm text-white/50">
             Revoke active sessions and paired device tokens, or permanently delete your Sentinel account.
           </p>
-          <AccountDangerZone clerkEnabled={clerkEnabled} />
+          <AccountDangerZone clerkEnabled={clerkBackendEnabled} />
         </Card>
       </div>
     </div>

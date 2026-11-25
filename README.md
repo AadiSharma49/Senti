@@ -36,7 +36,7 @@ Update the dashboard and **both** desktop apps together: the two peers use the s
 
 **Speak first.** When allowed, Sentinel reads the foreground window title (never pixels) and occasionally offers help if you look stuck on one window or keep bouncing back to it.
 
-**Manage your devices & account.** Pair devices, watch live screens, queue whitelisted remote commands, browse user folders across linked PCs, sync your clipboard, revoke all active web sessions + device tokens at once, or delete your account from the web dashboard.
+**Manage your devices & account.** Pair devices, watch live screens, queue whitelisted remote commands, browse user folders across linked PCs, opt in to clipboard sync, revoke all active web sessions + device tokens at once, or delete your account from the web dashboard.
 
 ---
 

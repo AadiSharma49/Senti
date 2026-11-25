@@ -75,10 +75,11 @@ function App() {
     }
   }, [signedIn])
 
-  // Copy here, paste on your other machines — while you allow it.
+  // Copy here, paste on your other machines — opt-in (off by default).
   useEffect(() => {
     if (signedIn && settings.permissions.clipboardSync) startClipboardSync()
     else stopClipboardSync()
+    return () => stopClipboardSync()
   }, [signedIn, settings.permissions.clipboardSync])
 
   // Listen for another of your machines asking to drive this one. The session

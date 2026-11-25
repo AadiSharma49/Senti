@@ -14,6 +14,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { resolveInside } from './pathSafety'
 import {
+  normalizeApiMethod,
   normalizeServerOrigin,
   resolveConfiguredOrigin,
   resolveDeviceApiUrl,
@@ -1780,6 +1781,11 @@ async function apiRequest(opts: {
     return { ok: false, status: 400, data: { error: 'Blocked request' } }
   }
 
+  const verb = normalizeApiMethod(method)
+  if (!verb) {
+    return { ok: false, status: 400, data: { error: 'Blocked request' } }
+  }
+
   const headers: Record<string, string> = { 'Content-Type': 'application/json' }
   if (auth) {
     const token = loadToken()
@@ -1789,9 +1795,13 @@ async function apiRequest(opts: {
 
   try {
     const res = await fetch(targetUrl, {
-      method,
+      method: verb,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      // The device API never redirects. Following one could forward the
+      // bearer token to another host (Authorization stripping on cross-origin
+      // redirects varies by fetch implementation), so a redirect fails shut.
+      redirect: 'error',
     })
     const data = await res.json().catch(() => null)
     return { ok: res.ok, status: res.status, data }
@@ -2088,20 +2098,49 @@ ipcMain.handle('senti:set-setup', (_e: unknown, done: unknown) => {
 
 // Configured server URL: read synchronously at boot; changing the server origin
 // unlinks any stored device token before persisting so an existing token can
-// never be redirected to a different host.
+// never be redirected to a different host. An origin change also requires a
+// NATIVE confirmation dialog owned by main: renderer code (compromised or not)
+// cannot click it, so it cannot silently repoint this install at an attacker's
+// server and harvest the next pairing token or the user's chat/screen data.
 ipcMain.on('senti:get-api-base', (e: { returnValue: unknown }) => {
   e.returnValue = {
     baseUrl: configuredServerOrigin(),
     override: readServerOverride() ?? '',
   }
 })
-ipcMain.handle('senti:set-api-base', (_e: unknown, raw: unknown) => {
+
+/** Ask the human, not the renderer, to approve pointing at a different server. */
+async function confirmServerChange(nextOrigin: string): Promise<boolean> {
+  const opts = {
+    type: 'warning' as const,
+    title: 'Sentinel — change server',
+    message: 'Point Sentinel at a different server?',
+    detail:
+      `New server: ${nextOrigin}\n\n` +
+      'Sentinel will send your device token, chat text, and screen data to this address. ' +
+      'Any paired device will be unlinked and must be re-paired.\n\n' +
+      'Only continue if you typed this address yourself just now.',
+    buttons: ['Cancel', 'Change server'],
+    defaultId: 0,
+    cancelId: 0,
+    noLink: true,
+  }
+  const { response } = mainWindow
+    ? await dialog.showMessageBox(mainWindow, opts)
+    : await dialog.showMessageBox(opts)
+  return response === 1
+}
+
+ipcMain.handle('senti:set-api-base', async (_e: unknown, raw: unknown) => {
   const trimmed = typeof raw === 'string' ? raw.trim() : ''
   const previous = configuredServerOrigin()
 
   if (!trimmed) {
+    const next = resolveConfiguredOrigin(null, process.env.VITE_SENTI_API_URL)
+    if (shouldClearTokenOnServerChange(previous, next) && !(await confirmServerChange(next))) {
+      return { ok: false, baseUrl: previous, override: readServerOverride() ?? '', unlinked: false, error: 'Server change cancelled.' }
+    }
     writeServerOverride(null)
-    const next = configuredServerOrigin()
     const unlinked = !!loadToken() && shouldClearTokenOnServerChange(previous, next)
     if (unlinked) clearToken()
     return { ok: true, baseUrl: next, override: '', unlinked }
@@ -2116,6 +2155,10 @@ ipcMain.handle('senti:set-api-base', (_e: unknown, raw: unknown) => {
       unlinked: false,
       error: 'Enter a valid server URL such as https://your-sentinel.vercel.app or http://localhost:3000.',
     }
+  }
+
+  if (shouldClearTokenOnServerChange(previous, normalized) && !(await confirmServerChange(normalized))) {
+    return { ok: false, baseUrl: previous, override: readServerOverride() ?? '', unlinked: false, error: 'Server change cancelled.' }
   }
 
   const unlinked = !!loadToken() && shouldClearTokenOnServerChange(previous, normalized)

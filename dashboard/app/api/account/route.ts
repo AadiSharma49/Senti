@@ -1,24 +1,39 @@
 import { NextResponse } from 'next/server'
 import { auth, clerkClient } from '@clerk/nextjs/server'
-import { clerkEnabled } from '@/lib/auth'
+import { clerkBackendEnabled } from '@/lib/auth'
 import { dbEnabled, prisma } from '@/lib/prisma'
 import { rateLimit } from '@/lib/ratelimit'
+import {
+  clearClerkSessionCookies,
+  deleteUserAccount,
+  isSameOriginRequest,
+  signOutAllDevices,
+  type AccountDb,
+} from '@/lib/account'
 
 export const runtime = 'nodejs'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 const ACCOUNT_LIMIT = { limit: 5, windowMs: 60_000 }
 
-function requireSignedInUser():
-  | { ok: true; userId: string }
+function requireSignedInUser(
+  req: Request
+):
+  | { ok: true; userId: string; sessionId: string | null }
   | { ok: false; response: NextResponse } {
-  if (!clerkEnabled) {
+  if (!clerkBackendEnabled) {
     return {
       ok: false,
       response: NextResponse.json({ error: 'Accounts not configured' }, { status: 503, headers: NO_STORE }),
     }
   }
-  const { userId } = auth()
+  if (!isSameOriginRequest(req)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden' }, { status: 403, headers: NO_STORE }),
+    }
+  }
+  const { userId, sessionId } = auth()
   if (!userId) {
     return {
       ok: false,
@@ -35,7 +50,7 @@ function requireSignedInUser():
       ),
     }
   }
-  return { ok: true, userId }
+  return { ok: true, userId, sessionId: sessionId ?? null }
 }
 
 /**
@@ -46,12 +61,13 @@ function requireSignedInUser():
  *  1. Unlinks every paired Sentinel desktop device (deleting its token hash,
  *     live remote sessions, screen frames, queued commands, and file requests)
  *     and clears the shared clipboard.
- *  2. Revokes every active/pending Clerk web session across browsers & phones.
+ *  2. Revokes every active Clerk web session across browsers & phones (other
+ *     sessions first, current session last) and expires the session cookies.
  */
 export async function POST(req: Request) {
-  const gate = requireSignedInUser()
+  const gate = requireSignedInUser(req)
   if (!gate.ok) return gate.response
-  const { userId } = gate
+  const { userId, sessionId } = gate
 
   const body = await req.json().catch(() => ({}))
   if (body?.action !== 'sign_out_all') {
@@ -59,28 +75,19 @@ export async function POST(req: Request) {
   }
 
   try {
-    let unlinkedDevices = 0
-    if (dbEnabled) {
-      const [devices] = await prisma.$transaction([
-        prisma.device.deleteMany({ where: { userId } }),
-        prisma.sharedClipboard.deleteMany({ where: { userId } }),
-      ])
-      unlinkedDevices = devices.count
-    }
-
     const client = await Promise.resolve(clerkClient())
-    let revokedSessions = 0
-    for (let page = 0; page < 5; page++) {
-      const active = await client.sessions.getSessionList({ userId, status: 'active', limit: 100 })
-      const ids = (active.data ?? []).map((s) => s.id).filter(Boolean)
-      if (!ids.length) break
-      const results = await Promise.allSettled(ids.map((id) => client.sessions.revokeSession(id)))
-      revokedSessions += results.filter((r) => r.status === 'fulfilled').length
-      if (ids.length < 100) break
-    }
+    const result = await signOutAllDevices({
+      userId,
+      currentSessionId: sessionId,
+      db: dbEnabled ? (prisma as unknown as AccountDb) : null,
+      clerk: client,
+    })
 
-    return NextResponse.json({ ok: true, revokedSessions, unlinkedDevices }, { headers: NO_STORE })
-  } catch {
+    const res = NextResponse.json(result, { headers: NO_STORE })
+    clearClerkSessionCookies(req, res)
+    return res
+  } catch (err) {
+    console.error('[senti] account sign_out_all failed:', err)
     return NextResponse.json(
       { error: 'Could not revoke all sessions right now. Please try again.' },
       { status: 500, headers: NO_STORE }
@@ -92,12 +99,13 @@ export async function POST(req: Request) {
  * DELETE /api/account
  * { confirm: "DELETE" }
  *
- * Permanently deletes the signed-in user's database records (cascading to all
- * paired devices, remote sessions, frames, commands, file requests, and shared
- * clipboard) first, then deletes the Clerk user account.
+ * Permanently deletes the signed-in user's database records (all paired
+ * devices, remote sessions, frames, commands, file requests, shared clipboard,
+ * and user row) first, then deletes the Clerk user account and expires the
+ * session cookies.
  */
 export async function DELETE(req: Request) {
-  const gate = requireSignedInUser()
+  const gate = requireSignedInUser(req)
   if (!gate.ok) return gate.response
   const { userId } = gate
 
@@ -110,14 +118,18 @@ export async function DELETE(req: Request) {
   }
 
   try {
-    if (dbEnabled) {
-      await prisma.user.deleteMany({ where: { id: userId } })
-    }
     const client = await Promise.resolve(clerkClient())
-    await client.users.deleteUser(userId)
+    const result = await deleteUserAccount({
+      userId,
+      db: dbEnabled ? (prisma as unknown as AccountDb) : null,
+      clerk: client,
+    })
 
-    return NextResponse.json({ ok: true }, { headers: NO_STORE })
-  } catch {
+    const res = NextResponse.json(result, { headers: NO_STORE })
+    clearClerkSessionCookies(req, res)
+    return res
+  } catch (err) {
+    console.error('[senti] account delete failed:', err)
     return NextResponse.json(
       { error: 'Could not delete your account right now. Please try again.' },
       { status: 500, headers: NO_STORE }

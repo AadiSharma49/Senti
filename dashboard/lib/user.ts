@@ -31,9 +31,16 @@ export async function ensureUser(): Promise<SentinelUser | null> {
   const { userId } = auth()
   if (!userId) return null
 
-  const clerk = await currentUser()
+  let clerk: Awaited<ReturnType<typeof currentUser>>
+  try {
+    clerk = await currentUser()
+  } catch {
+    return null
+  }
+  if (!clerk) return null
+
   const name = displayName(clerk)
-  const email = clerk?.primaryEmailAddress?.emailAddress ?? null
+  const email = clerk.primaryEmailAddress?.emailAddress ?? null
 
   await prisma.user.upsert({
     where: { id: userId },

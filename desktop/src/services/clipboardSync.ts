@@ -1,10 +1,15 @@
 import { api } from './api'
+import { useSettingsStore } from '../state/settingsStore'
 
 /**
  * Cross-device clipboard: copy on the PC, paste on the laptop.
  *
- * Every couple of seconds this reads the local clipboard; if YOU copied
- * something new, it uploads it. Same tick, it pulls the account's shared
+ * Opt-in (off by default: `permissions.clipboardSync === false`). Nothing is
+ * read from the OS clipboard or uploaded until the user explicitly turns this
+ * on in Settings.
+ *
+ * When enabled, every couple of seconds this reads the local clipboard; if YOU
+ * copied something new, it uploads it. Same tick, it pulls the account's shared
  * clipboard; if another of your devices copied something newer, it lands on
  * this machine's clipboard, ready to paste.
  *
@@ -14,14 +19,16 @@ import { api } from './api'
  * from remote so the watcher can tell "the user copied" from "we synced".
  *
  * Text only, latest copy only, synced between YOUR devices through your
- * account. Anything you copy while this is on leaves the machine — that's the
- * feature — so it sits behind its own permission toggle.
+ * account. Anything you copy while this is on leaves the machine — including
+ * passwords — so it is strictly opt-in and stops immediately when turned off.
  */
 const CLIPBOARD_PATH = '/api/device/clipboard'
-const SYNC_MS = 2000
+export const SYNC_MS = 2000
 
 let timer: number | null = null
 let busy = false
+let generation = 0
+let unsubscribe: (() => void) | undefined
 /** First tick only observes — see below. */
 let seeded = false
 /** The last text we saw on the local clipboard (whoever put it there). */
@@ -31,8 +38,16 @@ let lastApplied = ''
 /** The last remote timestamp we applied, so old rows are never re-applied. */
 let lastStamp = ''
 
-async function tick(): Promise<void> {
-  if (busy) return
+function isAllowed(): boolean {
+  return useSettingsStore.getState().permissions.clipboardSync === true
+}
+
+function isActive(gen: number): boolean {
+  return gen === generation && timer !== null && isAllowed()
+}
+
+async function tick(gen: number): Promise<void> {
+  if (busy || !isActive(gen)) return
   busy = true
   try {
     const senti = window.senti
@@ -42,9 +57,12 @@ async function tick(): Promise<void> {
     // copied before Senti started — uploading it now would stomp a newer copy
     // from another device with stale text. Only copies made from here on count.
     if (!seeded) {
-      seeded = true
-      lastLocal = (await senti.clipboardRead()) ?? ''
+      const initialLocal = (await senti.clipboardRead()) ?? ''
+      if (!isActive(gen)) return
+      lastLocal = initialLocal
       const first = await api<{ text?: string | null; mine?: boolean; updatedAt?: string }>(CLIPBOARD_PATH)
+      if (!isActive(gen)) return
+      seeded = true
       if (first.ok && first.data?.updatedAt) {
         lastStamp = first.data.updatedAt
         // A fresh boot with an EMPTY clipboard may adopt the account's latest
@@ -60,16 +78,18 @@ async function tick(): Promise<void> {
 
     // 1. Did the user copy something new here? Push it up.
     const local = (await senti.clipboardRead()) ?? ''
+    if (!isActive(gen)) return
     if (local && local !== lastLocal) {
       lastLocal = local
       if (local !== lastApplied) {
         await api(CLIPBOARD_PATH, { method: 'POST', body: { text: local } })
+        if (!isActive(gen)) return
       }
     }
 
     // 2. Did another device copy something newer? Land it here.
     const res = await api<{ text?: string | null; mine?: boolean; updatedAt?: string }>(CLIPBOARD_PATH)
-    if (!res.ok) return
+    if (!isActive(gen) || !res.ok) return
     const { text, mine, updatedAt } = res.data ?? {}
     if (!text || mine || !updatedAt || updatedAt === lastStamp) return
     lastStamp = updatedAt
@@ -85,16 +105,30 @@ async function tick(): Promise<void> {
 }
 
 export function startClipboardSync(): void {
+  if (!isAllowed()) {
+    stopClipboardSync()
+    return
+  }
   if (timer !== null) return
-  void tick()
-  timer = window.setInterval(() => void tick(), SYNC_MS)
+  const gen = ++generation
+  unsubscribe = useSettingsStore.subscribe(() => {
+    if (!isAllowed()) stopClipboardSync()
+  })
+  timer = window.setInterval(() => void tick(gen), SYNC_MS)
+  void tick(gen)
 }
 
 export function stopClipboardSync(): void {
+  generation++
   if (timer !== null) {
     clearInterval(timer)
     timer = null
   }
-  // Next start must re-seed — the world moved while we were off.
+  unsubscribe?.()
+  unsubscribe = undefined
+  // Next start must re-seed — and don't retain old clipboard text in memory.
   seeded = false
+  lastLocal = ''
+  lastApplied = ''
+  lastStamp = ''
 }

@@ -69,8 +69,11 @@ cannot supply a terminal command. See [setup and limits](vscode-extension/README
 Renderer JavaScript can never read the token; it invokes `senti:api` in main.
 `apiGuard.ts` normalizes and pins the server origin in `userData/server.json`,
 rejects any renderer call whose `baseUrl` or path deviates from the configured
-origin and `/api/device/*`, and automatically clears any stored token when the
-user switches servers.
+origin and `/api/device/*`, whitelists the HTTP verb (GET/POST/PATCH/DELETE),
+and fails shut on redirects (`redirect: 'error'`) so a pinned URL can never
+forward the bearer token to another host. Changing the configured server
+requires a native main-process confirmation dialog the renderer cannot click,
+and automatically clears any stored token when the origin changes.
 
 **Seeing.** Screen access is split into two explicit switches:
 - `seeScreen` (**on by default**): powers one-shot `take_screenshot` and

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MutableRefObject } from 'react'
 import { useClerk } from '@clerk/nextjs'
 
 /**
@@ -8,41 +8,58 @@ import { useClerk } from '@clerk/nextjs'
  * local/unconfigured dev renders never call `useClerk()` outside a provider.
  */
 function ClerkSignOutBridge({
-  onReady,
+  signOutRef,
 }: {
-  onReady: (fn: (redirectUrl: string) => Promise<void>) => void
+  signOutRef: MutableRefObject<(() => Promise<void>) | null>
 }) {
   const { signOut } = useClerk()
   useEffect(() => {
-    onReady(async (redirectUrl: string) => {
-      await signOut({ redirectUrl })
-    })
-  }, [onReady, signOut])
+    signOutRef.current = async () => {
+      await signOut()
+    }
+    return () => {
+      signOutRef.current = null
+    }
+  }, [signOut, signOutRef])
   return null
 }
 
 type Mode = 'idle' | 'confirm-signout' | 'confirm-delete'
 
+const SIGN_OUT_TIMEOUT_MS = 2500
+
 export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: boolean }) {
-  const signOutRef = useRef<((redirectUrl: string) => Promise<void>) | null>(null)
+  const signOutRef = useRef<(() => Promise<void>) | null>(null)
   const [mode, setMode] = useState<Mode>('idle')
   const [confirmText, setConfirmText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const finishRedirect = async (redirectUrl: string) => {
-    try {
-      if (signOutRef.current) {
-        await signOutRef.current(redirectUrl)
-        return
+    // Server already revoked all sessions / deleted the user and expired the
+    // session cookies. Best-effort clear Clerk's browser FAPI state with a
+    // short timeout, then always perform a hard navigation so we can never
+    // stall in `busy: true` if ClerkJS isn't mounted or the session is gone.
+    if (signOutRef.current) {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          signOutRef.current(),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, SIGN_OUT_TIMEOUT_MS)
+          }),
+        ])
+      } catch {
+        // Session/user was already revoked server-side; continue to redirect.
+      } finally {
+        if (timer !== undefined) clearTimeout(timer)
       }
-    } catch {
-      // Session was already revoked server-side; fall through to hard navigation.
     }
     window.location.assign(redirectUrl)
   }
 
   const handleSignOutAll = async () => {
+    if (busy) return
     setBusy(true)
     setError(null)
     try {
@@ -64,8 +81,9 @@ export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: bool
     }
   }
 
-  const handleDeleteAccount = async () => {
-    if (confirmText !== 'DELETE') return
+  const handleDeleteAccount = async (e?: FormEvent) => {
+    e?.preventDefault()
+    if (busy || confirmText !== 'DELETE') return
     setBusy(true)
     setError(null)
     try {
@@ -97,7 +115,7 @@ export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: bool
 
   return (
     <div className="mt-4">
-      <ClerkSignOutBridge onReady={(fn) => { signOutRef.current = fn }} />
+      <ClerkSignOutBridge signOutRef={signOutRef} />
 
       <div className="flex flex-wrap gap-3">
         <button
@@ -154,7 +172,10 @@ export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: bool
       )}
 
       {mode === 'confirm-delete' && (
-        <div className="mt-4 rounded-2xl border border-red-400/25 bg-red-500/[0.06] p-4">
+        <form
+          onSubmit={(e) => void handleDeleteAccount(e)}
+          className="mt-4 rounded-2xl border border-red-400/25 bg-red-500/[0.06] p-4"
+        >
           <p className="text-sm text-white/85">
             This permanently deletes your Sentinel account, unlinks every paired PC, and removes all
             devices, remote sessions, and shared clipboard data stored on the server. Type{' '}
@@ -171,9 +192,8 @@ export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: bool
               className="w-40 rounded-lg border border-white/15 bg-black/40 px-3 py-2 font-mono text-xs text-white outline-none focus:border-red-400/60"
             />
             <button
-              type="button"
+              type="submit"
               disabled={busy || confirmText !== 'DELETE'}
-              onClick={() => void handleDeleteAccount()}
               className="rounded-full bg-red-500/80 px-4 py-2 text-xs font-semibold text-white transition hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {busy ? 'Deleting account…' : 'Permanently delete account'}
@@ -190,7 +210,7 @@ export default function AccountDangerZone({ clerkEnabled }: { clerkEnabled: bool
               Cancel
             </button>
           </div>
-        </div>
+        </form>
       )}
 
       {error && <p className="mt-3 text-xs text-red-300">{error}</p>}

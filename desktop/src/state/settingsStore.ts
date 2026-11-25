@@ -53,6 +53,15 @@ const loadSetupCompleted = (): boolean => {
   return safe('senti:setupCompleted', false)
 }
 
+const PERMISSIONS_KEY = 'senti:permissions'
+/**
+ * Tracks an explicit opt-in to clipboard sync after it was changed to
+ * default-off. Older builds persisted the entire `permissions` object whenever
+ * ANY toggle changed, so a stored `clipboardSync: true` without this marker
+ * reflects the old default rather than a deliberate choice.
+ */
+const CLIPBOARD_OPT_IN_KEY = 'senti:clipboardSyncOptIn'
+
 export const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   openApps: true,
   closeApps: false,
@@ -62,17 +71,37 @@ export const DEFAULT_PERMISSIONS: SettingsState['permissions'] = {
   seeScreen: true,
   watchScreen: false,
   screenShare: true,
-  clipboardSync: true,
+  clipboardSync: false,
   remoteControl: false,
   proactive: true,
   systemControl: true,
   alwaysListening: true,
 }
 
-const loadPermissions = (): SettingsState['permissions'] => ({
-  ...DEFAULT_PERMISSIONS,
-  ...safe<Partial<SettingsState['permissions']>>('senti:permissions', {}),
-})
+export const loadPermissions = (): SettingsState['permissions'] => {
+  const stored = safe<Partial<SettingsState['permissions']>>(PERMISSIONS_KEY, {})
+  const merged: SettingsState['permissions'] = {
+    ...DEFAULT_PERMISSIONS,
+    ...stored,
+  }
+
+  // Require explicit opt-in for clipboard sync so upgraded installs that only
+  // inherited the old `true` default do not keep uploading copied text.
+  let optedIn = false
+  try {
+    optedIn = localStorage.getItem(CLIPBOARD_OPT_IN_KEY) === '1'
+  } catch {
+    optedIn = false
+  }
+  if (merged.clipboardSync && !optedIn) {
+    merged.clipboardSync = false
+    if (stored.clipboardSync === true) {
+      persist(PERMISSIONS_KEY, merged)
+    }
+  }
+
+  return merged
+}
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   permissions: loadPermissions(),
@@ -87,7 +116,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   setPermissions: (p) => {
     const next = { ...get().permissions, ...p }
-    persist('senti:permissions', next)
+    if ('clipboardSync' in p) {
+      try {
+        if (p.clipboardSync) localStorage.setItem(CLIPBOARD_OPT_IN_KEY, '1')
+        else localStorage.removeItem(CLIPBOARD_OPT_IN_KEY)
+      } catch {}
+    }
+    persist(PERMISSIONS_KEY, next)
     set({ permissions: next })
   },
 

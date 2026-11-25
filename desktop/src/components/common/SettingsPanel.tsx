@@ -370,7 +370,7 @@ export default function SettingsPanel() {
               { key: 'seeScreen', title: 'Look at my screen when I ask', hint: '“Take a screenshot”, “help me with this”, “what does this error mean”. Captures one frame only when you ask.' },
               { key: 'watchScreen', title: 'Watch my screen in the background', hint: 'Samples your screen every ~3 seconds when it changes so Sentinel already has context before you ask. Shows a red stop badge the whole time. Off by default.' },
               { key: 'screenShare', title: 'Share screen to my devices', hint: 'Stream this PC live to your own phone/laptop. Shows a red badge while active.' },
-              { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — anything you copy syncs to your other Sentinel devices.' },
+              { key: 'clipboardSync', title: 'Sync clipboard between my devices', hint: 'Copy on this PC, paste on your laptop (and back). Text only — uploads everything you copy (including passwords) while enabled. Off by default.' },
               { key: 'remoteControl', title: 'Allow remote control of this PC', hint: 'Let another of your devices drive this mouse and keyboard. Needs a remote PIN below. A banner shows the whole time, and you can stop it instantly.' },
               { key: 'proactive', title: 'Let Sentinel talk to me first', hint: 'It notices what you’re doing and speaks up now and then. Reads the window title only — never your screen — and stays quiet for long stretches.' },
               { key: 'systemControl', title: 'Volume and locking', hint: '“Turn it up”, “lock my PC”.' },

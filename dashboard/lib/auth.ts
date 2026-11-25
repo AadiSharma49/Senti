@@ -16,6 +16,9 @@ const secret = process.env.CLERK_SECRET_KEY || ''
 /** True when Clerk keys are configured. Gates real auth vs. the local demo flow. */
 export const clerkEnabled = !!publishable
 
+/** True when both publishable and secret keys exist for server-side Clerk API calls. */
+export const clerkBackendEnabled = !!publishable && !!secret
+
 if (publishable && !/^pk_(test|live)_/.test(publishable)) {
   console.error(
     '[senti] NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY is malformed — it must start with "pk_test_" or "pk_live_". Sign-in will not work.'
