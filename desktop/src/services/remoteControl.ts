@@ -72,7 +72,7 @@ export async function startSession(targetDeviceId: string): Promise<StartResult>
       message: res.data.message || 'Remote control is not set up on that machine yet.',
     }
   }
-  return { ok: false, reason: 'failed', message: "Couldn't start a session with that device." }
+  return { ok: false, reason: 'failed', message: res.data?.message || "Couldn't start a session with that device." }
 }
 
 export type VerifyResult = { ok: true } | { ok: false; attemptsLeft: number; message: string }
@@ -81,7 +81,7 @@ export type VerifyResult = { ok: true } | { ok: false; attemptsLeft: number; mes
 export async function verifyPin(pin: string): Promise<VerifyResult> {
   if (!sessionId) return { ok: false, attemptsLeft: 0, message: 'No session.' }
   const id = sessionId
-  const res = await api<{ ok?: boolean; attemptsLeft?: number }>(SESSION_PATH, {
+  const res = await api<{ ok?: boolean; attemptsLeft?: number; message?: string }>(SESSION_PATH, {
     method: 'POST',
     body: { action: 'verify', id, pin },
   })
@@ -95,7 +95,7 @@ export async function verifyPin(pin: string): Promise<VerifyResult> {
     // Out of attempts: the backend killed the session, so drop it here too
     // rather than leaving a dead id that quietly rejects everything.
     sessionId = null
-    return { ok: false, attemptsLeft: 0, message: 'Too many wrong PINs — session cancelled.' }
+    return { ok: false, attemptsLeft: 0, message: res.data?.message || 'Could not verify — start a new session.' }
   }
   return { ok: false, attemptsLeft: left, message: `Wrong PIN. ${left} ${left === 1 ? 'try' : 'tries'} left.` }
 }

@@ -67,9 +67,11 @@ model Device {
   /// File browse/fetch requests aimed at this device.
   fileRequests FileRequest[]
 
-  /// SHA-256 of the PIN required to take remote control of THIS machine.
-  /// Null means remote control is not set up and will be refused.
-  remotePinHash String?
+  /// Versioned, salted scrypt hash of this device's PIN. Null means no PIN fallback.
+  remotePinHash       String?
+  /// Shared by every remote viewer and session targeting this device.
+  remoteAuthFailures  Int       @default(0)
+  remoteAuthExpiresAt DateTime?
 }
 
 /// A live remote-control session: one device driving another.
@@ -87,9 +89,9 @@ model RemoteSession {
   target         Device   @relation("TargetSessions", fields: [targetDeviceId], references: [id], onDelete: Cascade)
   /// pending (awaiting PIN) -> active -> ended
   state          String   @default("pending")
-  /// Failed PIN attempts; the session dies rather than allowing a brute force.
+  /// Legacy per-session counter, no longer used by verification.
   attempts       Int      @default(0)
-  /// SHA-256 of the one-time code emailed to the owner, and when it expires.
+  /// Salted scrypt hash of the one-time code emailed to the owner, and when it expires.
   /// Null means this session falls back to the device's static remote PIN.
   emailCodeHash  String?
   emailCodeSentAt DateTime?

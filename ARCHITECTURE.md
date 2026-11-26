@@ -109,6 +109,14 @@ Accounts, device pairing, the cloud AI endpoints, and the web dashboard:
 
 A session requires a one-time emailed code (when Resend is configured) or a
 static remote PIN set on the target PC. Until verified, input is rejected.
+Every target has a shared database-backed failure budget across all sessions
+and viewers. The fifth wrong PIN or code locks that target for ten minutes;
+restarting a session doesn't clear the budget. Successful verification or ten
+minutes without a failed attempt clears it. PINs and email codes are stored as
+individually salted scrypt hashes. Apply the remote-auth migration as part of
+cutting over to the new dashboard; don't leave old versions serving remote
+sessions. Pending challenges must be restarted and legacy PINs must be set
+again in the target PC's Control Center.
 
 Once verified, single-owner generation-tagged WebRTC signaling (`webrtc.ts`)
 connects the two PCs peer-to-peer (or via user-configured TURN), buffering early

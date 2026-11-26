@@ -1,37 +1,25 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hashToken } from '@/lib/crypto'
 import { authenticateDevice, NO_STORE } from '@/lib/deviceAuth'
 import { SESSION_STALE_MS } from '@/lib/remote'
 import { emailEnabled, sendRemoteCode } from '@/lib/email'
-import { randomInt } from 'crypto'
+import { startRemoteSession, verifyRemoteSession } from '@/lib/remoteAuth'
 
-/**
- * Remote-control sessions: one of your machines driving another.
- *
- * Both ends are already token-authenticated to the same account, so the PIN
- * here is a deliberate SECOND factor. The threat it answers is a stolen laptop
- * that is already linked — without the PIN, whoever holds it could drive your
- * desktop. So: no PIN set on the target, no remote control, ever.
- *
- * A session must reach `active` (PIN verified) before a single input event is
- * accepted, and it dies after a few wrong guesses rather than allowing a
- * brute force against a short PIN.
- */
+// Remote sessions remain pending until the viewer proves possession of the
+// target's PIN or the one-time email code. The target owns the attempt budget.
 export const runtime = 'nodejs'
 
-const MAX_PIN_ATTEMPTS = 5
-/** A code that lives forever is barely a second factor. */
-const CODE_TTL_MS = 10 * 60_000
-/**
- * Starting a fresh session used to hand out a fresh 5-attempt budget for
- * free — ending the locked-out session and immediately creating a new one
- * reset `attempts` to 0, so the real limit on guesses was unlimited as long
- * as you kept hitting `start`. This is how long a target stays locked after
- * a session dies from exhausting its attempts, before a new session against
- * it is allowed at all.
- */
-const LOCKOUT_COOLDOWN_MS = 10 * 60_000
+function lockedOut(retryAfterMs: number) {
+  return NextResponse.json(
+    {
+      error: 'locked-out',
+      message: 'Too many wrong attempts on this device. Try again after the cooldown.',
+      attemptsLeft: 0,
+      retryAfterMs,
+    },
+    { status: 429, headers: { ...NO_STORE, 'Retry-After': String(Math.ceil(retryAfterMs / 1000)) } }
+  )
+}
 
 /** "ad***@gmail.com" — enough to recognise your own inbox, not to learn it. */
 function maskEmail(email: string): string {
@@ -46,7 +34,7 @@ export async function POST(req: Request) {
   const auth = await authenticateDevice(req, 'policy')
   if (!auth.ok) return auth.response
 
-  const body = await req.json().catch(() => ({}))
+  const body = (await req.json().catch(() => null)) ?? {}
   const action = typeof body.action === 'string' ? body.action : 'start'
 
   if (action === 'start') {
@@ -54,131 +42,60 @@ export async function POST(req: Request) {
     if (!targetId || targetId === auth.device.id)
       return NextResponse.json({ error: 'Bad target' }, { status: 400, headers: NO_STORE })
 
-    const target = await prisma.device.findFirst({
-      where: { id: targetId, userId: auth.device.userId },
-    })
-    if (!target) return NextResponse.json({ error: 'Not found' }, { status: 404, headers: NO_STORE })
-
-    // Email codes are the stronger factor, so they're preferred when
-    // available. The static PIN remains the fallback: a machine with neither
-    // has never had remote control enabled and must refuse outright.
-    const owner = await prisma.user.findUnique({ where: { id: auth.device.userId } })
-    const canEmail = emailEnabled && !!owner?.email
-    if (!canEmail && !target.remotePinHash)
+    const owner = emailEnabled ? await prisma.user.findUnique({ where: { id: auth.device.userId } }) : null
+    const email = owner?.email || null
+    const result = await startRemoteSession(prisma, auth.device, targetId, email)
+    if (result.kind === 'not-found') return NextResponse.json({ error: 'Not found' }, { status: 404, headers: NO_STORE })
+    if (result.kind === 'locked-out') return lockedOut(result.retryAfterMs)
+    if (result.kind === 'no-pin') {
       return NextResponse.json(
-        { error: 'no-pin', message: `Remote control isn't set up on ${target.name}. Set a remote PIN in its Control Center first.` },
+        { error: 'no-pin', message: `Remote control isn't set up on ${result.targetName}. Set a remote PIN in its Control Center first.` },
         { status: 409, headers: NO_STORE }
-      )
-
-    // A target that just locked out a brute-force attempt stays locked for a
-    // while, rather than letting the next `start` call hand out a brand new
-    // 5-guess budget for free.
-    const recentLockout = await prisma.remoteSession.findFirst({
-      where: {
-        targetDeviceId: targetId,
-        state: 'ended',
-        attempts: { gte: MAX_PIN_ATTEMPTS },
-        endedAt: { gte: new Date(Date.now() - LOCKOUT_COOLDOWN_MS) },
-      },
-      orderBy: { endedAt: 'desc' },
-    })
-    if (recentLockout?.endedAt) {
-      const retryAfterMs = Math.max(0, LOCKOUT_COOLDOWN_MS - (Date.now() - recentLockout.endedAt.getTime()))
-      return NextResponse.json(
-        {
-          error: 'locked-out',
-          message: `Too many wrong attempts on ${target.name} recently. Try again in a few minutes.`,
-          retryAfterMs,
-        },
-        { status: 429, headers: NO_STORE }
       )
     }
 
-    // One live session per target: taking over replaces the old one.
-    await prisma.remoteSession.updateMany({
-      where: { targetDeviceId: targetId, state: { in: ['pending', 'active'] } },
-      data: { state: 'ended', endedAt: new Date() },
-    })
-
-    // randomInt is the cryptographic generator — Math.random is predictable
-    // enough to be guessable, which for an access code is the whole ballgame.
-    const code = canEmail ? String(randomInt(0, 1_000_000)).padStart(6, '0') : null
-    const session = await prisma.remoteSession.create({
-      data: {
-        userId: auth.device.userId,
-        viewerDeviceId: auth.device.id,
-        targetDeviceId: targetId,
-        emailCodeHash: code ? hashToken(code) : null,
-        emailCodeSentAt: code ? new Date() : null,
-      },
-    })
-
-    let sent = false
-    if (code && owner?.email) {
-      sent = await sendRemoteCode(owner.email, code, target.name)
-      if (!sent) {
-        // Delivery failed. Drop the code so the session falls back to the PIN
-        // rather than waiting on an email that will never arrive.
-        await prisma.remoteSession.update({
-          where: { id: session.id },
-          data: { emailCodeHash: null, emailCodeSentAt: null },
+    // Keep email delivery outside the database transaction. A session may
+    // already have ended, so only change the challenge on a pending session.
+    let sentTo: string | undefined
+    if (result.code && email) {
+      if (await sendRemoteCode(email, result.code, result.targetName)) {
+        sentTo = maskEmail(email)
+      } else {
+        await prisma.remoteSession.updateMany({
+          where: { id: result.id, state: 'pending' },
+          data: {
+            emailCodeHash: null,
+            emailCodeSentAt: null,
+            ...(result.hasPin ? {} : { state: 'ended', endedAt: new Date() }),
+          },
         })
+        if (!result.hasPin) {
+          return NextResponse.json(
+            { error: 'code-delivery-failed', message: 'Could not send a code and this device has no remote PIN set.' },
+            { status: 503, headers: NO_STORE }
+          )
+        }
       }
     }
 
     return NextResponse.json(
-      {
-        id: session.id,
-        state: session.state,
-        // Tells the UI what to ask for — a code from email, or the PIN.
-        method: sent ? 'email' : 'pin',
-        sentTo: sent ? maskEmail(owner!.email!) : undefined,
-      },
+      { id: result.id, state: 'pending', method: sentTo ? 'email' : 'pin', sentTo },
       { headers: NO_STORE }
     )
   }
 
   if (action === 'verify') {
     const id = typeof body.id === 'string' ? body.id : ''
-    const pin = typeof body.pin === 'string' ? body.pin : ''
-    const session = await prisma.remoteSession.findFirst({
-      where: { id, userId: auth.device.userId, viewerDeviceId: auth.device.id },
-    })
-    if (!session || session.state === 'ended')
-      return NextResponse.json({ error: 'No session' }, { status: 404, headers: NO_STORE })
-
-    const target = await prisma.device.findUnique({ where: { id: session.targetDeviceId } })
-
-    // An emailed code, when this session has one and it hasn't expired.
-    const codeFresh =
-      !!session.emailCodeSentAt && Date.now() - new Date(session.emailCodeSentAt).getTime() < CODE_TTL_MS
-    const codeOk = !!session.emailCodeHash && codeFresh && hashToken(pin) === session.emailCodeHash
-
-    // Otherwise the machine's own PIN — but ONLY when no live code exists.
-    // Accepting either would make the pair as weak as its weaker half, which
-    // defeats the point of emailing a code at all.
-    const pinOk =
-      !session.emailCodeHash && !!target?.remotePinHash && hashToken(pin) === target.remotePinHash
-
-    if (!codeOk && !pinOk) {
-      const attempts = session.attempts + 1
-      const dead = attempts >= MAX_PIN_ATTEMPTS
-      await prisma.remoteSession.update({
-        where: { id: session.id },
-        data: { attempts, ...(dead ? { state: 'ended', endedAt: new Date() } : {}) },
-      })
+    const pin = typeof body.pin === 'string' ? body.pin.trim() : ''
+    const result = await verifyRemoteSession(prisma, auth.device, id, pin)
+    if (result.kind === 'not-found') return NextResponse.json({ error: 'No session' }, { status: 404, headers: NO_STORE })
+    if (result.kind === 'locked-out') return lockedOut(result.retryAfterMs)
+    if (result.kind === 'bad-pin') {
       return NextResponse.json(
-        { error: 'bad-pin', attemptsLeft: Math.max(0, MAX_PIN_ATTEMPTS - attempts) },
+        { error: 'bad-pin', attemptsLeft: result.attemptsLeft },
         { status: 403, headers: NO_STORE }
       )
     }
-
-    // Burn the code on success — a one-time code that survives its use isn't
-    // one, and a reconnect should require a fresh email.
-    await prisma.remoteSession.update({
-      where: { id: session.id },
-      data: { state: 'active', heartbeatAt: new Date(), emailCodeHash: null },
-    })
     return NextResponse.json({ ok: true, state: 'active' }, { headers: NO_STORE })
   }
 
