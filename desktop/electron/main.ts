@@ -20,6 +20,8 @@ import {
   resolveDeviceApiUrl,
   shouldClearTokenOnServerChange,
 } from './apiGuard'
+import { buildContentSecurityPolicy, installSessionCsp } from './csp'
+import { installNavigationGuards } from './navigationGuard'
 import { InputOrder, RemoteKeyboard, type InputEvent } from './remoteKeyboard'
 import { drainInjector } from './drainInjector'
 
@@ -96,6 +98,7 @@ function startStaticServer(root: string): Promise<string> {
         res.writeHead(200, {
           'Content-Type': MIME[path.extname(filePath).toLowerCase()] || 'application/octet-stream',
           'Cache-Control': 'no-store',
+          'Content-Security-Policy': currentContentSecurityPolicy(),
         })
         res.end(body)
       } catch {
@@ -396,6 +399,13 @@ function writeServerOverride(url: string | null): void {
 
 function configuredServerOrigin(): string {
   return resolveConfiguredOrigin(readServerOverride(), process.env.VITE_SENTI_API_URL)
+}
+
+function currentContentSecurityPolicy(): string {
+  return buildContentSecurityPolicy({
+    apiOrigin: configuredServerOrigin(),
+    devServerUrls: VITE_DEV_SERVER_URL ? [DEV_SERVER_URL, VITE_DEV_SERVER_URL] : undefined,
+  })
 }
 
 // --- Senti's memory ---------------------------------------------------
@@ -1951,7 +1961,34 @@ if (!app.requestSingleInstanceLock()) {
   })
 }
 
+// Enforce Content-Security-Policy at the Electron session layer on every
+// BrowserWindow (defaultSession and any future session/partition) via
+// webRequest.onHeadersReceived — never relying on a strippable <meta> tag.
+app.on('session-created', (sess) => {
+  installSessionCsp(sess, currentContentSecurityPolicy)
+})
+
+// Lock every renderer to the app's own content: deny window.open() outright
+// and block navigation away from the app origin (see navigationGuard.ts).
+// Hooked on web-contents-created (like the session-created CSP above) so it
+// covers the main window and any future webContents, not just the ones we
+// create today. The app origin is the same one trustedBridgeCaller checks.
+app.on('web-contents-created', (_event, contents) => {
+  installNavigationGuards(
+    contents,
+    () => (VITE_DEV_SERVER_URL ? DEV_SERVER_URL : prodBaseUrl),
+    (kind, url) => console.warn(
+      kind === 'window-open'
+        ? '[Electron] Blocked window.open:'
+        : '[Electron] Blocked navigation away from app content:',
+      url
+    )
+  )
+})
+
 app.whenReady().then(async () => {
+  installSessionCsp(session.defaultSession, currentContentSecurityPolicy)
+
   if (VITE_DEV_SERVER_URL) {
     try {
       await waitForVite(DEV_SERVER_URL)

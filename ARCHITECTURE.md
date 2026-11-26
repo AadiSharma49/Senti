@@ -75,6 +75,13 @@ forward the bearer token to another host. Changing the configured server
 requires a native main-process confirmation dialog the renderer cannot click,
 and automatically clears any stored token when the origin changes.
 
+**Session-enforced Content-Security-Policy.** Every Electron session enforces a
+response-header CSP via `webRequest.onHeadersReceived` (`desktop/electron/csp.ts`),
+not a `<meta>` tag in `index.html`. `script-src` is restricted to bundled
+same-origin code (`'self' 'wasm-unsafe-eval'` for local Whisper WebAssembly,
+blocking inline scripts, `blob:`/`data:` scripts, and JS `eval`/`new Function`),
+and `connect-src` allows only `'self'` and the configured Sentinel API origin.
+
 **Seeing.** Screen access is split into two explicit switches:
 - `seeScreen` (**on by default**): powers one-shot `take_screenshot` and
   `look_at_screen` ONLY when you ask. Nothing runs on a timer.

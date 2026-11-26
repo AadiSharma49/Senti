@@ -14,6 +14,9 @@ import ortMjsUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-thr
 env.allowLocalModels = true
 env.allowRemoteModels = false
 env.localModelPath = '/models/'
+// Load the bundled ORT module directly from 'self' rather than wrapping it in
+// a blob: URL (which would require loosening CSP script-src to allow blob:).
+env.useWasmCache = false
 if (env.backends?.onnx?.wasm) {
   env.backends.onnx.wasm.wasmPaths = { wasm: ortWasmUrl, mjs: ortMjsUrl }
   // Single-threaded: worker threads require cross-origin isolation
