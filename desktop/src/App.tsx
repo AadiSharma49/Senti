@@ -15,6 +15,8 @@ import { startRemoteHost, stopRemoteHost } from './services/remoteHost'
 import { startProactive, stopProactive } from './services/proactive'
 import { startFileHost, stopFileHost } from './services/fileHost'
 import { startScreenContext, stopScreenContext } from './services/screenContext'
+import { AudioCapture } from './services/audioCapture'
+import { shouldPromptForMic } from './services/micChoice'
 
 function App() {
   const settings = useSettingsStore((s) => s)
@@ -62,6 +64,23 @@ function App() {
     const wake = useWakeStore.getState()
     if (signedIn && settings.permissions.alwaysListening) void wake.start()
     else wake.stop()
+  }, [signedIn, settings.permissions.alwaysListening])
+
+  // Installs set up before Sentinel asked which microphone to use have been
+  // silently following the Windows default. Ask them once, by opening the
+  // Control Center, where the question sits at the top; after that it stays
+  // there until answered, but never pops up on its own again.
+  useEffect(() => {
+    const saved = AudioCapture.savedMic()
+    const ask = shouldPromptForMic({
+      signedIn,
+      alwaysListening: settings.permissions.alwaysListening,
+      confirmed: saved.confirmed,
+      prompted: AudioCapture.micPrompted(),
+    })
+    if (!ask) return
+    AudioCapture.markMicPrompted()
+    useUiStore.getState().openSettings()
   }, [signedIn, settings.permissions.alwaysListening])
 
   // Report live status, and watch for commands sent from your phone.

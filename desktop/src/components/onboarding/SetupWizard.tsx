@@ -2,21 +2,32 @@ import React, { useMemo, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSettingsStore } from '../../state/settingsStore'
 import AccountStep from './AccountStep'
+import MicPicker from '../common/MicPicker'
 import { useDeviceStore } from '../../state/deviceStore'
+import { AudioCapture } from '../../services/audioCapture'
 
 export default function SetupWizard() {
   const setSetupCompleted = useSettingsStore((s) => s.setSetupCompleted)
   const deviceLinked = useDeviceStore((s) => s.linked)
 
   const [step, setStep] = useState(0)
+  // What the user picked on the Microphone step: null = skipped,
+  // '' = Windows default on purpose, otherwise the device's name.
+  const [micChoice, setMicChoice] = useState<string | null>(() => {
+    const saved = AudioCapture.savedMic()
+    return saved.confirmed ? saved.label : null
+  })
 
   // Account FIRST: the pairing token is what makes Sentinel able to greet you
   // and think at all. Skipping it fails silently later.
-  const stepLabels = ['Account', 'Review', 'Finish']
-  const progress = useMemo(() => (step / (stepLabels.length - 1)) * 100, [step, stepLabels.length])
+  // Microphone SECOND: Windows' default input is often the wrong device, and
+  // "it can't hear me" is the whole product failing. Asked, not assumed.
+  const stepLabels = ['Account', 'Microphone', 'Review', 'Finish']
+  const last = stepLabels.length - 1
+  const progress = useMemo(() => (step / last) * 100, [step, last])
 
   const handleNext = () => {
-    setStep((current) => Math.min(current + 1, stepLabels.length - 1))
+    setStep((current) => Math.min(current + 1, last))
   }
 
   const handleBack = () => {
@@ -25,10 +36,10 @@ export default function SetupWizard() {
 
   const handleFinish = () => {
     setSetupCompleted(true)
-    setStep(stepLabels.length - 1)
+    setStep(last)
   }
 
-  const currentTitle = step === 0 ? 'Your Account' : step === 1 ? 'Review' : 'Complete'
+  const currentTitle = ['Your Account', 'Your Microphone', 'Review', 'Complete'][step]
 
   return (
     <motion.div className="relative w-full h-full flex items-center justify-center overflow-hidden">
@@ -58,6 +69,22 @@ export default function SetupWizard() {
                 )}
 
                 {step === 1 && (
+                  <motion.div key="microphone" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
+                    <p className="text-sm text-secondary mb-4">
+                      Which microphone should Sentinel listen on? Windows&apos; default is often a
+                      webcam or a headset you&apos;re not wearing. Pick one and say something to check
+                      it hears you.
+                    </p>
+                    <MicPicker
+                      onChosen={(label) => {
+                        setMicChoice(label)
+                        setStep(2)
+                      }}
+                    />
+                  </motion.div>
+                )}
+
+                {step === 2 && (
                   <motion.div key="review" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <p className="text-sm text-secondary mb-6">One last look before you start talking to it.</p>
                     <div className="grid gap-4">
@@ -69,11 +96,21 @@ export default function SetupWizard() {
                             : 'Not linked — the assistant will not work until you link this device.'}
                         </div>
                       </div>
+                      <div className="glass rounded-3xl border border-white/10 p-4">
+                        <div className="text-xs uppercase tracking-[0.3em] text-accent mb-2">Microphone</div>
+                        <div className="text-sm text-white/80">
+                          {micChoice === null
+                            ? 'Not chosen — Sentinel will use whatever Windows picks. You can choose one later in the Control Center.'
+                            : micChoice
+                              ? `Listening on “${micChoice}”.`
+                              : 'Following the Windows default microphone.'}
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 )}
 
-                {step === 2 && (
+                {step === 3 && (
                   <motion.div key="complete" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -16 }} transition={{ duration: 0.35 }}>
                     <div className="text-lg font-semibold text-white">Setup complete</div>
                     <p className="text-sm text-secondary mt-3">Sentinel is ready and listening. Say &ldquo;hey Sentinel&rdquo; — or just give it an order like &ldquo;open Chrome&rdquo; — from anywhere.</p>
@@ -91,7 +128,7 @@ export default function SetupWizard() {
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                {step > 0 && step < 2 && (
+                {step > 0 && step < last && (
                   <button onClick={handleBack} className="rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/80 hover:bg-white/5 transition">Back</button>
                 )}
                 {step === 0 && (
@@ -100,9 +137,22 @@ export default function SetupWizard() {
                   </button>
                 )}
                 {step === 1 && (
-                  <button onClick={handleFinish} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Finish Setup</button>
+                  <button
+                    onClick={() => {
+                      // Skipping counts as having been asked: don't pop the
+                      // Control Center at them on first launch as well.
+                      if (micChoice === null) AudioCapture.markMicPrompted()
+                      handleNext()
+                    }}
+                    className="rounded-2xl border border-white/10 px-4 py-2 text-sm text-white/70 hover:bg-white/5 transition"
+                  >
+                    {micChoice === null ? 'Skip for now' : 'Next'}
+                  </button>
                 )}
                 {step === 2 && (
+                  <button onClick={handleFinish} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Finish Setup</button>
+                )}
+                {step === last && (
                   <button onClick={() => setSetupCompleted(true)} className="rounded-2xl bg-accent px-6 py-3 text-sm font-semibold text-black hover:bg-accent-glow transition">Continue</button>
                 )}
               </div>

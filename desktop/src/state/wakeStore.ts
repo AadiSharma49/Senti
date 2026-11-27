@@ -1,6 +1,7 @@
 import { isEditorAction } from '../../../shared/codeBridgeActions'
 import { create } from 'zustand'
-import { audioCapture } from '../services/audioCapture'
+import { audioCapture, AudioCapture } from '../services/audioCapture'
+import { listeningStatus, resolveMic } from '../services/micChoice'
 import { UtteranceRecorder } from '../services/utteranceRecorder'
 import { loadSpeechRecognition, transcribeRaw } from '../services/speechRecognition'
 import { askSenti, type ChatTurn } from '../services/assistantService'
@@ -66,6 +67,20 @@ let unsubscribeLevel: (() => void) | null = null
 let lastLevelAt = 0
 let busy = false
 
+/**
+ * Microphone hot-plug. Without this, unplugging the mic Sentinel was using left
+ * capture silent forever, and plugging the chosen mic back in did nothing until
+ * a restart — both indistinguishable from "it just stopped hearing me".
+ */
+let micWatchInstalled = false
+/** Listening stopped because every microphone disappeared; resume when one returns. */
+let micLost = false
+/** The chosen mic came back mid-conversation; switch once the conversation ends. */
+let micSwitchPending = false
+let reopening = false
+let starting = false
+let deviceChangeTimer: number | null = null
+
 /** True while a conversation is open (every utterance is for Senti). */
 let inConversation = false
 let idleTimer: number | null = null
@@ -112,6 +127,8 @@ export interface WakeStore {
 
   start: () => Promise<void>
   stop: () => void
+  /** Re-open the microphone after the user picks a different one. */
+  switchMic: () => Promise<void>
   /** Open a conversation on demand — the talk hotkey and the orb use this. */
   engage: () => void
   /** Hide Senti completely — still listening, just invisible. */
@@ -200,6 +217,75 @@ function endConversation(spokenOff: boolean): void {
   useWakeStore.setState({ talking: false, state: 'listening', detail: '' })
   setHud(false)
   if (spokenOff) void say({ text: 'Okay.', audio: null }, deviceLang())
+  if (micSwitchPending) void reopenMic()
+}
+
+/**
+ * Re-open capture on the best microphone available right now (the chosen
+ * one if it's connected, else the Windows default), WITHOUT disturbing the
+ * rest of the listening state: visibility, conversation and the level meter
+ * all carry on. Only the audio source changes.
+ */
+async function reopenMic(): Promise<void> {
+  if (reopening || useWakeStore.getState().state === 'off') return
+  reopening = true
+  micSwitchPending = false
+  try {
+    recorder?.stop()
+    audioCapture.stop()
+    try {
+      await audioCapture.start()
+    } catch {
+      // Nothing left to listen on. Stop properly — the orb must not keep
+      // claiming it can hear you — and resume when a mic is plugged back in.
+      useWakeStore.getState().stop()
+      micLost = true
+      useWakeStore.setState({
+        status: 'Your microphone was disconnected. Plug one in and Senti will start listening again.',
+      })
+      return
+    }
+    recorder?.start(audioCapture)
+    useWakeStore.setState({ status: listeningStatus(audioCapture.getStatus().fallbackFrom) })
+  } finally {
+    reopening = false
+  }
+}
+
+/** Debounced: Windows fires several devicechange events per plug/unplug. */
+function onDeviceChange(): void {
+  if (deviceChangeTimer !== null) clearTimeout(deviceChangeTimer)
+  deviceChangeTimer = window.setTimeout(() => {
+    deviceChangeTimer = null
+    void (async () => {
+      const store = useWakeStore.getState()
+      if (store.state === 'off') {
+        if (micLost && useSettingsStore.getState().permissions.alwaysListening) {
+          micLost = false
+          await store.start()
+        }
+        return
+      }
+      // On the fallback because the chosen mic was missing — is it back?
+      if (!audioCapture.getStatus().fallbackFrom) return
+      const back = resolveMic(AudioCapture.savedMic(), await AudioCapture.inventory())
+      if (back.kind !== 'chosen' && back.kind !== 'relabeled') return
+      // Don't yank the mic out from under someone mid-sentence.
+      if (inConversation || busy) micSwitchPending = true
+      else await reopenMic()
+    })()
+  }, 800)
+}
+
+function installMicWatch(): void {
+  if (micWatchInstalled) return
+  micWatchInstalled = true
+  audioCapture.onDeviceLost(() => void reopenMic())
+  try {
+    navigator.mediaDevices?.addEventListener?.('devicechange', onDeviceChange)
+  } catch {
+    // no mediaDevices (tests / browser without media) — nothing to watch
+  }
 }
 
 /** Hide Senti completely — window disappears, mic stays open, listening continues. */
@@ -236,8 +322,12 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
   hidden: false,
 
   start: async () => {
-    if (get().state !== 'off') return
+    if (get().state !== 'off' || starting) return
     if (!useSettingsStore.getState().permissions.alwaysListening) return
+    // Guards the seconds spent loading the model and opening the mic, during
+    // which state is still 'off' — a second start() then would open a second,
+    // leaked microphone stream.
+    starting = true
 
     // Load the speech model + mic. Retry once — a cold start right after
     // unlock can lose the race for the mic, and we must not end up silently
@@ -247,13 +337,17 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     // used to share one catch, and "Senti is quiet" was the only symptom of
     // either.
     set({ status: 'Starting up…' })
+    installMicWatch()
+    micLost = false
     let started = false
     let why = ''
+    let noMic = false
     for (let attempt = 0; attempt < 2 && !started; attempt++) {
       try {
         await loadSpeechRecognition()
       } catch {
         why = 'The speech model could not load, so Senti cannot understand you.'
+        noMic = false
         await new Promise((r) => setTimeout(r, 1200))
         continue
       }
@@ -262,10 +356,14 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
         started = true
       } catch {
         why = 'No microphone. Check that one is plugged in and that Windows lets Senti use it.'
+        noMic = true
         await new Promise((r) => setTimeout(r, 1200))
       }
     }
     if (!started) {
+      // A missing mic fixes itself when one is plugged in — pick it up then.
+      micLost = noMic
+      starting = false
       set({ state: 'off', detail: '', status: why || 'Listening could not start.' })
       return
     }
@@ -297,13 +395,22 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     })
     recorder.onUtterance((u) => void onUtterance(u))
     recorder.start(audioCapture)
-    set({ state: 'listening', detail: '', enabled: true, status: 'Listening.', hidden: false })
+    starting = false
+    set({
+      state: 'listening',
+      detail: '',
+      enabled: true,
+      status: listeningStatus(audioCapture.getStatus().fallbackFrom),
+      hidden: false,
+    })
     const { watchScreen, seeScreen } = useSettingsStore.getState().permissions
     if (watchScreen && seeScreen) startScreenContext()
   },
 
   stop: () => {
     stopScreenContext()
+    micLost = false
+    micSwitchPending = false
     unsubscribeLevel?.()
     unsubscribeLevel = null
     if (idleTimer !== null) {
@@ -324,6 +431,17 @@ export const useWakeStore = create<WakeStore>((set, get) => ({
     // isn't even listening (permission off), there's nothing to open.
     if (get().state === 'off') return
     beginConversation()
+  },
+
+  switchMic: async () => {
+    if (get().state === 'off') {
+      // Not listening (maybe because the old mic was missing) — try again on the new one.
+      if (useSettingsStore.getState().permissions.alwaysListening && useSettingsStore.getState().setupCompleted) {
+        await get().start()
+      }
+      return
+    }
+    await reopenMic()
   },
 
   dismiss: () => {

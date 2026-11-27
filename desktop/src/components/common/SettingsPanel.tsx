@@ -10,6 +10,8 @@ import { onScreenShareChange, startScreenShare, stopScreenShare } from '../../se
 import { listPeers, commandPeer, peerScreen, type PeerDevice } from '../../services/peers'
 import { api } from '../../services/api'
 import { AudioCapture } from '../../services/audioCapture'
+import { defaultOptionLabel, type MicInventory } from '../../services/micChoice'
+import MicPicker from './MicPicker'
 import { reflect } from '../../services/reflection'
 import { LANGUAGES, savedLang, setLang } from '../../services/greetingService'
 import { getTurn, setTurn } from '../../services/webrtc'
@@ -67,28 +69,34 @@ export default function SettingsPanel() {
   // Microphone choice. Windows' default input is frequently the wrong device,
   // and that — not the wake word — is usually why Sentinel "can't hear you".
   const [lang, setLangState] = useState(savedLang())
-  const [micList, setMicList] = useState<{ id: string; label: string }[]>([])
-  const [micId, setMicId] = useState(AudioCapture.preferredDeviceId())
+  const [micInventory, setMicInventory] = useState<MicInventory>({ inputs: [], windowsDefault: null })
+  const [savedMic, setSavedMic] = useState(AudioCapture.savedMic())
   useEffect(() => {
     if (!open) return
     let alive = true
-    void AudioCapture.listInputs().then((l) => alive && setMicList(l))
+    const refresh = async () => {
+      const inv = await AudioCapture.inventory()
+      if (!alive) return
+      setMicInventory(inv)
+      setSavedMic(AudioCapture.savedMic())
+    }
+    void refresh()
+    const md = navigator.mediaDevices
+    md?.addEventListener?.('devicechange', refresh)
     return () => {
       alive = false
+      md?.removeEventListener?.('devicechange', refresh)
     }
   }, [open])
+  const micId = savedMic.id === 'default' ? '' : savedMic.id
+  const micMissing = !!micId && micId !== 'communications' && !micInventory.inputs.some((m) => m.id === micId)
 
   const changeMic = async (id: string) => {
-    setMicId(id)
-    AudioCapture.setPreferredDeviceId(id)
+    AudioCapture.chooseMic(id, micInventory.inputs.find((m) => m.id === id)?.label ?? '')
+    setSavedMic(AudioCapture.savedMic())
     // Re-open the mic on the new device so the change takes effect now,
     // not on the next restart.
-    const wake = useWakeStore.getState()
-    if (wake.enabled) {
-      wake.stop()
-      await new Promise((r) => setTimeout(r, 300))
-      void wake.start()
-    }
+    await useWakeStore.getState().switchMic()
   }
 
   // The PIN another device must enter to drive THIS machine. We only ever
@@ -353,6 +361,29 @@ export default function SettingsPanel() {
       </div>
 
       <div className="mx-auto w-full max-w-2xl flex-1 space-y-5 overflow-auto px-7 py-7 scrollbar-thin scrollbar-thumb-cyan-500/40 scrollbar-track-slate-900/50">
+        {/* Never asked which mic to use (set up before Sentinel asked, or
+            skipped it): ask here, first thing, rather than keep guessing. */}
+        {permissions.alwaysListening && !savedMic.confirmed && (
+          <motion.section
+            variants={sectionVariant}
+            initial="hidden"
+            animate="visible"
+            className="rounded-2xl border border-accent/40 bg-accent/5 p-5"
+          >
+            <h4 className="section-title">Which microphone should Sentinel listen on?</h4>
+            <p className="section-sub mb-4">
+              Right now it just uses whatever Windows calls the default — often a webcam or a
+              headset you&apos;re not wearing. Pick one and say something to check it hears you.
+            </p>
+            <MicPicker
+              onChosen={() => {
+                setSavedMic(AudioCapture.savedMic())
+                void useWakeStore.getState().switchMic()
+              }}
+            />
+          </motion.section>
+        )}
+
         <motion.section variants={sectionVariant} initial="hidden" animate="visible">
           <h4 className="section-title">What Sentinel can do</h4>
           <p className="section-sub mb-3">
@@ -427,8 +458,12 @@ export default function SettingsPanel() {
                         onChange={(e) => void changeMic(e.target.value)}
                         className="min-w-0 flex-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs text-white outline-none focus:border-accent/60"
                       >
-                        <option value="">Windows default</option>
-                        {micList.map((m) => (
+                        <option value="">{defaultOptionLabel(micInventory)}</option>
+                        {micId === 'communications' && <option value="communications">Windows communications device</option>}
+                        {micMissing && (
+                          <option value={micId}>{savedMic.label || 'Your chosen microphone'} — not connected</option>
+                        )}
+                        {micInventory.inputs.map((m) => (
                           <option key={m.id} value={m.id}>
                             {m.label}
                           </option>

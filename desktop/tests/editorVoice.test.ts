@@ -10,7 +10,7 @@ const { transcribe, recording } = vi.hoisted(() => ({
   transcribe: vi.fn(), recording: { emit: (_u: Utterance) => {}, active: false },
 }))
 vi.mock('../src/services/speechRecognition', () => ({ loadSpeechRecognition: async () => {}, transcribeRaw: transcribe }))
-vi.mock('../src/services/audioCapture', () => ({ audioCapture: { start() {}, stop() {}, subscribe: () => () => {} } }))
+vi.mock('../src/services/audioCapture', () => ({ audioCapture: { start() {}, stop() {}, subscribe: () => () => {}, onDeviceLost: () => () => {}, getStatus: () => ({ fallbackFrom: null }) } }))
 vi.mock('../src/services/utteranceRecorder', () => ({ UtteranceRecorder: class {
   onUtterance(fn: typeof recording.emit) { recording.emit = fn }
   start() { recording.active = true }

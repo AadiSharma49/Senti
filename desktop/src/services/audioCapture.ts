@@ -28,6 +28,36 @@ import type {
   AudioStatusCallback,
   MicrophoneStatus,
 } from '../types/audio'
+import { buildInventory, resolveMic, type MicInput, type MicInventory, type StoredMic } from './micChoice'
+
+const MIC_ID_KEY = 'senti:micDeviceId'
+const MIC_LABEL_KEY = 'senti:micLabel'
+const MIC_CONFIRMED_KEY = 'senti:micConfirmed'
+const MIC_PROMPTED_KEY = 'senti:micPrompted'
+
+function readKey(key: string): string {
+  try {
+    return localStorage.getItem(key) || ''
+  } catch {
+    return ''
+  }
+}
+
+function writeKey(key: string, value: string): void {
+  try {
+    if (value) localStorage.setItem(key, value)
+    else localStorage.removeItem(key)
+  } catch {
+    // storage unavailable — we'll just use the default
+  }
+}
+
+/** Open one specific input ('' = whatever Windows calls the default). */
+function openMic(deviceId: string): Promise<MediaStream> {
+  return navigator.mediaDevices.getUserMedia({
+    audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+  })
+}
 
 const DEFAULT_CONFIG: Required<AudioCaptureConfig> = {
   sampleRate: 44100,
@@ -41,6 +71,8 @@ export class AudioCapture {
   private state: AudioCaptureState = 'idle'
   private error: string | null = null
   private deviceLabel: string | null = null
+  /** Label of the chosen mic we couldn't open, while on the Windows default instead. */
+  private fallbackFrom: string | null = null
 
   private stream: MediaStream | null = null
   private systemStream: MediaStream | null = null
@@ -50,6 +82,7 @@ export class AudioCapture {
 
   private frameCallbacks: Set<AudioFrameCallback> = new Set()
   private statusCallbacks: Set<AudioStatusCallback> = new Set()
+  private deviceLostCallbacks: Set<() => void> = new Set()
 
   constructor(config?: AudioCaptureConfig) {
     this.config = { ...DEFAULT_CONFIG, ...config }
@@ -57,33 +90,53 @@ export class AudioCapture {
 
   /** The microphone the user picked, or '' to follow the Windows default. */
   static preferredDeviceId(): string {
-    try {
-      return localStorage.getItem('senti:micDeviceId') || ''
-    } catch {
-      return ''
+    return readKey(MIC_ID_KEY)
+  }
+
+  /**
+   * The saved choice. `confirmed` is false until the user has actually been
+   * asked — '' with confirmed=false means "never asked", '' with
+   * confirmed=true means "deliberately follow Windows".
+   */
+  static savedMic(): StoredMic & { confirmed: boolean } {
+    return {
+      id: readKey(MIC_ID_KEY),
+      label: readKey(MIC_LABEL_KEY),
+      confirmed: readKey(MIC_CONFIRMED_KEY) === '1',
     }
   }
 
-  /** Remember which microphone to use. Empty clears the preference. */
-  static setPreferredDeviceId(id: string): void {
+  /**
+   * Record the user's explicit choice. The label is kept so we can name the
+   * device when it's unplugged, and re-find it if Chromium re-issues its id.
+   */
+  static chooseMic(id: string, label: string): void {
+    writeKey(MIC_ID_KEY, id)
+    writeKey(MIC_LABEL_KEY, id ? label : '')
+    writeKey(MIC_CONFIRMED_KEY, '1')
+  }
+
+  /** Whether an upgraded install has already been asked once. */
+  static micPrompted(): boolean {
+    return readKey(MIC_PROMPTED_KEY) === '1'
+  }
+
+  static markMicPrompted(): void {
+    writeKey(MIC_PROMPTED_KEY, '1')
+  }
+
+  /** What's plugged in, for the picker. Labels need permission to have been given. */
+  static async inventory(): Promise<MicInventory> {
     try {
-      if (id) localStorage.setItem('senti:micDeviceId', id)
-      else localStorage.removeItem('senti:micDeviceId')
+      return buildInventory(await navigator.mediaDevices.enumerateDevices())
     } catch {
-      // storage unavailable — we'll just use the default
+      return { inputs: [], windowsDefault: null }
     }
   }
 
-  /** Input devices, for the picker. Labels need permission to have been given. */
-  static async listInputs(): Promise<{ id: string; label: string }[]> {
-    try {
-      const devices = await navigator.mediaDevices.enumerateDevices()
-      return devices
-        .filter((d) => d.kind === 'audioinput')
-        .map((d, i) => ({ id: d.deviceId, label: d.label || `Microphone ${i + 1}` }))
-    } catch {
-      return []
-    }
+  /** Real input devices only (no Chromium "default"/"communications" aliases). */
+  static async listInputs(): Promise<MicInput[]> {
+    return (await AudioCapture.inventory()).inputs
   }
 
   // --- Public API ---------------------------------------------------
@@ -103,23 +156,47 @@ export class AudioCapture {
     }
   }
 
-  /** Start capturing audio from the microphone */
-  async start(): Promise<void> {
+  /**
+   * Start capturing audio from the microphone.
+   *
+   * By default opens the user's saved choice, falling back to the Windows
+   * default ONLY when that device isn't connected — and recording that it did
+   * (see `getStatus().fallbackFrom`), so the UI can say so instead of
+   * listening to the wrong mic in silence.
+   *
+   * `{ deviceId }` opens exactly that device with no fallback ('' = Windows
+   * default). The mic test in the picker uses this: a test that quietly ran
+   * on a different microphone would prove nothing.
+   */
+  async start(opts?: { deviceId?: string }): Promise<void> {
     if (this.state === 'active') return
 
     try {
       this.setState('requesting')
+      this.fallbackFrom = null
 
-      const preferred = AudioCapture.preferredDeviceId()
-      try {
-        this.stream = await navigator.mediaDevices.getUserMedia({
-          audio: preferred ? { deviceId: { exact: preferred } } : true,
-        })
-      } catch (e) {
-        if (!preferred) throw e
-        this.stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      if (opts?.deviceId !== undefined) {
+        this.stream = await openMic(opts.deviceId)
+      } else {
+        this.stream = await this.openSavedMic()
       }
-      this.deviceLabel = this.stream.getAudioTracks()[0]?.label || null
+      const track = this.stream.getAudioTracks()[0]
+      this.deviceLabel = track?.label || null
+      // Unplugging the device ends the track — and without this, capture
+      // just goes silent forever. Tell whoever owns the capture so it can
+      // reopen on whatever is still connected.
+      if (track) {
+        track.onended = () => {
+          if (this.stream?.getAudioTracks()[0] !== track) return
+          this.deviceLostCallbacks.forEach((cb) => {
+            try {
+              cb()
+            } catch {
+              // a broken subscriber must not block the others
+            }
+          })
+        }
+      }
 
       this.audioContext = new AudioContext({ sampleRate: this.config.sampleRate })
       this.source = this.audioContext.createMediaStreamSource(this.stream)
@@ -168,7 +245,10 @@ export class AudioCapture {
     }
 
     if (this.stream) {
-      this.stream.getTracks().forEach((t) => t.stop())
+      this.stream.getTracks().forEach((t) => {
+        t.onended = null
+        t.stop()
+      })
       this.stream = null
     }
 
@@ -182,6 +262,7 @@ export class AudioCapture {
     }
 
     this.deviceLabel = null
+    this.fallbackFrom = null
     this.error = null
     this.setState('idle')
   }
@@ -203,6 +284,15 @@ export class AudioCapture {
       error: this.error,
       deviceLabel: this.deviceLabel,
       sampleRate: this.audioContext?.sampleRate ?? null,
+      fallbackFrom: this.fallbackFrom,
+    }
+  }
+
+  /** Called when the open microphone disappears (unplugged, disabled). */
+  onDeviceLost(callback: () => void): () => void {
+    this.deviceLostCallbacks.add(callback)
+    return () => {
+      this.deviceLostCallbacks.delete(callback)
     }
   }
 
@@ -227,9 +317,50 @@ export class AudioCapture {
     this.stop()
     this.frameCallbacks.clear()
     this.statusCallbacks.clear()
+    this.deviceLostCallbacks.clear()
   }
 
   // --- Private ------------------------------------------------------
+
+  /**
+   * Open the saved choice. Only the Windows default is ever substituted, and
+   * only when the chosen device can't be opened; `fallbackFrom` records it.
+   */
+  private async openSavedMic(): Promise<MediaStream> {
+    const stored = AudioCapture.savedMic()
+    let res = resolveMic(stored, await AudioCapture.inventory())
+    if (res.kind === 'default') return openMic('')
+
+    if (res.kind === 'relabeled') {
+      writeKey(MIC_ID_KEY, res.id)
+      return openMic(res.id)
+    }
+
+    try {
+      // 'missing' is still tried once: before permission is granted the
+      // device list can come back blind, so "not listed" isn't proof.
+      return await openMic(stored.id)
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'NotAllowedError') throw err
+    }
+
+    const fallback = await openMic('')
+    // Permission exists now, so the list has real labels. If the device is
+    // here under a new id after all, switch to it rather than settle.
+    res = resolveMic(stored, await AudioCapture.inventory())
+    if (res.kind === 'relabeled') {
+      try {
+        const exact = await openMic(res.id)
+        writeKey(MIC_ID_KEY, res.id)
+        fallback.getTracks().forEach((t) => t.stop())
+        return exact
+      } catch {
+        // stay on the fallback below
+      }
+    }
+    this.fallbackFrom = stored.label || 'your chosen microphone'
+    return fallback
+  }
 
   private lastLevel: AudioLevel = { rms: 0, peak: 0, clipped: false }
 

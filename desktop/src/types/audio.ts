@@ -49,6 +49,11 @@ export interface MicrophoneStatus {
   deviceLabel: string | null
   /** Sample rate of the active audio context */
   sampleRate: number | null
+  /**
+   * Set when the user's chosen microphone couldn't be opened and capture is
+   * running on the Windows default instead: the chosen device's label.
+   */
+  fallbackFrom: string | null
 }
 
 /** A complete captured speech segment (contiguous PCM) */
